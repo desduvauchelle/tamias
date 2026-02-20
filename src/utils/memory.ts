@@ -1,6 +1,8 @@
 import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
+import { getBridgesConfig } from './config.ts'
+
 
 export const MEMORY_DIR = join(homedir(), '.tamias', 'memory')
 const TEMPLATES_DIR = join(import.meta.dir, '../templates')
@@ -83,6 +85,9 @@ export function buildSystemPrompt(toolNames: string[], summary?: string): string
 		sections.push(`# Current Session Summary\n\n${summary}`)
 	}
 
+	sections.push(`# Memory Location\n\nYour memory and persona files (USER.md, IDENTITY.md, SOUL.md, AGENTS.md, MEMORY.md, and daily logs) are persistently stored at the absolute path \`~/.tamias/memory\`.\nWhen instructed to read or update your memory, you MUST use absolute paths pointing to this directory (e.g., \`~/.tamias/memory/USER.md\`).`)
+
+
 	// Soul first — defines core behaviour
 	if (files['SOUL.md']) {
 		sections.push(files['SOUL.md'])
@@ -123,11 +128,20 @@ export function buildSystemPrompt(toolNames: string[], summary?: string): string
 		sections.push(`# Available Tools\n\nYou have access to: ${toolNames.map((t) => `\`${t}\``).join(', ')}.\nTool names use the format \`toolName__functionName\`.`)
 	}
 
-	// Timestamp
-	sections.push(`# Current Time\n\n${new Date().toLocaleString()}`)
+	// Active Channels
+	const bridges = getBridgesConfig()
+	const active = []
+	if (bridges.terminal?.enabled !== false) active.push('Terminal')
+	if (bridges.discord?.enabled) active.push('Discord')
+	if (bridges.telegram?.enabled) active.push('Telegram')
+	if (active.length > 0) {
+		sections.push(`# Connected Channels\nYou are currently reachable via: ${active.join(', ')}.`)
+	}
 
 	return sections.join('\n\n---\n\n')
 }
+
+
 
 /**
  * Update persona files with new insights discovered during conversation.

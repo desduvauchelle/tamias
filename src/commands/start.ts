@@ -5,10 +5,14 @@ import { loadConfig, getDefaultModel, getAllModelOptions, type ConnectionConfig 
 import { buildActiveTools } from '../utils/toolRegistry.ts'
 import { buildSystemPrompt, updatePersonaFiles } from '../utils/memory.ts'
 import { saveSessionToDisk, type SessionPersist, listAllStoredSessions, loadSessionFromDisk } from '../utils/sessions.ts'
+import { logAiRequest } from '../utils/logger.ts'
 import { streamText, generateText, stepCountIs } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { EventEmitter } from 'events'
+import type { DaemonEvent, BridgeMessage } from '../bridge/types.ts'
+import { BridgeManager } from '../bridge/index.ts'
 
 // ─── Session store ─────────────────────────────────────────────────────────────
 
@@ -29,8 +33,10 @@ interface Session {
 	processing: boolean
 	messages: Array<{ role: 'user' | 'assistant'; content: string }>
 	summary?: string
-	sseWriter: WritableStreamDefaultWriter<Uint8Array> | null
+	emitter: EventEmitter
 	heartbeatTimer: ReturnType<typeof setInterval> | null
+	channelId: string
+	channelUserId?: string
 }
 
 const sessions = new Map<string, Session>()
@@ -54,8 +60,9 @@ function loadAllSessions() {
 				processing: false,
 				messages: full.messages,
 				summary: full.summary,
-				sseWriter: null,
+				emitter: new EventEmitter(),
 				heartbeatTimer: null,
+				channelId: 'terminal',
 			})
 		}
 	}
@@ -102,10 +109,28 @@ Output RAW JSON only:
   "sessionName": "..."
 }`
 
-		const { text } = await generateText({
+		const startTime = Date.now()
+		const { text, usage } = await generateText({
 			model,
 			system: compactionPrompt,
 			prompt: `Current history:\n${JSON.stringify(session.messages)}`,
+		})
+		const durationMs = Date.now() - startTime
+
+		logAiRequest({
+			timestamp: new Date().toISOString(),
+			sessionId: session.id,
+			model: session.model,
+			provider: session.connectionNickname,
+			action: 'compact',
+			durationMs,
+			tokens: {
+				prompt: (usage as any)?.inputTokens,
+				completion: (usage as any)?.outputTokens,
+				total: (usage as any)?.totalTokens,
+			},
+			messages: [{ role: 'system', content: compactionPrompt }, { role: 'user', content: `Current history:\n${JSON.stringify(session.messages)}` }],
+			response: text,
 		})
 
 		const result = JSON.parse(text.replace(/```json\n?|\n?```/g, ''))
@@ -144,14 +169,15 @@ async function processSession(session: Session, tools: Record<string, unknown>, 
 	const job = session.queue.shift()!
 	session.messages.push({ role: 'user', content: job.content })
 
-	// Wait up to 3s for the SSE client to connect before processing
-	for (let i = 0; i < 30 && !session.sseWriter; i++) {
-		await new Promise((r) => setTimeout(r, 100))
+	// Wait up to 3s for the SSE client to connect before processing (terminal client only)
+	if (session.channelId === 'terminal') {
+		for (let i = 0; i < 30 && session.emitter.listenerCount('event') === 0; i++) {
+			await new Promise((r) => setTimeout(r, 100))
+		}
 	}
 
-	const writer = session.sseWriter
 	const connection = config.connections[session.connectionNickname]
-	if (!connection || !writer) {
+	if (!connection) {
 		session.processing = false
 		return
 	}
@@ -162,8 +188,9 @@ async function processSession(session: Session, tools: Record<string, unknown>, 
 		const systemPrompt = buildSystemPrompt(toolNamesList, session.summary)
 
 		// Signal start of response
-		await writer.write(sseEvent('start', { sessionId: session.id }))
+		session.emitter.emit('event', { type: 'start', sessionId: session.id } as DaemonEvent)
 
+		const startTime = Date.now()
 		const result = streamText({
 			model,
 			system: systemPrompt,
@@ -171,9 +198,9 @@ async function processSession(session: Session, tools: Record<string, unknown>, 
 			tools: toolNamesList.length > 0 ? (tools as Parameters<typeof streamText>[0]['tools']) : undefined,
 			stopWhen: stepCountIs(20),
 			onStepFinish: async ({ toolCalls }) => {
-				if (toolCalls?.length && writer) {
+				if (toolCalls?.length) {
 					for (const tc of toolCalls) {
-						await writer.write(sseEvent('tool_call', { name: tc.toolName, input: (tc as { input?: unknown }).input ?? {} }))
+						session.emitter.emit('event', { type: 'tool_call', name: tc.toolName, input: (tc as { input?: unknown }).input ?? {} } as DaemonEvent)
 					}
 				}
 			},
@@ -182,14 +209,39 @@ async function processSession(session: Session, tools: Record<string, unknown>, 
 		let fullResponse = ''
 		for await (const chunk of result.textStream) {
 			fullResponse += chunk
-			await writer.write(sseEvent('chunk', { text: chunk }))
+			session.emitter.emit('event', { type: 'chunk', text: chunk } as DaemonEvent)
 		}
+
+		// Log request after stream is done (with timeout for usage promise)
+		const usage = await Promise.race([
+			result.usage,
+			new Promise(resolve => setTimeout(() => resolve({}), 2000))
+		]).catch(() => ({})) as any
+
+		logAiRequest({
+			timestamp: new Date().toISOString(),
+			sessionId: session.id,
+			model: session.model,
+			provider: session.connectionNickname,
+			action: 'chat',
+			durationMs: Date.now() - startTime,
+			tokens: {
+				prompt: (usage as any)?.inputTokens,
+				completion: (usage as any)?.outputTokens,
+				total: (usage as any)?.totalTokens,
+			},
+			messages: [
+				{ role: 'system', content: systemPrompt },
+				...session.messages,
+			],
+			response: fullResponse,
+		})
 
 		session.messages.push({ role: 'assistant', content: fullResponse })
 		session.updatedAt = new Date()
 		saveSessionToDisk(toPersist(session))
 
-		await writer.write(sseEvent('done', { sessionId: session.id }))
+		session.emitter.emit('event', { type: 'done', sessionId: session.id } as DaemonEvent)
 
 		// Trigger compaction background
 		if (session.messages.length >= 20) {
@@ -198,9 +250,7 @@ async function processSession(session: Session, tools: Record<string, unknown>, 
 			}).catch(() => { })
 		}
 	} catch (err) {
-		if (writer) {
-			await writer.write(sseEvent('error', { message: String(err) })).catch(() => { })
-		}
+		session.emitter.emit('event', { type: 'error', message: String(err) } as DaemonEvent)
 	} finally {
 		session.processing = false
 		// Process next job if any
@@ -315,6 +365,19 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 
 	writeDaemonInfo({ pid: process.pid, port, startedAt: new Date().toISOString() })
 
+	// Init bridge manager
+	const bridgeManager = new BridgeManager()
+	const onBridgeMessage = async (msg: BridgeMessage, targetSessionId: string) => {
+		const session = sessions.get(targetSessionId)
+		if (!session) {
+			console.error(`Received bridge message for unknown session ${targetSessionId}`)
+			return
+		}
+		session.queue.push({ sessionId: targetSessionId, content: msg.content })
+		processSession(session, activeTools, config).catch(() => { })
+	}
+	await bridgeManager.initializeAll(config, onBridgeMessage).catch(console.error)
+
 	const server = Bun.serve({
 		port,
 		hostname: '127.0.0.1',
@@ -347,7 +410,7 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 
 			// ── Create session ──────────────────────────────────────────────
 			if (method === 'POST' && url.pathname === '/session') {
-				const body = await req.json() as { model?: string }
+				const body = await req.json() as { model?: string; channelId?: string; channelUserId?: string }
 				const modelStr = body.model ?? getDefaultModel() ?? allOptions[0]!
 				const [nickname, ...rest] = modelStr.split('/')
 				const modelId = rest.join('/')
@@ -365,9 +428,18 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 					queue: [],
 					processing: false,
 					messages: [],
-					sseWriter: null,
+					emitter: new EventEmitter(),
 					heartbeatTimer: null,
+					channelId: body.channelId || 'terminal',
+					channelUserId: body.channelUserId,
 				}
+
+				if (session.channelId !== 'terminal') {
+					session.emitter.on('event', (evt: DaemonEvent) => {
+						bridgeManager.dispatchEvent(session.channelId, evt, session).catch(console.error)
+					})
+				}
+
 				sessions.set(session.id, session)
 				return json({ sessionId: session.id, model: modelStr })
 			}
@@ -378,7 +450,7 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 				const session = sessions.get(id)
 				if (!session) return json({ error: 'Session not found' }, 404)
 				if (session.heartbeatTimer) clearInterval(session.heartbeatTimer)
-				await session.sseWriter?.close().catch(() => { })
+				session.emitter.removeAllListeners('event')
 				sessions.delete(id)
 				return json({ ok: true })
 			}
@@ -389,13 +461,15 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 				const session = sessions.get(id)
 				if (!session) return json({ error: 'Session not found' }, 404)
 
-				// Clear existing heartbeat + close old writer on reconnect
 				if (session.heartbeatTimer) clearInterval(session.heartbeatTimer)
-				await session.sseWriter?.close().catch(() => { })
 
 				const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
 				const writer = writable.getWriter()
-				session.sseWriter = writer
+
+				const onEvent = async (evt: DaemonEvent) => {
+					await writer.write(sseEvent(evt.type, evt)).catch(() => { })
+				}
+				session.emitter.on('event', onEvent)
 
 				// Heartbeat every 15s to keep the connection alive (Bun idle timeout)
 				session.heartbeatTimer = setInterval(async () => {
@@ -403,6 +477,11 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 						if (session.heartbeatTimer) clearInterval(session.heartbeatTimer)
 					})
 				}, 15_000)
+
+				req.signal?.addEventListener('abort', () => {
+					session.emitter.off('event', onEvent)
+					if (session.heartbeatTimer) clearInterval(session.heartbeatTimer)
+				})
 
 				return new Response(readable, {
 					headers: cors({
@@ -428,8 +507,9 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 			// ── Shutdown ────────────────────────────────────────────────────
 			if (method === 'DELETE' && url.pathname === '/daemon') {
 				for (const s of sessions.values()) {
-					await s.sseWriter?.close().catch(() => { })
+					s.emitter.removeAllListeners('event')
 				}
+				await bridgeManager.destroyAll()
 				for (const client of mcpClients) await client.close().catch(() => { })
 				clearDaemonInfo()
 				setTimeout(() => process.exit(0), 200)

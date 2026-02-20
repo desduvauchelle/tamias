@@ -3,11 +3,13 @@ import { runConfigCommand } from './commands/config.ts'
 import { runChatCommand } from './commands/chat.ts'
 import { runModelsCommand, runModelsListCommand, runModelsDeleteCommand, runModelsEditCommand } from './commands/models.ts'
 import { runToolsCommand, runToolsListCommand, runToolsAddMcpCommand, runToolsEnableCommand, runToolsDisableCommand, runToolsEditCommand, runToolsRemoveMcpCommand } from './commands/tools.ts'
+import { runChannelsCommand, runChannelsListCommand, runChannelsAddCommand, runChannelsEditCommand, runChannelsRemoveCommand } from './commands/channels.ts'
 import { runStartCommand } from './commands/start.ts'
 import { runStopCommand } from './commands/stop.ts'
 import { runStatusCommand } from './commands/status.ts'
 import { runModelCommand, runModelSetCommand } from './commands/model.ts'
 import { runOnboarding } from './commands/onboarding.ts'
+import { runUsageCommand } from './commands/usage.ts'
 
 const program = new Command()
 
@@ -46,6 +48,13 @@ program
 	.command('status')
 	.description('Show daemon status and active sessions')
 	.action(runStatusCommand)
+
+// ─── tamias usage ─────────────────────────────────────────────────────────────
+program
+	.command('usage')
+	.argument('[period]', 'Time period: today, yesterday, week, month, all', 'all')
+	.description('Display aggregated AI request usage and stats')
+	.action(runUsageCommand)
 
 // ─── tamias model ─────────────────────────────────────────────────────────────
 const modelCmd = program
@@ -131,5 +140,31 @@ toolsCmd
 	.argument('[name]', 'MCP server name to remove')
 	.description('Remove an external MCP server')
 	.action(runToolsRemoveMcpCommand)
+
+// ─── tamias channels ────────────────────────────────────────────────────────
+const channelsCmd = program
+	.command('channels')
+	.description('Manage translator gateway channels (Discord, Telegram, etc.)')
+	.action(runChannelsCommand)
+
+channelsCmd
+	.command('list')
+	.description('List configured channels')
+	.action(runChannelsListCommand)
+
+channelsCmd
+	.command('add')
+	.description('Configure a new channel')
+	.action(runChannelsAddCommand)
+
+channelsCmd
+	.command('edit')
+	.description('Edit an existing channel configuration')
+	.action(runChannelsEditCommand)
+
+channelsCmd
+	.command('remove')
+	.description('Remove a channel configuration')
+	.action(runChannelsRemoveCommand)
 
 program.parse(process.argv)

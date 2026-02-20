@@ -179,4 +179,49 @@ export const tamiasTools = {
 			return { success: true, message: 'Daemon shutdown initiated.' }
 		},
 	}),
+	list_channels: tool({
+		description: 'List all configured communication channels (Terminal, Discord, Telegram) and their status.',
+		inputSchema: z.object({}),
+		execute: async () => {
+			const { getBridgesConfig } = await import('../utils/config.ts')
+			const bridges = getBridgesConfig()
+			return {
+				terminal: { enabled: bridges.terminal?.enabled !== false },
+				discord: bridges.discord ? { enabled: bridges.discord.enabled, hasToken: !!bridges.discord.botToken, allowedChannels: bridges.discord.allowedChannels } : null,
+				telegram: bridges.telegram ? { enabled: bridges.telegram.enabled, hasToken: !!bridges.telegram.botToken, allowedChats: bridges.telegram.allowedChats } : null,
+			}
+		},
+	}),
+	configure_channel: tool({
+		description: 'Enable/disable a communication channel or update its token and allowed IDs.',
+		inputSchema: z.object({
+			platform: z.enum(['terminal', 'discord', 'telegram']),
+			enabled: z.boolean(),
+			botToken: z.string().optional().describe('API token for Discord or Telegram'),
+			allowedIds: z.array(z.string()).optional().describe('List of allowed channel/chat IDs'),
+		}),
+		execute: async ({ platform, enabled, botToken, allowedIds }) => {
+			const { getBridgesConfig, setBridgesConfig } = await import('../utils/config.ts')
+			const bridges = getBridgesConfig()
+
+			if (platform === 'terminal') {
+				bridges.terminal = { ...bridges.terminal, enabled }
+			} else if (platform === 'discord') {
+				bridges.discord = {
+					enabled,
+					botToken: botToken ?? bridges.discord?.botToken,
+					allowedChannels: allowedIds ?? bridges.discord?.allowedChannels,
+				}
+			} else if (platform === 'telegram') {
+				bridges.telegram = {
+					enabled,
+					botToken: botToken ?? bridges.telegram?.botToken,
+					allowedChats: allowedIds ?? bridges.telegram?.allowedChats,
+				}
+			}
+
+			setBridgesConfig(bridges)
+			return { success: true, platform, enabled }
+		},
+	}),
 }

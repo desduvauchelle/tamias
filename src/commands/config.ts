@@ -65,7 +65,7 @@ export const runConfigCommand = async () => {
 
 		if (models.length > 0) {
 			console.log(pc.dim('  ↑↓ to navigate  ·  space to toggle  ·  enter to confirm\n'))
-			const picked = await p.multiselect({
+			const picked = await p.autocompleteMultiselect({
 				message: 'Select the models you want to use with this connection:',
 				options: models.map((m) => ({ value: m.id, label: m.name !== m.id ? `${m.id}  ${pc.dim(m.name)}` : m.id })),
 				required: false,

@@ -58,6 +58,26 @@ export type ToolFunctionConfig = z.infer<typeof ToolFunctionConfigSchema>
 export type InternalToolConfig = z.infer<typeof InternalToolConfigSchema>
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>
 
+// ─── Bridge Config Schemas ─────────────────────────────────────────────────────
+
+export const BridgesConfigSchema = z.object({
+	terminal: z.object({
+		enabled: z.boolean().default(true),
+	}).default({ enabled: true }),
+	discord: z.object({
+		enabled: z.boolean().default(false),
+		botToken: z.string().optional(),
+		allowedChannels: z.array(z.string()).optional(),
+	}).optional(),
+	telegram: z.object({
+		enabled: z.boolean().default(false),
+		botToken: z.string().optional(),
+		allowedChats: z.array(z.string()).optional(),
+	}).optional(),
+})
+
+export type BridgesConfig = z.infer<typeof BridgesConfigSchema>
+
 // ─── Main Config Schema ───────────────────────────────────────────────────────
 
 export const TamiasConfigSchema = z.object({
@@ -68,6 +88,7 @@ export const TamiasConfigSchema = z.object({
 	defaultModel: z.string().optional(),
 	internalTools: z.record(z.string(), InternalToolConfigSchema).optional(),
 	mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
+	bridges: BridgesConfigSchema.default({ terminal: { enabled: true } }),
 })
 
 export type TamiasConfig = z.infer<typeof TamiasConfigSchema>
@@ -83,7 +104,7 @@ const getConfigPath = () => {
 export const loadConfig = (): TamiasConfig => {
 	const path = getConfigPath()
 	if (!existsSync(path)) {
-		return { version: '1.0', connections: {} }
+		return { version: '1.0', connections: {}, bridges: { terminal: { enabled: true } } }
 	}
 
 	try {
@@ -94,7 +115,7 @@ export const loadConfig = (): TamiasConfig => {
 			console.error('Configuration file is invalid:', JSON.stringify((err as z.ZodError<any>).issues, null, 2))
 			process.exit(1)
 		}
-		return { version: '1.0', connections: {} }
+		return { version: '1.0', connections: {}, bridges: { terminal: { enabled: true } } }
 	}
 }
 
@@ -220,4 +241,17 @@ export const getAllModelOptions = (): string[] => {
 		}
 	}
 	return options
+}
+
+// ─── Bridge Config Helpers ─────────────────────────────────────────────────────
+
+export const getBridgesConfig = (): BridgesConfig => {
+	const config = loadConfig()
+	return config.bridges ?? { terminal: { enabled: true } }
+}
+
+export const setBridgesConfig = (bridgesConfig: BridgesConfig): void => {
+	const c = loadConfig()
+	c.bridges = bridgesConfig
+	saveConfig(c)
 }

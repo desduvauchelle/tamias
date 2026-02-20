@@ -185,7 +185,7 @@ export const runModelsEditCommand = async (nickname?: string) => {
 		console.log(pc.dim('\n  ↑↓ to navigate  ·  space to toggle  ·  enter to confirm\n'))
 
 		const currentModels = new Set(connection.selectedModels ?? [])
-		const picked = await p.multiselect({
+		const picked = await p.autocompleteMultiselect({
 			message: 'Select models for this configuration:',
 			options: models.map((m) => ({
 				value: m.id,
