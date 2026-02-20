@@ -7,8 +7,8 @@ import {
 	renameConnection,
 	updateConnection,
 	type ConnectionConfig,
-} from '../utils/config'
-import { fetchModels } from '../utils/models'
+} from '../utils/config.ts'
+import { fetchModels } from '../utils/models.ts'
 
 // ─── Display helpers ──────────────────────────────────────────────────────────
 

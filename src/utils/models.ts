@@ -1,5 +1,5 @@
 import pc from 'picocolors'
-import type { ProviderType } from './config'
+import type { ProviderType } from './config.ts'
 
 export interface ProviderModel {
 	id: string

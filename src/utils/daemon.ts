@@ -1,0 +1,104 @@
+import { join } from 'path'
+import { homedir } from 'os'
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
+import { createServer } from 'net'
+
+const DAEMON_FILE = join(homedir(), '.tamias', 'daemon.json')
+
+// Common ports to avoid when auto-picking
+const COMMON_PORTS = new Set([
+	3000, 3001, 3306, 3389, 4000, 4200, 4343, 4444, 5000, 5432, 5900,
+	6379, 6443, 7000, 7777, 8000, 8080, 8443, 8888, 9000,
+])
+
+export interface DaemonInfo {
+	pid: number
+	port: number
+	startedAt: string
+}
+
+/** Find a free TCP port above 9000, avoiding common ones */
+export async function findFreePort(min = 9001): Promise<number> {
+	for (let port = min; port < 65000; port++) {
+		if (COMMON_PORTS.has(port)) continue
+		const free = await isPortFree(port)
+		if (free) return port
+	}
+	throw new Error('Could not find a free port')
+}
+
+function isPortFree(port: number): Promise<boolean> {
+	return new Promise((resolve) => {
+		const server = createServer()
+		server.once('error', () => resolve(false))
+		server.once('listening', () => {
+			server.close(() => resolve(true))
+		})
+		server.listen(port, '127.0.0.1')
+	})
+}
+
+export function readDaemonInfo(): DaemonInfo | null {
+	if (!existsSync(DAEMON_FILE)) return null
+	try {
+		return JSON.parse(readFileSync(DAEMON_FILE, 'utf-8')) as DaemonInfo
+	} catch {
+		return null
+	}
+}
+
+export function writeDaemonInfo(info: DaemonInfo): void {
+	writeFileSync(DAEMON_FILE, JSON.stringify(info, null, 2), 'utf-8')
+}
+
+export function clearDaemonInfo(): void {
+	if (existsSync(DAEMON_FILE)) unlinkSync(DAEMON_FILE)
+}
+
+/** Returns true if the daemon is running and reachable */
+export async function isDaemonRunning(): Promise<boolean> {
+	const info = readDaemonInfo()
+	if (!info) return false
+	try {
+		const res = await fetch(`http://127.0.0.1:${info.port}/health`, {
+			signal: AbortSignal.timeout(1000),
+		})
+		return res.ok
+	} catch {
+		return false
+	}
+}
+
+/** Spawn daemon in detached mode, wait until it's ready (max 8s) */
+export async function autoStartDaemon(): Promise<DaemonInfo> {
+	// Derive project root from this file's location (src/utils/daemon.ts → ../../)
+	const projectRoot = join(import.meta.dir, '../..')
+	const entryPoint = join(projectRoot, 'src', 'index.ts')
+
+	// Spawn the daemon as a detached background process via index.ts
+	const proc = Bun.spawn(
+		['bun', entryPoint, 'start', '--daemon'],
+		{
+			cwd: projectRoot,
+			detached: true,
+			stdio: ['ignore', 'ignore', 'ignore'],
+		}
+	)
+	proc.unref()
+
+	// Wait for it to write daemon.json and respond to /health (up to 8s)
+	for (let i = 0; i < 80; i++) {
+		await new Promise((r) => setTimeout(r, 100))
+		const running = await isDaemonRunning()
+		if (running) {
+			return readDaemonInfo()!
+		}
+	}
+	throw new Error('Daemon did not start in time. Run `tamias start` manually.')
+}
+
+export function getDaemonUrl(): string {
+	const info = readDaemonInfo()
+	if (!info) throw new Error('Daemon is not running. Start it with `tamias start`.')
+	return `http://127.0.0.1:${info.port}`
+}

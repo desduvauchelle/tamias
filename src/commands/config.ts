@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
-import { addConnection, ProviderEnum } from '../utils/config'
-import { fetchModels } from '../utils/models'
+import { addConnection, ProviderEnum } from '../utils/config.ts'
+import { fetchModels } from '../utils/models.ts'
 
 export const runConfigCommand = async () => {
 	p.intro(pc.bgCyan(pc.black(' Tamias — Add Model Config ')))

@@ -26,10 +26,48 @@ export const ConnectionConfigSchema = z.object({
 
 export type ConnectionConfig = z.infer<typeof ConnectionConfigSchema>
 
+// ─── Tool Config Schemas ───────────────────────────────────────────────────────
+
+export const ToolFunctionConfigSchema = z.object({
+	enabled: z.boolean().default(true),
+	/** Regex patterns — at least one must match serialised call args (if set) */
+	allowlist: z.array(z.string()).optional(),
+})
+
+export const InternalToolConfigSchema = z.object({
+	enabled: z.boolean().default(true),
+	functions: z.record(z.string(), ToolFunctionConfigSchema).optional(),
+})
+
+export const McpServerConfigSchema = z.object({
+	enabled: z.boolean().default(true),
+	label: z.string().optional(),
+	/** 'stdio' = local process  |  'http' = remote URL */
+	transport: z.enum(['stdio', 'http']),
+	// stdio
+	command: z.string().optional(),
+	args: z.array(z.string()).optional(),
+	env: z.record(z.string(), z.string()).optional(),
+	// http
+	url: z.string().url().optional(),
+	headers: z.record(z.string(), z.string()).optional(),
+	functions: z.record(z.string(), ToolFunctionConfigSchema).optional(),
+})
+
+export type ToolFunctionConfig = z.infer<typeof ToolFunctionConfigSchema>
+export type InternalToolConfig = z.infer<typeof InternalToolConfigSchema>
+export type McpServerConfig = z.infer<typeof McpServerConfigSchema>
+
+// ─── Main Config Schema ───────────────────────────────────────────────────────
+
 export const TamiasConfigSchema = z.object({
 	version: z.literal('1.0'),
 	connections: z.record(z.string(), ConnectionConfigSchema),
 	defaultConnection: z.string().optional(),
+	/** The default model in "nickname/modelId" format, e.g. "lc-openai/gpt-4o" */
+	defaultModel: z.string().optional(),
+	internalTools: z.record(z.string(), InternalToolConfigSchema).optional(),
+	mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
 })
 
 export type TamiasConfig = z.infer<typeof TamiasConfigSchema>
@@ -120,4 +158,66 @@ export const getConnection = (nickname: string): ConnectionConfig | undefined =>
 export const getAllConnections = (): ConnectionConfig[] => {
 	const config = loadConfig()
 	return Object.values(config.connections)
+}
+
+// ─── Internal Tool Config Helpers ─────────────────────────────────────────────
+
+export const getInternalToolConfig = (toolName: string): InternalToolConfig => {
+	const config = loadConfig()
+	return config.internalTools?.[toolName] ?? { enabled: true }
+}
+
+export const setInternalToolConfig = (toolName: string, toolConfig: InternalToolConfig): void => {
+	const c = loadConfig()
+	c.internalTools = { ...c.internalTools, [toolName]: toolConfig }
+	saveConfig(c)
+}
+
+// ─── MCP Server Config Helpers ─────────────────────────────────────────────────
+
+export const getMcpServerConfig = (name: string): McpServerConfig | undefined => {
+	const config = loadConfig()
+	return config.mcpServers?.[name]
+}
+
+export const getAllMcpServers = (): Array<{ name: string } & McpServerConfig> => {
+	const config = loadConfig()
+	return Object.entries(config.mcpServers ?? {}).map(([name, cfg]) => ({ name, ...cfg }))
+}
+
+export const setMcpServerConfig = (name: string, mcpConfig: McpServerConfig): void => {
+	const c = loadConfig()
+	c.mcpServers = { ...c.mcpServers, [name]: mcpConfig }
+	saveConfig(c)
+}
+
+export const deleteMcpServer = (name: string): void => {
+	const c = loadConfig()
+	if (!c.mcpServers?.[name]) throw new Error(`MCP server '${name}' not found.`)
+	delete c.mcpServers[name]
+	saveConfig(c)
+}
+
+// ─── Default Model Helpers ─────────────────────────────────────────────────────
+
+export const getDefaultModel = (): string | undefined => {
+	return loadConfig().defaultModel
+}
+
+export const setDefaultModel = (model: string): void => {
+	const c = loadConfig()
+	c.defaultModel = model
+	saveConfig(c)
+}
+
+/** Return all "nickname/modelId" pairs from all connections */
+export const getAllModelOptions = (): string[] => {
+	const config = loadConfig()
+	const options: string[] = []
+	for (const c of Object.values(config.connections)) {
+		for (const m of c.selectedModels ?? []) {
+			options.push(`${c.nickname}/${m}`)
+		}
+	}
+	return options
 }
