@@ -5,6 +5,90 @@ import {
 	setBridgesConfig,
 } from '../utils/config.ts'
 
+// ─── Health checks ─────────────────────────────────────────────────────────────
+
+async function testDiscordToken(token: string): Promise<void> {
+	const spinner = p.spinner()
+	spinner.start('Testing Discord bot token...')
+	try {
+		// Fetch bot info from Discord REST API
+		const res = await fetch('https://discord.com/api/v10/users/@me', {
+			headers: { Authorization: `Bot ${token}` },
+			signal: AbortSignal.timeout(5000),
+		})
+
+		if (res.status === 401) {
+			spinner.stop(pc.red('❌ Invalid token'))
+			p.note(
+				`The token was rejected (401 Unauthorized).\n` +
+				`→ Go to https://discord.com/developers/applications\n` +
+				`→ Open your app → Bot tab → Reset Token`,
+				'Fix'
+			)
+			return
+		}
+
+		if (!res.ok) {
+			spinner.stop(pc.yellow(`⚠️  Discord API responded with ${res.status}`))
+			return
+		}
+
+		const bot = await res.json() as { username?: string; id?: string }
+		spinner.stop(pc.green(`✅ Token valid — bot is ${pc.bold(bot.username ?? 'unknown')} (${bot.id})`))
+
+		// Now check gateway intents
+		p.note(
+			`Your bot is connected!\n\n` +
+			`${pc.bold('⚠️  REQUIRED: Enable privileged intents')}\n` +
+			`Discord bots MUST have these enabled to read messages:\n\n` +
+			`1. Go to https://discord.com/developers/applications\n` +
+			`2. Select your app → Bot tab\n` +
+			`3. Under "Privileged Gateway Intents" enable:\n` +
+			`   ${pc.cyan('• MESSAGE CONTENT INTENT')}  ← most common cause of no response\n` +
+			`   ${pc.dim('• SERVER MEMBERS INTENT')} (optional)\n` +
+			`4. Save Changes\n\n` +
+			`Then run: ${pc.bold('tamias stop && tamias start')}`,
+			'Next Steps'
+		)
+	} catch (err: any) {
+		spinner.stop(pc.red(`❌ Network error: ${err?.message ?? err}`))
+	}
+}
+
+async function testTelegramToken(token: string): Promise<void> {
+	const spinner = p.spinner()
+	spinner.start('Testing Telegram bot token...')
+	try {
+		const res = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
+			signal: AbortSignal.timeout(5000),
+		})
+		const data = await res.json() as { ok: boolean; result?: { username?: string; first_name?: string }; description?: string }
+
+		if (!data.ok) {
+			spinner.stop(pc.red(`❌ Invalid token: ${data.description}`))
+			p.note(
+				`→ Message @BotFather on Telegram\n` +
+				`→ Use /mybots to view your bots\n` +
+				`→ Use /token to get a fresh token`,
+				'Fix'
+			)
+			return
+		}
+
+		const name = data.result?.first_name ?? data.result?.username ?? 'unknown'
+		spinner.stop(pc.green(`✅ Token valid — bot is ${pc.bold(name)} (@${data.result?.username})`))
+		p.note(
+			`Your Telegram bot is configured!\n\n` +
+			`To start chatting, open Telegram and find your bot: ${pc.cyan('@' + data.result?.username)}\n` +
+			`Then restart the daemon: ${pc.bold('tamias stop && tamias start')}`,
+			'Next Steps'
+		)
+	} catch (err: any) {
+		spinner.stop(pc.red(`❌ Network error: ${err?.message ?? err}`))
+	}
+}
+
+
 // ─── List ─────────────────────────────────────────────────────────────────────
 
 export const runChannelsListCommand = async () => {
@@ -142,20 +226,31 @@ async function editChannelFlow(isAdding: boolean) {
 
 	setBridgesConfig(config)
 	p.outro(pc.green(`✅ Channel '${platformName}' updated.`))
+
+	// Run health test if token was provided and channel is enabled
+	if (enableOpts && botToken) {
+		if (platformName === 'discord') await testDiscordToken(botToken)
+		else if (platformName === 'telegram') await testTelegramToken(botToken)
+	}
 }
 
 // ─── Remove/Disable ────────────────────────────────────────────────────────
 
-export const runChannelsRemoveCommand = async () => {
+export const runChannelsRemoveCommand = async (platformArg?: string) => {
 	p.intro(pc.bgMagenta(pc.white(' Tamias — Remove Channel ')))
 	const config = getBridgesConfig()
 
-	const platform = await p.select({
-		message: 'Which channel do you want to disable/remove configuration for?',
-		options: AVAILABLE_CHANNELS.map(c => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) })),
-	})
+	let platform = platformArg
+	if (!platform || !AVAILABLE_CHANNELS.includes(platform.toLowerCase())) {
+		const selection = await p.select({
+			message: 'Which channel do you want to disable/remove configuration for?',
+			options: AVAILABLE_CHANNELS.map(c => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) })),
+		})
+		if (p.isCancel(selection)) { p.cancel('Cancelled.'); process.exit(0) }
+		platform = selection as string
+	}
 
-	if (p.isCancel(platform)) { p.cancel('Cancelled.'); process.exit(0) }
+	platform = platform.toLowerCase()
 
 	const confirmed = await p.confirm({ message: `Really clear configuration for ${pc.red(platform as string)}?`, initialValue: false })
 	if (p.isCancel(confirmed) || !confirmed) { p.cancel('Cancelled.'); process.exit(0) }

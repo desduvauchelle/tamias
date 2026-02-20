@@ -1,21 +1,157 @@
+import { Bot } from 'grammy'
+import type { TamiasConfig } from '../../utils/config.ts'
 import type { BridgeMessage, DaemonEvent, IBridge } from '../types.ts'
+
+interface TelegramContext {
+	chatId: number
+	messageId: number
+	/** accumulated text chunks */
+	buffer: string
+	/** typing keepalive interval */
+	typingInterval?: ReturnType<typeof setInterval>
+}
 
 export class TelegramBridge implements IBridge {
 	name = 'telegram'
+	private bot?: Bot
 	private onMessage?: (msg: BridgeMessage, sessionId: string) => void
+	/** Map of chatId → in-flight context */
+	private contexts = new Map<string, TelegramContext>()
+	/** Map of chatId → sessionId */
+	private chatSessions = new Map<string, string>()
 
-	async initialize(config: any, onMessage: (msg: BridgeMessage, sessionId: string) => void): Promise<void> {
+	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => void): Promise<void> {
 		this.onMessage = onMessage
-		console.log('[Telegram Bridge] Initializing... (Stub)')
-		// TODO: Instantiate Telegram bot using config.bridges.telegram.botToken
+		const token = config.bridges?.telegram?.botToken
+		if (!token) {
+			console.error('[Telegram Bridge] No bot token configured. Skipping.')
+			return
+		}
+
+		this.bot = new Bot(token)
+
+		this.bot.on('message:text', async (ctx) => {
+			const chatId = ctx.chat.id
+			const messageId = ctx.message.message_id
+			const chatKey = String(chatId)
+
+			const sessionKey = this.chatSessions.get(chatKey) ?? `tg_${chatKey}`
+			this.chatSessions.set(chatKey, sessionKey)
+
+			// 👀 React immediately to signal receipt
+			try {
+				await ctx.react('👀')
+			} catch { /* Reactions not supported in all chats */ }
+
+			const bridgeMsg: BridgeMessage = {
+				channelId: 'telegram',
+				channelUserId: chatKey,
+				content: ctx.message.text,
+			}
+
+			// Store context (buffer will fill once 'start' event arrives)
+			this.contexts.set(chatKey, { chatId, messageId, buffer: '' })
+
+			this.onMessage?.(bridgeMsg, sessionKey)
+		})
+
+		this.bot.catch((err) => {
+			console.error('[Telegram Bridge] Bot error:', err.message)
+		})
+
+		this.bot.start({
+			onStart: (botInfo) => console.log(`[Telegram Bridge] Started as @${botInfo.username}`),
+		})
 	}
 
 	async handleDaemonEvent(event: DaemonEvent, sessionContext: any): Promise<void> {
-		console.log(`[Telegram Bridge] Received daemon event: ${event.type} for session ${sessionContext?.id}`)
-		// TODO: Route daemon events back to telegram chat id
+		if (!this.bot) return
+		const chatKey = String(sessionContext?.channelUserId ?? '')
+		if (!chatKey) return
+
+		const ctx = this.contexts.get(chatKey)
+
+		switch (event.type) {
+			case 'start': {
+				// 🧠 Add thinking reaction and start typing indicator
+				if (ctx) {
+					try {
+						await this.bot.api.setMessageReaction(ctx.chatId, ctx.messageId, [{ type: 'emoji', emoji: '🧠' }])
+					} catch { /* old Telegram clients don't support this */ }
+
+					// Send typing status every 4s (Telegram clears it after 5s)
+					ctx.typingInterval = setInterval(async () => {
+						await this.bot.api.sendChatAction(ctx.chatId, 'typing').catch(() => { })
+					}, 4000)
+					// Send once immediately
+					await this.bot.api.sendChatAction(ctx.chatId, 'typing').catch(() => { })
+					ctx.buffer = ''
+				}
+				break
+			}
+			case 'chunk': {
+				if (ctx) ctx.buffer += event.text
+				break
+			}
+			case 'done': {
+				if (ctx) {
+					clearInterval(ctx.typingInterval)
+					const fullText = ctx.buffer
+					this.contexts.delete(chatKey)
+
+					// Remove all reactions (pass empty array)
+					try {
+						await this.bot.api.setMessageReaction(ctx.chatId, ctx.messageId, [])
+					} catch { }
+
+					if (fullText.trim()) {
+						try {
+							const chunks = splitText(fullText, 4000)
+							for (const chunk of chunks) {
+								await this.bot.api.sendMessage(ctx.chatId, chunk, { parse_mode: 'Markdown' })
+									.catch(() => this.bot!.api.sendMessage(ctx.chatId, chunk)) // fallback without markdown
+							}
+						} catch (err) {
+							console.error(`[Telegram Bridge] Failed to send to ${chatKey}:`, err)
+						}
+					}
+				}
+				break
+			}
+			case 'error': {
+				if (ctx) {
+					clearInterval(ctx.typingInterval)
+					this.contexts.delete(chatKey)
+					try {
+						await this.bot.api.setMessageReaction(ctx.chatId, ctx.messageId, [])
+					} catch { }
+					try {
+						await this.bot.api.sendMessage(ctx.chatId, `⚠️ Error: ${event.message}`)
+					} catch { }
+				}
+				break
+			}
+		}
 	}
 
 	async destroy(): Promise<void> {
-		console.log('[Telegram Bridge] Destroying... (Stub)')
+		if (this.bot) {
+			this.bot.stop()
+			console.log('[Telegram Bridge] Stopped.')
+		}
 	}
+}
+
+function splitText(text: string, maxLen: number): string[] {
+	if (text.length <= maxLen) return [text]
+	const chunks: string[] = []
+	let remaining = text
+	while (remaining.length > 0) {
+		if (remaining.length <= maxLen) { chunks.push(remaining); break }
+		let splitAt = remaining.lastIndexOf('\n', maxLen)
+		if (splitAt <= 0) splitAt = maxLen
+		chunks.push(remaining.slice(0, splitAt))
+		remaining = remaining.slice(splitAt).trimStart()
+	}
+	return chunks
 }

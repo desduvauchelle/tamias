@@ -97,6 +97,7 @@ modelsCmd
 
 modelsCmd
 	.command('delete')
+	.alias('remove')
 	.argument('[nickname]', 'The nickname of the model configuration to delete')
 	.description('Delete a model config')
 	.action(runModelsDeleteCommand)
@@ -164,6 +165,8 @@ channelsCmd
 
 channelsCmd
 	.command('remove')
+	.alias('delete')
+	.argument('[platform]', 'The channel platform to remove (e.g. discord or telegram)')
 	.description('Remove a channel configuration')
 	.action(runChannelsRemoveCommand)
 

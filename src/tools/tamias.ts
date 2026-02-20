@@ -187,8 +187,20 @@ export const tamiasTools = {
 			const bridges = getBridgesConfig()
 			return {
 				terminal: { enabled: bridges.terminal?.enabled !== false },
-				discord: bridges.discord ? { enabled: bridges.discord.enabled, hasToken: !!bridges.discord.botToken, allowedChannels: bridges.discord.allowedChannels } : null,
-				telegram: bridges.telegram ? { enabled: bridges.telegram.enabled, hasToken: !!bridges.telegram.botToken, allowedChats: bridges.telegram.allowedChats } : null,
+				discord: bridges.discord
+					? { enabled: bridges.discord.enabled, hasToken: !!bridges.discord.botToken, allowedChannels: bridges.discord.allowedChannels }
+					: {
+						enabled: false,
+						hasToken: false,
+						setupInstructions: "1. Go to https://discord.com/developers/applications\n2. Create or select your application\n3. Go to the 'Bot' tab\n4. Click 'Reset Token' to copy your bot token. Then use configure_channel to save it."
+					},
+				telegram: bridges.telegram
+					? { enabled: bridges.telegram.enabled, hasToken: !!bridges.telegram.botToken, allowedChats: bridges.telegram.allowedChats }
+					: {
+						enabled: false,
+						hasToken: false,
+						setupInstructions: "1. Message @BotFather on Telegram\n2. Create a new bot with /newbot\n3. Copy the API token provided. Then use configure_channel to save it."
+					},
 			}
 		},
 	}),

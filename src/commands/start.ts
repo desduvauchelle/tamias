@@ -367,13 +367,56 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 
 	// Init bridge manager
 	const bridgeManager = new BridgeManager()
-	const onBridgeMessage = async (msg: BridgeMessage, targetSessionId: string) => {
-		const session = sessions.get(targetSessionId)
+	/** Map of channelId:channelUserId → sessionId for persistent bridge sessions */
+	const bridgeSessionMap = new Map<string, string>()
+
+	const onBridgeMessage = async (msg: BridgeMessage, _targetSessionId: string) => {
+		const bridgeKey = `${msg.channelId}:${msg.channelUserId}`
+
+		// Look up existing session for this channel + user
+		let sessionId = bridgeSessionMap.get(bridgeKey)
+		let session = sessionId ? sessions.get(sessionId) : undefined
+
+		// Auto-create a session if none exists
 		if (!session) {
-			console.error(`Received bridge message for unknown session ${targetSessionId}`)
-			return
+			const modelStr = getDefaultModel() ?? allOptions[0]
+			if (!modelStr) {
+				console.error(`[Bridge] No model available for auto-session creation`)
+				return
+			}
+			const [nickname, ...rest] = modelStr.split('/')
+			const modelId = rest.join('/')
+			if (!nickname || !modelId) return
+			const connection = config.connections[nickname]
+			if (!connection) return
+
+			session = {
+				id: nanoid(),
+				model: modelStr,
+				connectionNickname: nickname,
+				modelId,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+				queue: [],
+				processing: false,
+				messages: [],
+				emitter: new EventEmitter(),
+				heartbeatTimer: null,
+				channelId: msg.channelId,
+				channelUserId: msg.channelUserId,
+			}
+
+			// Wire events back to bridge manager
+			session.emitter.on('event', (evt: DaemonEvent) => {
+				bridgeManager.dispatchEvent(session!.channelId, evt, session).catch(console.error)
+			})
+
+			sessions.set(session.id, session)
+			bridgeSessionMap.set(bridgeKey, session.id)
+			console.log(`[Bridge] Auto-created session ${session.id} for ${bridgeKey} using ${modelStr}`)
 		}
-		session.queue.push({ sessionId: targetSessionId, content: msg.content })
+
+		session.queue.push({ sessionId: session.id, content: msg.content })
 		processSession(session, activeTools, config).catch(() => { })
 	}
 	await bridgeManager.initializeAll(config, onBridgeMessage).catch(console.error)
