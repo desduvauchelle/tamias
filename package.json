@@ -9,6 +9,8 @@
 	"scripts": {
 		"start": "bun run src/index.ts start",
 		"stop": "bun run src/index.ts stop",
+		"status": "bun run src/index.ts status",
+		"onboarding": "bun run src/index.ts onboarding",
 		"models": "bun run src/index.ts models",
 		"chat": "bun run src/index.ts chat",
 		"build": "bun build --compile --outfile=tamias src/index.ts",

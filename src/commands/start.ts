@@ -3,6 +3,7 @@ import pc from 'picocolors'
 import { findFreePort, writeDaemonInfo, clearDaemonInfo } from '../utils/daemon.ts'
 import { loadConfig, getDefaultModel, getAllModelOptions, type ConnectionConfig } from '../utils/config.ts'
 import { buildActiveTools } from '../utils/toolRegistry.ts'
+import { buildSystemPrompt } from '../utils/memory.ts'
 import { streamText, stepCountIs } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
@@ -68,10 +69,8 @@ async function processSession(session: Session, tools: Record<string, unknown>, 
 
 	try {
 		const model = buildModel(connection, session.modelId)
-		const hasTools = Object.keys(tools).length > 0
-		const systemPrompt = hasTools
-			? `You are a helpful AI agent with access to tools: ${Object.keys(tools).map((k) => `\`${k}\``).join(', ')}.`
-			: 'You are a helpful AI assistant.'
+		const toolNamesList = Object.keys(tools)
+		const systemPrompt = buildSystemPrompt(toolNamesList)
 
 		// Signal start of response
 		await writer.write(sseEvent('start', { sessionId: session.id }))
@@ -80,7 +79,7 @@ async function processSession(session: Session, tools: Record<string, unknown>, 
 			model,
 			system: systemPrompt,
 			messages: session.messages,
-			tools: hasTools ? (tools as Parameters<typeof streamText>[0]['tools']) : undefined,
+			tools: toolNamesList.length > 0 ? (tools as Parameters<typeof streamText>[0]['tools']) : undefined,
 			stopWhen: stepCountIs(20),
 			onStepFinish: async ({ toolCalls }) => {
 				if (toolCalls?.length && writer) {
@@ -141,6 +140,57 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 
 	if (!isDaemon) {
 		p.intro(pc.bgGreen(pc.black(' Tamias — Starting Daemon ')))
+		const config = loadConfig()
+		const connections = Object.values(config.connections)
+		const numProviders = connections.length
+		const numModels = connections.reduce((acc, c) => acc + (c.selectedModels?.length || 0), 0)
+		const defaultModel = getDefaultModel() || 'Not set'
+
+		const { toolNames } = await buildActiveTools()
+		const numInternalTools = toolNames.filter(t => t.startsWith('internal:')).length
+		const numMcp = toolNames.filter(t => t.startsWith('mcp:')).length
+
+		const stats = [
+			`Port:              ${pc.bold('9001+')}`,
+			`File locations:    ${pc.dim('~/.tamias')}`,
+			`Internal tools:    ${pc.cyan(String(numInternalTools))}`,
+			`MCP servers:       ${pc.cyan(String(numMcp))}`,
+			`Providers:         ${pc.cyan(String(numProviders))}`,
+			`Total models:      ${pc.cyan(String(numModels))}`,
+			`Default model:     ${pc.yellow(defaultModel)}`,
+		].join('\n')
+
+		const tips = [
+			`• Chat:          ${pc.bold('tamias chat')}`,
+			`• Manage Models: ${pc.bold('tamias models')}`,
+			`• Set Default:   ${pc.bold('tamias model set')}`,
+			`• Stop Daemon:   ${pc.bold('tamias stop')}`,
+		].join('\n')
+
+		try {
+			// If already running, just say so
+			const { isDaemonRunning, readDaemonInfo, autoStartDaemon } = await import('../utils/daemon.ts')
+			if (await isDaemonRunning()) {
+				const info = readDaemonInfo()
+				p.note(stats, 'Configuration Stats')
+				p.note(tips, 'Next Steps')
+				p.outro(pc.green(`✅ Daemon is already running (PID: ${info?.pid}, Port: ${info?.port})`))
+				await new Promise(r => setTimeout(r, 100))
+				process.exit(0)
+			}
+			p.note('Spawning background process...', 'Status')
+			const info = await autoStartDaemon()
+			p.note(stats, 'Configuration Stats')
+			p.note(tips, 'Next Steps')
+			p.outro(pc.green(`✅ Daemon started in background (PID: ${info.pid}, Port: ${info.port})`))
+
+			await new Promise(r => setTimeout(r, 100))
+			process.exit(0)
+		} catch (err) {
+			p.cancel(pc.red(`Failed to start daemon: ${err}`))
+			process.exit(1)
+		}
+		return
 	}
 
 	const config = loadConfig()
@@ -286,29 +336,9 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 		},
 	})
 
-	if (isDaemon) {
-		// Background: just keep process alive silently
-		process.on('SIGTERM', () => { clearDaemonInfo(); process.exit(0) })
-		process.on('SIGINT', () => { clearDaemonInfo(); process.exit(0) })
-	} else {
-		const toolCount = Object.keys(activeTools).length
-		p.outro(pc.green([
-			`✅ Daemon started on port ${pc.bold(String(port))}`,
-			`   PID: ${process.pid}`,
-			`   Tools loaded: ${toolCount}`,
-			`   Press Ctrl+C to stop`,
-		].join('\n')))
-
-		process.on('SIGINT', async () => {
-			for (const s of sessions.values()) {
-				await s.sseWriter?.close().catch(() => { })
-			}
-			for (const client of mcpClients) await client.close().catch(() => { })
-			clearDaemonInfo()
-			console.log(pc.dim('\nDaemon stopped.'))
-			process.exit(0)
-		})
-	}
+	// Background: just keep process alive silently
+	process.on('SIGTERM', () => { clearDaemonInfo(); process.exit(0) })
+	process.on('SIGINT', () => { clearDaemonInfo(); process.exit(0) })
 
 	// Keep alive
 	await new Promise<void>(() => { })

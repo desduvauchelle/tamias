@@ -2,6 +2,8 @@ import * as p from '@clack/prompts'
 import pc from 'picocolors'
 import { getAllConnections, getDefaultModel } from '../utils/config.ts'
 import { isDaemonRunning, autoStartDaemon, getDaemonUrl } from '../utils/daemon.ts'
+import { isOnboarded } from '../utils/memory.ts'
+import { runOnboarding } from './onboarding.ts'
 
 // ─── SSE parser ────────────────────────────────────────────────────────────────
 // Bun v1.1.29 has no EventSource — parse SSE from a plain fetch ReadableStream.
@@ -39,6 +41,11 @@ async function* parseSseStream(res: Response): AsyncGenerator<SseEvent> {
 // ─── Main chat command ─────────────────────────────────────────────────────────
 
 export const runChatCommand = async () => {
+	// ── Onboarding gate ────────────────────────────────────────────────────────
+	if (!isOnboarded()) {
+		await runOnboarding()
+	}
+
 	p.intro(pc.bgMagenta(pc.black(' Tamias Chat ')))
 
 	const connections = getAllConnections()

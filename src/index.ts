@@ -7,6 +7,7 @@ import { runStartCommand } from './commands/start.ts'
 import { runStopCommand } from './commands/stop.ts'
 import { runStatusCommand } from './commands/status.ts'
 import { runModelCommand, runModelSetCommand } from './commands/model.ts'
+import { runOnboarding } from './commands/onboarding.ts'
 
 const program = new Command()
 
@@ -56,6 +57,12 @@ modelCmd
 	.command('set')
 	.description('Interactively set the default model')
 	.action(runModelSetCommand)
+
+// ─── tamias onboarding ────────────────────────────────────────────────────────
+program
+	.command('onboarding')
+	.description('Re-run the first-run onboarding (reset identity and persona)')
+	.action(runOnboarding)
 
 // ─── tamias models ────────────────────────────────────────────────────────────
 const modelsCmd = program

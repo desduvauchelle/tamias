@@ -32,9 +32,35 @@ This builds the binary and symlinks `tamias` to your `~/.bun/bin` — so it's av
 # 1. Add an AI provider connection
 tamias config
 
-# 2. Start chatting
+# 2. Pick a default model (optional)
+tamias model set
+
+# 3. Start chatting (auto-starts the daemon)
 tamias chat
 ```
+
+---
+
+## Architecture
+
+Tamias uses a **Client-Daemon** architecture to manage multiple concurrent chats and persistent tool state.
+
+### The Daemon (`tamias start`)
+A central background process that:
+- Maintains a **persistent connection** to all active session models.
+- Manages an **async message queue** per session (no race conditions).
+- Orchestrates **tool execution** (internal and MCP).
+- Serves an **HTTP + SSE (Server-Sent Events)** API on a local port (usually `9001+`).
+
+### Sessions
+Every time you run `tamias chat`, a unique **Session ID** is created on the daemon. Each session has its own message history and isolated tool environment. You can have multiple terminal windows chatting with different models simultaneously via the same daemon.
+
+### Communication
+1. **Client -> Daemon**: The CLI sends your input via HTTP POST.
+2. **Daemon -> Client**: The daemon streams tokens and tool calls back to your terminal in real-time via a persistent SSE stream.
+
+> [!NOTE]
+> The `tamias chat` command automatically starts the daemon in the background if it's not already running.
 
 ---
 
@@ -72,10 +98,32 @@ lc2-openai  (no models selected)
 Start an interactive chat session.
 
 1. Pick a model from your configured list (`nickname/model`)
-2. Enabled tools are automatically loaded
-3. The AI can autonomously call tools across up to **20 steps** per message
-4. Tool calls and their results are printed in real time
+2. Tamias ensures the background daemon is running (auto-starts if needed)
+3. A new session is created and streamed in real-time via SSE
+4. The AI can autonomously call tools across up to **20 steps** per message
 5. Type `exit` or `quit` to end the session
+
+---
+
+### `tamias model`
+Manage the global default model.
+
+```bash
+tamias model        # Show current default model
+tamias model set    # Interactively pick a default from your connections
+```
+
+---
+
+### `tamias daemon`
+Control the central Tamias background process.
+
+```bash
+tamias start           # Start the daemon (interactive)
+tamias start --daemon  # Start in background mode
+tamias stop            # Gracefully shut down the daemon
+tamias status          # Show port, PID, uptime, and active sessions
+```
 
 ---
 
@@ -118,6 +166,24 @@ Gives the AI full filesystem and shell access. Functions:
 | `copy_file` | Copy a file |
 | `list_dir` | List files and directories |
 | `find_files` | Find files matching a pattern |
+
+#### `tamias` tool (built-in)
+
+Allows the AI to **self-manage** its own configuration and the daemon. Functions:
+
+| Function | Description |
+|---|---|
+| `get_default_model` | Get the current default model |
+| `set_default_model` | Update the global default model |
+| `list_model_configs`| List all connections and their models |
+| `list_sessions` | List active chat sessions on the daemon |
+| `list_tools` | List all internal tools and external MCPs |
+| `enable_tool` | Enable an internal tool |
+| `disable_tool` | Disable an internal tool |
+| `add_mcp_server` | Register a new external MCP server |
+| `remove_mcp_server`| Remove an MCP server |
+| `daemon_status` | Get uptime, port, and PID |
+| `stop_daemon` | Shut down the Tamias daemon |
 
 **The terminal tool is enabled by default.** The AI can use it without any extra setup.
 
@@ -254,7 +320,9 @@ All settings live in `~/.tamias/config.json`. You can inspect it directly, but i
 
 ```bash
 bun run type-check   # Run TypeScript compiler (zero errors enforced)
-bun run chat         # Run chat command directly
+bun run start        # Start the daemon
+bun run stop         # Stop the daemon
+bun run chat         # Run chat client
 bun run models list  # Run models list command
 bun run tools        # Run tools manager
 bun run build        # Build standalone binary
