@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on version tags, e.g., v1.0.0
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest # Using macos to easily cross-compile for darwin and linux
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install
+
+      - name: Compile Executables
+        run: |
+          bun build --compile --minify --sourcemap --target=bun-darwin-arm64 --outfile ./tamias-darwin-arm64 ./src/index.ts
+          bun build --compile --minify --sourcemap --target=bun-darwin-x64 --outfile ./tamias-darwin-x64 ./src/index.ts
+          bun build --compile --minify --sourcemap --target=bun-linux-x64 --outfile ./tamias-linux-x64 ./src/index.ts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            tamias-darwin-arm64
+            tamias-darwin-x64
+            tamias-linux-x64
+          generate_release_notes: true

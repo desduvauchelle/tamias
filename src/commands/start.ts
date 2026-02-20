@@ -13,6 +13,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { EventEmitter } from 'events'
 import type { DaemonEvent, BridgeMessage } from '../bridge/types.ts'
 import { BridgeManager } from '../bridge/index.ts'
+import { autoUpdateDaemon } from '../utils/update.ts'
 
 // ─── Session store ─────────────────────────────────────────────────────────────
 
@@ -428,6 +429,14 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 		processSession(session, activeTools, config).catch(() => { })
 	}
 	await bridgeManager.initializeAll(config, onBridgeMessage).catch(console.error)
+
+	// Background update loop (runs daily)
+	const DAY_IN_MS = 24 * 60 * 60 * 1000
+	setInterval(() => {
+		autoUpdateDaemon(bridgeManager).catch(console.error)
+	}, DAY_IN_MS)
+	// Optionally check once soon after startup (e.g. 5 minutes)
+	setTimeout(() => autoUpdateDaemon(bridgeManager).catch(console.error), 5 * 60 * 1000)
 
 	const server = Bun.serve({
 		port,

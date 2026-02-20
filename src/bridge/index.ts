@@ -17,13 +17,13 @@ export class BridgeManager {
 		const bridgesDef = config.bridges
 
 		if (bridgesDef?.discord?.enabled) {
-			const { DiscordBridge } = await import('./channels/discord.ts')
+			const { DiscordBridge } = await import('./channels/discord')
 			const discordBridge = new DiscordBridge()
 			await this.startBridge(discordBridge, config, onMessage)
 		}
 
 		if (bridgesDef?.telegram?.enabled) {
-			const { TelegramBridge } = await import('./channels/telegram.ts')
+			const { TelegramBridge } = await import('./channels/telegram')
 			const telegramBridge = new TelegramBridge()
 			await this.startBridge(telegramBridge, config, onMessage)
 		}
@@ -69,5 +69,23 @@ export class BridgeManager {
 			}
 		}
 		this.activeBridges.clear()
+	}
+
+	/**
+	 * Returns the list of active bridge names (e.g., 'discord', 'telegram').
+	 */
+	getActiveChannelIds(): string[] {
+		return Array.from(this.activeBridges.keys())
+	}
+
+	/**
+	 * Broadcasts a generic text message to a specific bridge channel.
+	 */
+	async broadcastToChannel(channelId: string, message: string) {
+		const bridge = this.activeBridges.get(channelId)
+		if (bridge && typeof bridge.handleDaemonEvent === 'function') {
+			// Fake a daemon event to send system text
+			await bridge.handleDaemonEvent({ type: 'chunk', text: message } as DaemonEvent, {})
+		}
 	}
 }

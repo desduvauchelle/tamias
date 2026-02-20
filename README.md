@@ -14,9 +14,16 @@ Tamias comes from the Ancient Greek word ταμίας (tamíās), which means "s
 
 **Requirements**: [Bun](https://bun.sh) ≥ 1.1
 
+### One-line Install (Recommended)
+You can install the latest release directly via curl:
 ```bash
-git clone <this-repo>
-cd commander-v2
+curl -fsSL https://raw.githubusercontent.com/desduvauchelle/tamias/main/install.sh | bash
+```
+
+### Build from Source
+```bash
+git clone https://github.com/desduvauchelle/tamias.git
+cd tamias
 ./install.sh
 ```
 

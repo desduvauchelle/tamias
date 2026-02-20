@@ -10,6 +10,7 @@ import { runStatusCommand } from './commands/status.ts'
 import { runModelCommand, runModelSetCommand } from './commands/model.ts'
 import { runOnboarding } from './commands/onboarding.ts'
 import { runUsageCommand } from './commands/usage.ts'
+import { runUpdateCommand } from './commands/update.ts'
 
 const program = new Command()
 
@@ -72,6 +73,12 @@ program
 	.command('onboarding')
 	.description('Re-run the first-run onboarding (reset identity and persona)')
 	.action(runOnboarding)
+
+// ─── tamias update ────────────────────────────────────────────────────────────
+program
+	.command('update')
+	.description('Check for and install updates for Tamias')
+	.action(runUpdateCommand)
 
 // ─── tamias models ────────────────────────────────────────────────────────────
 const modelsCmd = program
