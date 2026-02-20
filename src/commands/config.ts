@@ -2,6 +2,7 @@ import * as p from '@clack/prompts'
 import pc from 'picocolors'
 import { addConnection, ProviderEnum } from '../utils/config.ts'
 import { fetchModels } from '../utils/models.ts'
+import { setEnv, generateSecureEnvKey } from '../utils/env.ts'
 
 export const runConfigCommand = async () => {
 	p.intro(pc.bgCyan(pc.black(' Tamias — Add Model Config ')))
@@ -16,15 +17,31 @@ export const runConfigCommand = async () => {
 						{ value: 'anthropic', label: '🧠 Anthropic' },
 						{ value: 'google', label: '♊ Google Gemini' },
 						{ value: 'openrouter', label: '🔀 OpenRouter' },
+						{ value: 'ollama', label: '🦙 Ollama' },
 						{ value: 'antigravity', label: '🚀 Antigravity (OAuth)' },
 					],
 				}),
+			baseUrl: ({ results }) => {
+				if (results.provider === 'ollama') {
+					return p.text({
+						message: 'Enter your Ollama Base URL (leave blank for default):',
+						placeholder: 'http://127.0.0.1:11434',
+					})
+				}
+				return Promise.resolve(undefined)
+			},
 			credentials: ({ results }) => {
 				if (results.provider === 'antigravity') {
 					return p.text({
 						message: 'Enter your Antigravity Access Token:',
 						placeholder: 'ag_...',
 						validate: (v) => { if (!v) return 'Access token is required' },
+					})
+				}
+				if (results.provider === 'ollama') {
+					return p.text({
+						message: 'Enter an API key if required (leave blank for none):',
+						placeholder: 'ollama',
 					})
 				}
 				return p.password({
@@ -51,16 +68,18 @@ export const runConfigCommand = async () => {
 	)
 
 	const providerType = ProviderEnum.parse(providerGroup.provider)
-	const apiKey = providerType !== 'antigravity' ? (providerGroup.credentials as string) : undefined
+	const apiKey = providerType !== 'antigravity' && providerGroup.credentials ? (providerGroup.credentials as string) : undefined
 	const accessToken = providerType === 'antigravity' ? (providerGroup.credentials as string) : undefined
+	const baseUrl = (providerGroup as any).baseUrl as string | undefined
 
 	// Fetch & select models (skip for antigravity)
 	let selectedModels: string[] = []
 
-	if (providerType !== 'antigravity' && apiKey) {
+	if (providerType !== 'antigravity' && (providerType === 'ollama' || apiKey)) {
 		const s = p.spinner()
 		s.start(`Fetching available models for ${providerType}...`)
-		const models = await fetchModels(providerType, apiKey)
+		const fetchKey = apiKey || 'ollama'
+		const models = await fetchModels(providerType, fetchKey, baseUrl)
 		s.stop(models.length > 0 ? `Found ${models.length} models.` : 'Could not fetch models, you can add them later.')
 
 		if (models.length > 0) {
@@ -80,7 +99,14 @@ export const runConfigCommand = async () => {
 	}
 
 	try {
-		addConnection(providerGroup.nickname, { provider: providerType, apiKey, accessToken, selectedModels })
+		let envKeyName: string | undefined
+		const secretStr = apiKey || accessToken
+		if (secretStr) {
+			envKeyName = generateSecureEnvKey(`${providerGroup.nickname}_${providerType}`)
+			setEnv(envKeyName, secretStr)
+		}
+
+		addConnection(providerGroup.nickname, { provider: providerType, envKeyName, baseUrl, selectedModels })
 		p.outro(pc.green(`✅ Connection '${pc.bold(providerGroup.nickname)}' added successfully with ${selectedModels.length} model(s).`))
 	} catch (error) {
 		p.cancel(pc.red(`❌ Failed to save configuration: ${error}`))

@@ -1,5 +1,5 @@
 import { Bot } from 'grammy'
-import type { TamiasConfig } from '../../utils/config.ts'
+import { getBotTokenForBridge, type TamiasConfig } from '../../utils/config.ts'
 import type { BridgeMessage, DaemonEvent, IBridge } from '../types.ts'
 
 interface TelegramContext {
@@ -22,7 +22,7 @@ export class TelegramBridge implements IBridge {
 
 	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => void): Promise<void> {
 		this.onMessage = onMessage
-		const token = config.bridges?.telegram?.botToken
+		const token = getBotTokenForBridge('telegram')
 		if (!token) {
 			console.error('[Telegram Bridge] No bot token configured. Skipping.')
 			return
@@ -76,15 +76,15 @@ export class TelegramBridge implements IBridge {
 				// 🧠 Add thinking reaction and start typing indicator
 				if (ctx) {
 					try {
-						await this.bot.api.setMessageReaction(ctx.chatId, ctx.messageId, [{ type: 'emoji', emoji: '🧠' }])
+						await this.bot.api.setMessageReaction(ctx.chatId, ctx.messageId, [{ type: 'emoji', emoji: '👀' }])
 					} catch { /* old Telegram clients don't support this */ }
 
 					// Send typing status every 4s (Telegram clears it after 5s)
 					ctx.typingInterval = setInterval(async () => {
-						await this.bot.api.sendChatAction(ctx.chatId, 'typing').catch(() => { })
+						await this.bot?.api.sendChatAction(ctx.chatId, 'typing').catch(() => { })
 					}, 4000)
 					// Send once immediately
-					await this.bot.api.sendChatAction(ctx.chatId, 'typing').catch(() => { })
+					await this.bot?.api.sendChatAction(ctx.chatId, 'typing').catch(() => { })
 					ctx.buffer = ''
 				}
 				break

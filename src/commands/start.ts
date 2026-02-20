@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
 import { findFreePort, writeDaemonInfo, clearDaemonInfo } from '../utils/daemon.ts'
-import { loadConfig, getDefaultModel, getAllModelOptions, type ConnectionConfig } from '../utils/config.ts'
+import { loadConfig, getDefaultModel, getAllModelOptions, getApiKeyForConnection, type ConnectionConfig } from '../utils/config.ts'
 import { buildActiveTools } from '../utils/toolRegistry.ts'
 import { buildSystemPrompt, updatePersonaFiles } from '../utils/memory.ts'
 import { saveSessionToDisk, type SessionPersist, listAllStoredSessions, loadSessionFromDisk } from '../utils/sessions.ts'
@@ -153,11 +153,19 @@ Output RAW JSON only:
 }
 
 function buildModel(connection: ConnectionConfig, modelId: string) {
+	const apiKey = getApiKeyForConnection(connection.nickname)
+
 	switch (connection.provider) {
-		case 'openai': return createOpenAI({ apiKey: connection.apiKey })(modelId)
-		case 'anthropic': return createAnthropic({ apiKey: connection.apiKey })(modelId) as ReturnType<ReturnType<typeof createOpenAI>>
-		case 'google': return createGoogleGenerativeAI({ apiKey: connection.apiKey })(modelId) as ReturnType<ReturnType<typeof createOpenAI>>
-		case 'openrouter': return createOpenAI({ baseURL: 'https://openrouter.ai/api/v1', apiKey: connection.apiKey })(modelId)
+		case 'openai': return createOpenAI({ apiKey })(modelId)
+		case 'anthropic': return createAnthropic({ apiKey })(modelId) as ReturnType<ReturnType<typeof createOpenAI>>
+		case 'google': return createGoogleGenerativeAI({ apiKey })(modelId) as ReturnType<ReturnType<typeof createOpenAI>>
+		case 'openrouter': return createOpenAI({ baseURL: 'https://openrouter.ai/api/v1', apiKey })(modelId)
+		case 'ollama': {
+			let baseURL = connection.baseUrl || 'http://127.0.0.1:11434'
+			baseURL = baseURL.replace(/\/$/, '')
+			if (!baseURL.endsWith('/v1')) baseURL += '/v1'
+			return createOpenAI({ baseURL, apiKey: apiKey || 'ollama' })(modelId)
+		}
 		default: throw new Error(`Unsupported provider: ${connection.provider}`)
 	}
 }

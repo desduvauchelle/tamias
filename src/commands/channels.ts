@@ -3,7 +3,9 @@ import pc from 'picocolors'
 import {
 	getBridgesConfig,
 	setBridgesConfig,
+	getBotTokenForBridge,
 } from '../utils/config.ts'
+import { setEnv, removeEnv, generateSecureEnvKey } from '../utils/env.ts'
 
 // ─── Health checks ─────────────────────────────────────────────────────────────
 
@@ -104,7 +106,7 @@ export const runChannelsListCommand = async () => {
 	// Discord
 	if (bridges.discord) {
 		const discordStatus = bridges.discord.enabled ? pc.green('enabled') : pc.red('disabled')
-		const tokenInfo = bridges.discord.botToken ? '(Token Configured)' : '(No Token)'
+		const tokenInfo = getBotTokenForBridge('discord') ? '(Token Configured)' : '(No Token)'
 		console.log(`  ${pc.bold(pc.cyan('discord'))}   [${discordStatus}]  ${pc.dim(tokenInfo)}`)
 		if (bridges.discord.allowedChannels?.length) {
 			console.log(`     ${pc.dim('↳')} Allowed channels: ${bridges.discord.allowedChannels.join(', ')}`)
@@ -114,7 +116,7 @@ export const runChannelsListCommand = async () => {
 	// Telegram
 	if (bridges.telegram) {
 		const telegramStatus = bridges.telegram.enabled ? pc.green('enabled') : pc.red('disabled')
-		const tokenInfo = bridges.telegram.botToken ? '(Token Configured)' : '(No Token)'
+		const tokenInfo = getBotTokenForBridge('telegram') ? '(Token Configured)' : '(No Token)'
 		console.log(`  ${pc.bold(pc.cyan('telegram'))}  [${telegramStatus}]  ${pc.dim(tokenInfo)}`)
 		if (bridges.telegram.allowedChats?.length) {
 			console.log(`     ${pc.dim('↳')} Allowed chats: ${bridges.telegram.allowedChats.join(', ')}`)
@@ -165,9 +167,9 @@ async function editChannelFlow(isAdding: boolean) {
 		return
 	}
 
-	// Discord / Telegram flow
 	const platformName = platform as 'discord' | 'telegram'
 	const currentCfg = config[platformName] || { enabled: false }
+	const currentToken = getBotTokenForBridge(platformName)
 
 	const enableOpts = await p.confirm({
 		message: `Enable ${platformName} channel?`,
@@ -175,7 +177,7 @@ async function editChannelFlow(isAdding: boolean) {
 	})
 	if (p.isCancel(enableOpts)) { p.cancel('Cancelled.'); process.exit(0) }
 
-	let botToken = currentCfg.botToken
+	let botToken = currentToken
 	if (enableOpts as boolean) {
 		if (platformName === 'discord') {
 			p.note(
@@ -192,8 +194,8 @@ async function editChannelFlow(isAdding: boolean) {
 		const tokenInput = await p.text({
 			message: 'Bot Token:',
 			placeholder: '...',
-			initialValue: currentCfg.botToken ?? '',
-			validate: (v) => { if (!v && !currentCfg.botToken) return 'Token is required when enabling.' },
+			initialValue: currentToken ?? '',
+			validate: (v) => { if (!v && !currentToken) return 'Token is required when enabling.' },
 		})
 		if (p.isCancel(tokenInput)) { p.cancel('Cancelled.'); process.exit(0) }
 		botToken = (tokenInput as string).trim()
@@ -210,16 +212,24 @@ async function editChannelFlow(isAdding: boolean) {
 
 	const allowlist = (allowlistRaw as string).split(',').map(s => s.trim()).filter(Boolean)
 
+	let envKeyName = currentCfg.envKeyName
+	if (botToken && botToken !== currentToken) {
+		if (!envKeyName) {
+			envKeyName = generateSecureEnvKey(platformName)
+		}
+		setEnv(envKeyName, botToken)
+	}
+
 	if (platformName === 'discord') {
 		config.discord = {
 			enabled: enableOpts as boolean,
-			botToken: botToken,
+			envKeyName: envKeyName,
 			allowedChannels: allowlist.length ? allowlist : undefined,
 		}
 	} else if (platformName === 'telegram') {
 		config.telegram = {
 			enabled: enableOpts as boolean,
-			botToken: botToken,
+			envKeyName: envKeyName,
 			allowedChats: allowlist.length ? allowlist : undefined,
 		}
 	}
@@ -256,8 +266,10 @@ export const runChannelsRemoveCommand = async (platformArg?: string) => {
 	if (p.isCancel(confirmed) || !confirmed) { p.cancel('Cancelled.'); process.exit(0) }
 
 	if (platform === 'discord') {
+		if (config.discord?.envKeyName) removeEnv(config.discord.envKeyName)
 		config.discord = undefined
 	} else if (platform === 'telegram') {
+		if (config.telegram?.envKeyName) removeEnv(config.telegram.envKeyName)
 		config.telegram = undefined
 	}
 

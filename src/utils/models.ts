@@ -10,11 +10,11 @@ export interface ProviderModel {
  * Fetch available models from the provider's API.
  * Returns an empty array if the provider doesn't support listing or the request fails.
  */
-export const fetchModels = async (provider: ProviderType, apiKey: string): Promise<ProviderModel[]> => {
+export const fetchModels = async (provider: ProviderType, apiKey: string, baseUrl?: string): Promise<ProviderModel[]> => {
 	try {
 		switch (provider) {
 			case 'openai':
-				return await fetchOpenAIModels(apiKey)
+				return await fetchOpenAIModels(apiKey, baseUrl)
 			case 'anthropic':
 				return getAnthropicModels()
 			case 'google':
@@ -23,14 +23,17 @@ export const fetchModels = async (provider: ProviderType, apiKey: string): Promi
 				return await fetchOpenRouterModels(apiKey)
 			case 'antigravity':
 				return []
+			case 'ollama':
+				return await fetchOllamaModels(baseUrl)
 		}
 	} catch {
 		return []
 	}
 }
 
-const fetchOpenAIModels = async (apiKey: string): Promise<ProviderModel[]> => {
-	const res = await fetch('https://api.openai.com/v1/models', {
+const fetchOpenAIModels = async (apiKey: string, baseUrl?: string): Promise<ProviderModel[]> => {
+	const endpoint = baseUrl ? `${baseUrl.replace(/\/$/, '')}/models` : 'https://api.openai.com/v1/models'
+	const res = await fetch(endpoint, {
 		headers: { Authorization: `Bearer ${apiKey}` },
 	})
 	if (!res.ok) throw new Error(`OpenAI API error: ${res.status}`)
@@ -103,4 +106,23 @@ const fetchOpenRouterModels = async (apiKey: string): Promise<ProviderModel[]> =
 	return data.data
 		.map((m) => ({ id: m.id, name: m.name ?? m.id }))
 		.sort((a, b) => a.id.localeCompare(b.id))
+}
+
+const fetchOllamaModels = async (baseUrl?: string): Promise<ProviderModel[]> => {
+	const base = baseUrl || 'http://127.0.0.1:11434'
+	const normalizedBase = base.replace(/\/$/, '')
+
+	// If the url ends with /v1, it's an OpenAI compatible endpoint
+	if (normalizedBase.endsWith('/v1')) {
+		const res = await fetch(`${normalizedBase}/models`)
+		if (!res.ok) throw new Error(`Ollama (OpenAI) API error: ${res.status}`)
+		const data = await res.json() as { data: { id: string }[] }
+		return data.data.map((m) => ({ id: m.id, name: m.id }))
+	} else {
+		// Native Ollama endpoint
+		const res = await fetch(`${normalizedBase}/api/tags`)
+		if (!res.ok) throw new Error(`Ollama API error: ${res.status}`)
+		const data = await res.json() as { models: { name: string }[] }
+		return data.models.map((m) => ({ id: m.name, name: m.name }))
+	}
 }

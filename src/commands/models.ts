@@ -6,6 +6,7 @@ import {
 	deleteConnection,
 	renameConnection,
 	updateConnection,
+	getApiKeyForConnection,
 	type ConnectionConfig,
 } from '../utils/config.ts'
 import { fetchModels } from '../utils/models.ts'
@@ -166,15 +167,17 @@ export const runModelsEditCommand = async (nickname?: string) => {
 	}
 
 	if (action === 'models') {
-		const apiKey = connection.apiKey
-		if (!apiKey) {
+		const isOllama = connection.provider === 'ollama'
+		const apiKey = getApiKeyForConnection(connection.nickname)
+		if (!apiKey && connection.provider === 'antigravity') {
 			p.cancel(pc.yellow('This config uses OAuth and does not support model listing.'))
 			process.exit(0)
 		}
 
 		const s = p.spinner()
 		s.start(`Fetching available models for ${connection.provider}...`)
-		const models = await fetchModels(connection.provider, apiKey)
+		const fetchKey = isOllama ? (apiKey || 'ollama') : apiKey!
+		const models = await fetchModels(connection.provider, fetchKey, connection.baseUrl)
 		s.stop(models.length > 0 ? `Found ${models.length} models.` : 'Could not fetch models.')
 
 		if (models.length === 0) {

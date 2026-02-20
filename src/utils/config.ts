@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { getEnv, setEnv, removeEnv, generateSecureEnvKey } from './env.ts'
 
 export const ProviderEnum = z.enum([
 	'openai',
@@ -9,6 +10,7 @@ export const ProviderEnum = z.enum([
 	'google',
 	'openrouter',
 	'antigravity',
+	'ollama',
 ])
 
 export type ProviderType = z.infer<typeof ProviderEnum>
@@ -16,9 +18,12 @@ export type ProviderType = z.infer<typeof ProviderEnum>
 export const ConnectionConfigSchema = z.object({
 	nickname: z.string().min(1),
 	provider: ProviderEnum,
-	apiKey: z.string().min(1).optional(),
-	// For OAuth or custom setups
+	/** The name of the environment variable (in .env) that holds the API key or Access Token */
+	envKeyName: z.string().optional(),
+	// Legacy fields (kept optional for migration)
+	apiKey: z.string().optional(),
 	accessToken: z.string().optional(),
+	baseUrl: z.string().url().optional().or(z.literal('')),
 	// User-selected models for this connection
 	selectedModels: z.array(z.string()).optional(),
 	createdAt: z.string().datetime().optional(),
@@ -66,12 +71,14 @@ export const BridgesConfigSchema = z.object({
 	}).default({ enabled: true }),
 	discord: z.object({
 		enabled: z.boolean().default(false),
-		botToken: z.string().optional(),
+		envKeyName: z.string().optional(),
+		botToken: z.string().optional(), // legacy
 		allowedChannels: z.array(z.string()).optional(),
 	}).optional(),
 	telegram: z.object({
 		enabled: z.boolean().default(false),
-		botToken: z.string().optional(),
+		envKeyName: z.string().optional(),
+		botToken: z.string().optional(), // legacy
 		allowedChats: z.array(z.string()).optional(),
 	}).optional(),
 })
@@ -108,11 +115,48 @@ export const loadConfig = (): TamiasConfig => {
 	}
 
 	try {
-		const data = JSON.parse(readFileSync(path, 'utf-8'))
-		return TamiasConfigSchema.parse(data)
+		const rawData = JSON.parse(readFileSync(path, 'utf-8'))
+		const data = TamiasConfigSchema.parse(rawData)
+
+		let needsMigration = false
+
+		// Migrate Connections
+		for (const [key, conn] of Object.entries(data.connections)) {
+			if (conn.apiKey || conn.accessToken) {
+				const secretStr = conn.apiKey || conn.accessToken
+				const envKey = generateSecureEnvKey(`${conn.nickname}_${conn.provider}`)
+				setEnv(envKey, secretStr!)
+				conn.envKeyName = envKey
+				delete conn.apiKey
+				delete conn.accessToken
+				needsMigration = true
+			}
+		}
+
+		// Migrate Bridges
+		if (data.bridges.discord?.botToken) {
+			const envKey = generateSecureEnvKey('DISCORD')
+			setEnv(envKey, data.bridges.discord.botToken)
+			data.bridges.discord.envKeyName = envKey
+			delete data.bridges.discord.botToken
+			needsMigration = true
+		}
+		if (data.bridges.telegram?.botToken) {
+			const envKey = generateSecureEnvKey('TELEGRAM')
+			setEnv(envKey, data.bridges.telegram.botToken)
+			data.bridges.telegram.envKeyName = envKey
+			delete data.bridges.telegram.botToken
+			needsMigration = true
+		}
+
+		if (needsMigration) {
+			saveConfig(data) // Remove plaintext secrets from the config file immediately
+		}
+
+		return data
 	} catch (err) {
 		if (err instanceof z.ZodError) {
-			console.error('Configuration file is invalid:', JSON.stringify((err as z.ZodError<any>).issues, null, 2))
+			console.error('Configuration file is invalid:', JSON.stringify(err.issues, null, 2))
 			process.exit(1)
 		}
 		return { version: '1.0', connections: {}, bridges: { terminal: { enabled: true } } }
@@ -162,7 +206,11 @@ export const renameConnection = (oldNickname: string, newNickname: string) => {
 
 export const deleteConnection = (nickname: string) => {
 	const currentConfig = loadConfig()
-	if (!currentConfig.connections[nickname]) throw new Error(`Connection '${nickname}' not found.`)
+	const conn = currentConfig.connections[nickname]
+	if (!conn) throw new Error(`Connection '${nickname}' not found.`)
+
+	if (conn.envKeyName) removeEnv(conn.envKeyName)
+
 	delete currentConfig.connections[nickname]
 	if (currentConfig.defaultConnection === nickname) {
 		const remaining = Object.keys(currentConfig.connections)
@@ -174,6 +222,12 @@ export const deleteConnection = (nickname: string) => {
 export const getConnection = (nickname: string): ConnectionConfig | undefined => {
 	const config = loadConfig()
 	return config.connections[nickname]
+}
+
+export const getApiKeyForConnection = (nickname: string): string | undefined => {
+	const conn = getConnection(nickname)
+	if (!conn || !conn.envKeyName) return undefined
+	return getEnv(conn.envKeyName)
 }
 
 export const getAllConnections = (): ConnectionConfig[] => {
@@ -248,6 +302,13 @@ export const getAllModelOptions = (): string[] => {
 export const getBridgesConfig = (): BridgesConfig => {
 	const config = loadConfig()
 	return config.bridges ?? { terminal: { enabled: true } }
+}
+
+export const getBotTokenForBridge = (platform: 'discord' | 'telegram'): string | undefined => {
+	const bridges = getBridgesConfig()
+	const config = bridges[platform]
+	if (!config || !config.envKeyName) return undefined
+	return getEnv(config.envKeyName)
 }
 
 export const setBridgesConfig = (bridgesConfig: BridgesConfig): void => {

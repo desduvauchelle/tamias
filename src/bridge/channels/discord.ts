@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits, Events, type Message } from 'discord.js'
-import type { TamiasConfig } from '../../utils/config.ts'
+import { getBotTokenForBridge, type TamiasConfig } from '../../utils/config.ts'
 import type { BridgeMessage, DaemonEvent, IBridge } from '../types.ts'
 
 interface DiscordContext {
@@ -21,7 +21,7 @@ export class DiscordBridge implements IBridge {
 
 	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => void): Promise<void> {
 		this.onMessage = onMessage
-		const token = config.bridges?.discord?.botToken
+		const token = getBotTokenForBridge('discord')
 		if (!token) {
 			console.error('[Discord Bridge] No bot token configured. Skipping.')
 			return
@@ -117,10 +117,11 @@ export class DiscordBridge implements IBridge {
 					if (fullText.trim()) {
 						try {
 							const channel = ctx.message.channel
-							if ('send' in channel) {
+							const anyChannel = channel as any
+							if (typeof anyChannel.send === 'function') {
 								const chunks = splitText(fullText, 1900)
 								for (const chunk of chunks) {
-									await channel.send(chunk)
+									await anyChannel.send(chunk)
 								}
 							}
 						} catch (err) {
@@ -143,7 +144,7 @@ export class DiscordBridge implements IBridge {
 						if (brain) await brain.users.remove(this.client!.user!.id)
 					} catch { }
 					try {
-						await ctx.message.channel.send?.(`⚠️ Error: ${event.message}`)
+						await (ctx.message.channel as any).send?.(`⚠️ Error: ${event.message}`)
 					} catch { }
 				}
 				break
