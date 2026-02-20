@@ -2,8 +2,13 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - 'package.json'
     tags:
-      - 'v*' # Trigger on version tags, e.g., v1.0.0
+      - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
