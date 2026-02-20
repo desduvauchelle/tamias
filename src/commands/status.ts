@@ -27,13 +27,16 @@ export const runStatusCommand = async () => {
 
 	try {
 		const res = await fetch(`${getDaemonUrl()}/sessions`)
-		const sessions = await res.json() as Array<{ id: string; model: string; queueLength: number }>
-		console.log(`\n  Active sessions: ${pc.bold(String(sessions.length))}\n`)
+		const sessions = await res.json() as Array<{ id: string; name?: string; summary?: string; model: string; queueLength: number, updatedAt: string }>
+		console.log(`\n  Sessions: ${pc.bold(String(sessions.length))}\n`)
 		for (const s of sessions) {
-			console.log(`    ${pc.cyan(s.id)}  ${pc.dim(s.model)}  queue: ${s.queueLength}`)
+			const name = s.name || s.id
+			const summarySnippet = s.summary ? pc.dim(` — ${s.summary.slice(0, 50)}...`) : ''
+			const updatedTime = new Date(s.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+			console.log(`    ${pc.cyan(name.padEnd(20))} ${pc.dim(s.model.padEnd(30))} ${pc.green(updatedTime)}${summarySnippet}`)
 		}
-	} catch {
-		console.log(pc.dim('\n  Could not fetch sessions.'))
+	} catch (err) {
+		console.log(pc.dim('\n  Could not fetch sessions: ' + err))
 	}
 
 	console.log('')

@@ -3,8 +3,9 @@ import pc from 'picocolors'
 import { findFreePort, writeDaemonInfo, clearDaemonInfo } from '../utils/daemon.ts'
 import { loadConfig, getDefaultModel, getAllModelOptions, type ConnectionConfig } from '../utils/config.ts'
 import { buildActiveTools } from '../utils/toolRegistry.ts'
-import { buildSystemPrompt } from '../utils/memory.ts'
-import { streamText, stepCountIs } from 'ai'
+import { buildSystemPrompt, updatePersonaFiles } from '../utils/memory.ts'
+import { saveSessionToDisk, type SessionPersist, listAllStoredSessions, loadSessionFromDisk } from '../utils/sessions.ts'
+import { streamText, generateText, stepCountIs } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
@@ -18,13 +19,16 @@ interface MessageJob {
 
 interface Session {
 	id: string
+	name?: string
 	model: string
 	connectionNickname: string
 	modelId: string
 	createdAt: Date
+	updatedAt: Date
 	queue: MessageJob[]
 	processing: boolean
 	messages: Array<{ role: 'user' | 'assistant'; content: string }>
+	summary?: string
 	sseWriter: WritableStreamDefaultWriter<Uint8Array> | null
 	heartbeatTimer: ReturnType<typeof setInterval> | null
 }
@@ -32,11 +36,96 @@ interface Session {
 const sessions = new Map<string, Session>()
 const encoder = new TextEncoder()
 
+function loadAllSessions() {
+	const stored = listAllStoredSessions()
+	for (const s of stored) {
+		const full = loadSessionFromDisk(s.id, s.monthDir)
+		if (full) {
+			const [nickname, ...rest] = full.model.split('/')
+			sessions.set(full.id, {
+				id: full.id,
+				name: full.name,
+				model: full.model,
+				connectionNickname: nickname,
+				modelId: rest.join('/'),
+				createdAt: new Date(full.createdAt),
+				updatedAt: new Date(full.updatedAt),
+				queue: [],
+				processing: false,
+				messages: full.messages,
+				summary: full.summary,
+				sseWriter: null,
+				heartbeatTimer: null,
+			})
+		}
+	}
+}
+
 function sseEvent(event: string, data: unknown): Uint8Array {
 	return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
 }
 
 // ─── AI engine ────────────────────────────────────────────────────────────────
+
+function toPersist(session: Session): SessionPersist {
+	return {
+		id: session.id,
+		name: session.name,
+		createdAt: session.createdAt.toISOString(),
+		updatedAt: session.updatedAt.toISOString(),
+		model: session.model,
+		summary: session.summary,
+		messages: session.messages,
+	}
+}
+
+async function compactSession(session: Session, model: any) {
+	// Only compact if we have enough history
+	if (session.messages.length < 20) return
+
+	try {
+		const compactionPrompt = `
+You are a memory compaction agent. Your job is to summarise the conversation so far and extract key insights about the user and your own persona.
+
+TASKS:
+1. Provide a concise summary of the conversation.
+2. Extract new facts about the user (USER.md), your persona rules (SOUL.md), or technical env (TOOLS.md).
+3. Suggest a short, descriptive name for this session if it doesn't have a good one.
+
+Output RAW JSON only:
+{
+  "summary": "...",
+  "insights": {
+    "USER.md": "discovered fact...",
+    "SOUL.md": "new rule..."
+  },
+  "sessionName": "..."
+}`
+
+		const { text } = await generateText({
+			model,
+			system: compactionPrompt,
+			prompt: `Current history:\n${JSON.stringify(session.messages)}`,
+		})
+
+		const result = JSON.parse(text.replace(/```json\n?|\n?```/g, ''))
+
+		session.summary = result.summary
+		if (result.sessionName && (!session.name || session.name.startsWith('sess_'))) {
+			session.name = result.sessionName
+		}
+
+		if (result.insights && Object.keys(result.insights).length > 0) {
+			updatePersonaFiles(result.insights)
+		}
+
+		// Truncate history but keep the context moving
+		session.messages = session.messages.slice(-4)
+
+	} catch (err) {
+		console.error('Failed to compact session:', err)
+	}
+}
 
 function buildModel(connection: ConnectionConfig, modelId: string) {
 	switch (connection.provider) {
@@ -70,7 +159,7 @@ async function processSession(session: Session, tools: Record<string, unknown>, 
 	try {
 		const model = buildModel(connection, session.modelId)
 		const toolNamesList = Object.keys(tools)
-		const systemPrompt = buildSystemPrompt(toolNamesList)
+		const systemPrompt = buildSystemPrompt(toolNamesList, session.summary)
 
 		// Signal start of response
 		await writer.write(sseEvent('start', { sessionId: session.id }))
@@ -97,7 +186,17 @@ async function processSession(session: Session, tools: Record<string, unknown>, 
 		}
 
 		session.messages.push({ role: 'assistant', content: fullResponse })
+		session.updatedAt = new Date()
+		saveSessionToDisk(toPersist(session))
+
 		await writer.write(sseEvent('done', { sessionId: session.id }))
+
+		// Trigger compaction background
+		if (session.messages.length >= 20) {
+			compactSession(session, model).then(() => {
+				saveSessionToDisk(toPersist(session))
+			}).catch(() => { })
+		}
 	} catch (err) {
 		if (writer) {
 			await writer.write(sseEvent('error', { message: String(err) })).catch(() => { })
@@ -194,6 +293,7 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 	}
 
 	const config = loadConfig()
+	loadAllSessions()
 
 	// Pick default model (if not set or doesn't exist, pick first available)
 	const allOptions = getAllModelOptions()
@@ -235,8 +335,11 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 			if (method === 'GET' && url.pathname === '/sessions') {
 				const list = [...sessions.values()].map((s) => ({
 					id: s.id,
+					name: s.name,
 					model: s.model,
 					createdAt: s.createdAt.toISOString(),
+					updatedAt: s.updatedAt.toISOString(),
+					summary: s.summary,
 					queueLength: s.queue.length,
 				}))
 				return json(list)
@@ -258,6 +361,7 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 					connectionNickname: nickname,
 					modelId,
 					createdAt: new Date(),
+					updatedAt: new Date(),
 					queue: [],
 					processing: false,
 					messages: [],

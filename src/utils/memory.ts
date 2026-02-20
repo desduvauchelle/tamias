@@ -74,9 +74,14 @@ export function readAllPersonaFiles(): Record<string, string> {
 // ─── System prompt builder ────────────────────────────────────────────────────
 
 /** Build a full system prompt from persona files + tool list */
-export function buildSystemPrompt(toolNames: string[]): string {
+export function buildSystemPrompt(toolNames: string[], summary?: string): string {
 	const files = readAllPersonaFiles()
 	const sections: string[] = []
+
+	// Session Summary (if any) — provides context for current conversation
+	if (summary) {
+		sections.push(`# Current Session Summary\n\n${summary}`)
+	}
 
 	// Soul first — defines core behaviour
 	if (files['SOUL.md']) {
@@ -122,6 +127,21 @@ export function buildSystemPrompt(toolNames: string[]): string {
 	sections.push(`# Current Time\n\n${new Date().toLocaleString()}`)
 
 	return sections.join('\n\n---\n\n')
+}
+
+/**
+ * Update persona files with new insights discovered during conversation.
+ * insights: Map of filename to new markdown block to append or merge.
+ */
+export function updatePersonaFiles(insights: Record<string, string>): void {
+	ensureMemoryDir()
+	for (const [file, block] of Object.entries(insights)) {
+		const path = join(MEMORY_DIR, file)
+		const existing = existsSync(path) ? readFileSync(path, 'utf-8') : ''
+		const separator = existing.endsWith('\n') ? '' : '\n'
+		const newContent = existing + separator + '\n## New Insights\n\n' + block.trim() + '\n'
+		writeFileSync(path, newContent, 'utf-8')
+	}
 }
 
 // ─── Daily log ────────────────────────────────────────────────────────────────
