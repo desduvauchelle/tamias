@@ -130,6 +130,17 @@ export const runOnboarding = async (): Promise<void> => {
 	const dataHome = join(homedir(), '.tamias')
 	mkdirSync(dataHome, { recursive: true })
 
+	// Create ~/Documents/Tamias as a convenience symlink → ~/.tamias if it doesn't exist
+	// Both locations are identical — editing a file in either place touches the same data.
+	const docsDir = join(homedir(), 'Documents')
+	const docsLink = join(docsDir, 'Tamias')
+	try {
+		const { existsSync, symlinkSync } = await import('fs')
+		if (existsSync(docsDir) && !existsSync(docsLink)) {
+			symlinkSync(dataHome, docsLink)
+		}
+	} catch { /* non-fatal */ }
+
 	p.intro(pc.bgMagenta(pc.black(' 🐿️  Tamias — First Run Setup ')))
 
 	// ── Phase 1: The Awakening ──────────────────────────────────────────────

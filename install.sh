@@ -68,8 +68,16 @@ ASSET_NAME="tamias-${OS}-${ARCH}"
 
 # ~/.tamias is the canonical home for all Tamias data
 mkdir -p "$HOME/.tamias"
-echo ""
-echo "  => Data dir: ~/.tamias"
+
+# Create ~/Documents/Tamias as a convenience symlink → ~/.tamias
+# (bidirectional: editing files in either location touches the same data)
+DOCS_LINK="$HOME/Documents/Tamias"
+if [ -d "$HOME/Documents" ] && [ ! -e "$DOCS_LINK" ]; then
+  ln -s "$HOME/.tamias" "$DOCS_LINK"
+  echo "  => ~/.tamias  (also accessible at ~/Documents/Tamias)"
+else
+  echo "  => ~/.tamias"
+fi
 echo ""
 
 # 2. Fetch latest release info

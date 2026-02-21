@@ -80,51 +80,28 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 
 	// Start Next.js dashboard
 	const fs = require('fs')
-	const isCompiled = import.meta.dir?.includes('$bunfs') || !import.meta.filename
 
-	// Robust project root detection
-	let projectRoot = ''
-	if (import.meta.filename) {
-		// If we have a filename, we can likely find it relative to current file
-		const currentFileDir = import.meta.dir
-		const possibleRoot = join(currentFileDir, '../..')
-		if (fs.existsSync(join(possibleRoot, 'src', 'dashboard'))) {
-			projectRoot = possibleRoot
-		}
-	}
-
-	// Fallback to CWD if not found or compiled
-	if (!projectRoot) {
-		projectRoot = process.cwd()
-	}
-
-	let dashboardDir = join(projectRoot, 'src', 'dashboard')
-
-	// If still not found, check common installation paths or environmental hints
-	if (!fs.existsSync(dashboardDir)) {
-		const altPaths = [
-			join(homedir(), '.tamias', 'src', 'dashboard'),	// canonical install location
-			join(homedir(), '.tamias', 'dashboard'),
-			join(process.cwd(), 'src', 'dashboard'),
-			join(process.cwd(), 'dashboard'),
-			'/usr/local/lib/node_modules/tamias/src/dashboard',
-			'/usr/local/lib/node_modules/tamias/dashboard',
-		]
-		for (const alt of altPaths) {
-			if (fs.existsSync(alt)) {
-				dashboardDir = alt
-				break
-			}
-		}
-	}
+	// Priority order:
+	//  1. ~/.tamias/src/dashboard  — canonical location for installed users
+	//  2. src/dashboard relative to CWD          — dev mode (running from project root)
+	//  3. src/dashboard relative to binary dir   — rare edge case
+	const candidatePaths = [
+		join(homedir(), '.tamias', 'src', 'dashboard'),
+		join(process.cwd(), 'src', 'dashboard'),
+		join(import.meta.dir ?? '', '..', 'dashboard'),
+	]
+	const dashboardDir = candidatePaths.find((p) => fs.existsSync(p)) ?? ''
 
 	const dashboardLogPath = join(homedir(), '.tamias', 'dashboard.log')
 	const dashboardLogFile = Bun.file(dashboardLogPath)
 
-	if (!fs.existsSync(dashboardDir)) {
-		console.error(pc.red(`Dashboard directory not found.`))
-		console.error(pc.yellow(`Looked in: ${dashboardDir}`))
-		console.error(pc.yellow(`Please ensure you are running tamias from the project root or it is correctly installed.`))
+	if (!dashboardDir) {
+		const installPath = join(homedir(), '.tamias', 'src', 'dashboard')
+		console.error(pc.red('Dashboard not found.'))
+		console.error(pc.yellow(`Expected it at: ${installPath}`))
+		console.error('')
+		console.error(pc.dim('Re-run the installer to download it:'))
+		console.error(pc.cyan('  curl -fsSL https://raw.githubusercontent.com/desduvauchelle/tamias/main/install.sh | bash'))
 		process.exit(1)
 	}
 
