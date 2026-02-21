@@ -1,6 +1,6 @@
 {
 	"name": "tamias",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
@@ -33,6 +33,7 @@
 		"@modelcontextprotocol/sdk": "^1.26.0",
 		"ai": "^6.0.94",
 		"commander": "^14.0.3",
+		"croner": "^10.0.1",
 		"discord.js": "^14.25.1",
 		"grammy": "^1.40.0",
 		"picocolors": "^1.1.1",
