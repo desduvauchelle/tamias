@@ -70,6 +70,9 @@ export class TelegramBridge implements IBridge {
 				const bridgeMsg: BridgeMessage = {
 					channelId: 'telegram',
 					channelUserId: chatKey,
+					channelName: ctx.chat.type === 'private' ? 'Private Chat' : (ctx.chat as any).title,
+					authorId: String(ctx.from?.id),
+					authorName: ctx.from?.first_name,
 					content: transcript,
 				}
 
@@ -99,6 +102,9 @@ export class TelegramBridge implements IBridge {
 			const bridgeMsg: BridgeMessage = {
 				channelId: 'telegram',
 				channelUserId: chatKey,
+				channelName: ctx.chat.type === 'private' ? 'Private Chat' : (ctx.chat as any).title,
+				authorId: String(ctx.from?.id),
+				authorName: ctx.from?.first_name,
 				content: ctx.message.text,
 			}
 

@@ -1,6 +1,9 @@
 export interface BridgeMessage {
 	channelId: string
 	channelUserId: string
+	channelName?: string
+	authorId?: string
+	authorName?: string
 	content: string
 	attachments?: Array<{
 		type: 'image' | 'file'

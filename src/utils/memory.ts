@@ -87,7 +87,7 @@ export function readAllPersonaFiles(): Record<string, string> {
 // ─── System prompt builder ────────────────────────────────────────────────────
 
 /** Build a full system prompt from persona files + tool list */
-export function buildSystemPrompt(toolNames: string[], summary?: string): string {
+export function buildSystemPrompt(toolNames: string[], summary?: string, channel?: { id: string, userId?: string, name?: string, authorName?: string }): string {
 	const files = readAllPersonaFiles()
 	const sections: string[] = []
 
@@ -96,7 +96,18 @@ export function buildSystemPrompt(toolNames: string[], summary?: string): string
 		sections.push(`# Current Session Summary\n\n${summary}`)
 	}
 
-	sections.push(`# Memory Location\n\nYour memory and persona files (USER.md, IDENTITY.md, SOUL.md, AGENTS.md, MEMORY.md, and daily logs) are persistently stored at the absolute path \`~/.tamias/memory\`.\nWhen instructed to read or update your memory, you MUST use absolute paths pointing to this directory (e.g., \`~/.tamias/memory/USER.md\`).`)
+	if (channel) {
+		let channelSection = `# Channel Context\n\nYou are currently communicating on the **${channel.id}** channel`
+		if (channel.name) channelSection += ` in **${channel.name}**`
+		channelSection += '.'
+		if (channel.userId) channelSection += ` Session Identifier: \`${channel.userId}\`.`
+		if (channel.authorName) channelSection += `\nCurrent interlocutor: **${channel.authorName}**.`
+
+		sections.push(channelSection)
+	}
+
+	sections.push(`# Memory Location\n\nYour memory and persona files (USER.md, IDENTITY.md, SOUL.md, AGENTS.md, MEMORY.md, and daily logs) are persistently stored at \`${MEMORY_DIR}\` (which can also be accessed via \`~/.tamias/memory\`).
+When reading or updating your memory, you can use either the absolute path or the home-relative path (e.g., \`~/.tamias/memory/USER.md\`).`)
 
 
 	// System framework overrides

@@ -12,6 +12,7 @@ import { watchSkills } from '../utils/skills.ts'
 import { ensureDefaultHeartbeat, type CronJob } from '../utils/cronStore.ts'
 import { db } from '../utils/db.ts'
 import { getEstimatedCost } from '../utils/pricing.ts'
+import { runDatabaseMaintenance } from '../utils/maintenance.ts'
 import type { DaemonEvent, BridgeMessage } from '../bridge/types.ts'
 
 const encoder = new TextEncoder()
@@ -78,12 +79,14 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 	const dashboardPort = await findFreePort(5678)
 
 	// Start Next.js dashboard
-	const projectRoot = join(import.meta.dir, '../..')
+	const isCompiled = import.meta.dir?.includes('$bunfs') || !import.meta.filename
+	const projectRoot = isCompiled ? process.cwd() : join(import.meta.dir, '../..')
 	const dashboardDir = join(projectRoot, 'src', 'dashboard')
 	const dashboardLogPath = join(homedir(), '.tamias', 'dashboard.log')
 	const dashboardLogFile = Bun.file(dashboardLogPath)
 
-	const dashboardProc = Bun.spawn(['bun', 'run', 'dev', '-p', dashboardPort.toString()], {
+	const bunPath = Bun.which('bun') || 'bun'
+	const dashboardProc = Bun.spawn([bunPath, 'run', 'dev', '-p', dashboardPort.toString()], {
 		cwd: dashboardDir,
 		stdout: dashboardLogFile,
 		stderr: dashboardLogFile,
@@ -133,14 +136,25 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 	const onBridgeMessage = async (msg: BridgeMessage) => {
 		let session = aiService.getSessionForBridge(msg.channelId, msg.channelUserId)
 		if (!session) {
-			session = aiService.createSession({ channelId: msg.channelId, channelUserId: msg.channelUserId })
+			session = aiService.createSession({
+				channelId: msg.channelId,
+				channelUserId: msg.channelUserId,
+				channelName: msg.channelName
+			})
+		} else if (msg.channelName && session.channelName !== msg.channelName) {
+			// Update channel name if it changed (e.g. channel renamed)
+			session.channelName = msg.channelName
 		}
-		await aiService.enqueueMessage(session.id, msg.content)
+		await aiService.enqueueMessage(session.id, msg.content, msg.authorName)
 	}
 	await bridgeManager.initializeAll(config, onBridgeMessage).catch(console.error)
 
 	// Background update loop
 	setInterval(() => autoUpdateDaemon(bridgeManager).catch(console.error), 24 * 60 * 60 * 1000)
+
+	// Database Maintenance (run once on start, then every 24h)
+	runDatabaseMaintenance().catch(console.error)
+	setInterval(() => runDatabaseMaintenance().catch(console.error), 24 * 60 * 60 * 1000)
 
 	Bun.serve({
 		port,

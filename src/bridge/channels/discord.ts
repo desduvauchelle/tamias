@@ -53,9 +53,15 @@ export class DiscordBridge implements IBridge {
 			// Store context for this channel
 			this.contexts.set(channelId, { message, channelId, buffer: '' })
 
+			const channelRef = message.channel
+			const channelName = 'name' in channelRef ? `#${(channelRef as any).name}` : 'DM'
+
 			const bridgeMsg: BridgeMessage = {
 				channelId: 'discord',
 				channelUserId: channelId,
+				channelName,
+				authorId: message.author.id,
+				authorName: message.author.username,
 				content: message.content,
 			}
 

@@ -4,6 +4,17 @@ import { execSync } from 'child_process'
 import { readFileSync, writeFileSync, unlinkSync, cpSync, mkdirSync, readdirSync, statSync } from 'fs'
 import { rename } from 'fs/promises'
 import { join, dirname } from 'path'
+import { homedir } from 'os'
+
+function expandHome(path: string): string {
+	if (path.startsWith('~/')) {
+		return join(homedir(), path.slice(2))
+	}
+	if (path === '~') {
+		return homedir()
+	}
+	return path
+}
 
 /** All tools exported from this file become the "terminal" internal tool */
 
@@ -38,7 +49,7 @@ export const terminalTools = {
 		}),
 		execute: async ({ path }: { path: string }) => {
 			try {
-				const content = readFileSync(path, 'utf-8')
+				const content = readFileSync(expandHome(path), 'utf-8')
 				return { success: true, content }
 			} catch (err) {
 				return { success: false, error: String(err) }
@@ -54,8 +65,9 @@ export const terminalTools = {
 		}),
 		execute: async ({ path, content }: { path: string; content: string }) => {
 			try {
-				mkdirSync(dirname(path), { recursive: true })
-				writeFileSync(path, content, 'utf-8')
+				const fullPath = expandHome(path)
+				mkdirSync(dirname(fullPath), { recursive: true })
+				writeFileSync(fullPath, content, 'utf-8')
 				return { success: true }
 			} catch (err) {
 				return { success: false, error: String(err) }
@@ -72,7 +84,8 @@ export const terminalTools = {
 		}),
 		execute: async ({ path, target, replacement }: { path: string; target: string; replacement: string }) => {
 			try {
-				const original = readFileSync(path, 'utf-8')
+				const fullPath = expandHome(path)
+				const original = readFileSync(fullPath, 'utf-8')
 				if (!original.includes(target)) {
 					return { success: false, error: 'Target string not found in file.' }
 				}
@@ -91,7 +104,7 @@ export const terminalTools = {
 		}),
 		execute: async ({ path }: { path: string }) => {
 			try {
-				unlinkSync(path)
+				unlinkSync(expandHome(path))
 				return { success: true }
 			} catch (err) {
 				return { success: false, error: String(err) }
@@ -107,8 +120,10 @@ export const terminalTools = {
 		}),
 		execute: async ({ from, to }: { from: string; to: string }) => {
 			try {
-				mkdirSync(dirname(to), { recursive: true })
-				await rename(from, to)
+				const fullTo = expandHome(to)
+				const fullFrom = expandHome(from)
+				mkdirSync(dirname(fullTo), { recursive: true })
+				await rename(fullFrom, fullTo)
 				return { success: true }
 			} catch (err) {
 				return { success: false, error: String(err) }
@@ -124,8 +139,10 @@ export const terminalTools = {
 		}),
 		execute: async ({ from, to }: { from: string; to: string }) => {
 			try {
-				mkdirSync(dirname(to), { recursive: true })
-				cpSync(from, to)
+				const fullTo = expandHome(to)
+				const fullFrom = expandHome(from)
+				mkdirSync(dirname(fullTo), { recursive: true })
+				cpSync(fullFrom, fullTo)
 				return { success: true }
 			} catch (err) {
 				return { success: false, error: String(err) }
@@ -140,12 +157,13 @@ export const terminalTools = {
 		}),
 		execute: async ({ path }: { path: string }) => {
 			try {
-				const entries = readdirSync(path, { withFileTypes: true }).map((e) => ({
+				const fullPath = expandHome(path)
+				const entries = readdirSync(fullPath, { withFileTypes: true }).map((e) => ({
 					name: e.name,
 					type: e.isDirectory() ? 'directory' : 'file',
-					size: e.isFile() ? statSync(join(path, e.name)).size : undefined,
+					size: e.isFile() ? statSync(join(fullPath, e.name)).size : undefined,
 				}))
-				return { success: true, path, entries }
+				return { success: true, path: fullPath, entries }
 			} catch (err) {
 				return { success: false, error: String(err) }
 			}

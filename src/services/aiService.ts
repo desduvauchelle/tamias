@@ -1,11 +1,12 @@
 import { EventEmitter } from 'events'
-import { streamText, generateText, stepCountIs } from 'ai'
+import { streamText, generateText, generateObject, stepCountIs } from 'ai'
+import { z } from 'zod'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel } from '../utils/config'
 import { buildActiveTools } from '../utils/toolRegistry'
-import { buildSystemPrompt, updatePersonaFiles, scaffoldFromTemplates } from '../utils/memory'
+import { buildSystemPrompt, updatePersonaFiles, scaffoldFromTemplates, readAllPersonaFiles } from '../utils/memory'
 import { saveSessionToDisk, type SessionPersist, listAllStoredSessions, loadSessionFromDisk } from '../utils/sessions'
 import { logAiRequest } from '../utils/logger'
 import type { DaemonEvent, BridgeMessage } from '../bridge/types'
@@ -14,6 +15,7 @@ import { BridgeManager } from '../bridge'
 export interface MessageJob {
 	sessionId: string
 	content: string
+	authorName?: string
 }
 
 export interface Session {
@@ -32,6 +34,14 @@ export interface Session {
 	heartbeatTimer: ReturnType<typeof setInterval> | null
 	channelId: string
 	channelUserId?: string
+	channelName?: string
+}
+
+export interface CreateSessionOptions {
+	model?: string
+	channelId?: string
+	channelUserId?: string
+	channelName?: string
 }
 
 export class AIService {
@@ -83,9 +93,15 @@ export class AIService {
 					summary: full.summary,
 					emitter: new EventEmitter(),
 					heartbeatTimer: null,
-					channelId: 'terminal', // default
+					channelId: full.channelId || 'terminal',
+					channelUserId: full.channelUserId,
+					channelName: full.channelName,
 				}
 				this.sessions.set(full.id, session)
+				if (session.channelId && session.channelUserId) {
+					this.bridgeSessionMap.set(`${session.channelId}:${session.channelUserId}`, session.id)
+				}
+				this.attachBridgeListeners(session)
 			}
 		}
 	}
@@ -98,11 +114,15 @@ export class AIService {
 		return [...this.sessions.values()]
 	}
 
-	public createSession(options: { model?: string; channelId?: string; channelUserId?: string }): Session {
-		const config = loadConfig()
-		const modelStr = options.model ?? getDefaultModel() ?? Object.keys(config.connections)[0] // simplified fallback
+	public getSessionForBridge(channelId: string, channelUserId: string): Session | undefined {
+		const sessionId = this.bridgeSessionMap.get(`${channelId}:${channelUserId}`)
+		return sessionId ? this.sessions.get(sessionId) : undefined
+	}
+
+	public createSession(options: CreateSessionOptions): Session {
+		const modelStr = options.model ?? getDefaultModel() ?? 'openai/gpt-4o'
 		const [nickname, ...rest] = modelStr.split('/')
-		const modelId = rest.join('/')
+		const modelId = rest.join('/') || modelStr
 
 		const session: Session = {
 			id: `sess_${Math.random().toString(36).slice(2, 10)}`,
@@ -118,36 +138,40 @@ export class AIService {
 			heartbeatTimer: null,
 			channelId: options.channelId || 'terminal',
 			channelUserId: options.channelUserId,
+			channelName: options.channelName,
 		}
 
-		if (session.channelId !== 'terminal') {
-			const buffer: string[] = []
-			session.emitter.on('event', (evt: DaemonEvent) => {
-				if (evt.type === 'chunk') {
-					buffer.push(evt.text)
-					return
-				}
-				if (evt.type === 'done') {
-					if (!evt.suppressed) {
-						// Flush buffer
-						for (const chunk of buffer) {
-							this.bridgeManager.dispatchEvent(session.channelId, { type: 'chunk', text: chunk }, session).catch(console.error)
-						}
+		if (session.channelId && session.channelUserId) {
+			this.bridgeSessionMap.set(`${session.channelId}:${session.channelUserId}`, session.id)
+		}
+
+		this.attachBridgeListeners(session)
+		this.sessions.set(session.id, session)
+		return session
+	}
+
+	private attachBridgeListeners(session: Session) {
+		if (session.channelId === 'terminal') return
+
+		const buffer: string[] = []
+		session.emitter.on('event', (evt: DaemonEvent) => {
+			if (evt.type === 'chunk') {
+				buffer.push(evt.text)
+				return
+			}
+			if (evt.type === 'done') {
+				if (!evt.suppressed) {
+					// Flush buffer
+					for (const chunk of buffer) {
+						this.bridgeManager.dispatchEvent(session.channelId, { type: 'chunk', text: chunk }, session).catch(console.error)
 					}
-					this.bridgeManager.dispatchEvent(session.channelId, evt, session).catch(console.error)
-					buffer.length = 0 // clear
-					return
 				}
 				this.bridgeManager.dispatchEvent(session.channelId, evt, session).catch(console.error)
-			})
-		}
-
-		this.sessions.set(session.id, session)
-		if (options.channelId && options.channelUserId) {
-			this.bridgeSessionMap.set(`${options.channelId}:${options.channelUserId}`, session.id)
-		}
-
-		return session
+				buffer.length = 0 // clear
+				return
+			}
+			this.bridgeManager.dispatchEvent(session.channelId, evt, session).catch(console.error)
+		})
 	}
 
 	public deleteSession(id: string) {
@@ -159,15 +183,10 @@ export class AIService {
 		}
 	}
 
-	public getSessionForBridge(channelId: string, channelUserId: string): Session | undefined {
-		const sessionId = this.bridgeSessionMap.get(`${channelId}:${channelUserId}`)
-		return sessionId ? this.sessions.get(sessionId) : undefined
-	}
-
-	public async enqueueMessage(sessionId: string, content: string) {
+	public async enqueueMessage(sessionId: string, content: string, authorName?: string) {
 		const session = this.sessions.get(sessionId)
 		if (!session) throw new Error('Session not found')
-		session.queue.push({ sessionId, content })
+		session.queue.push({ sessionId, content, authorName })
 		this.processSession(session).catch(console.error)
 	}
 
@@ -176,7 +195,8 @@ export class AIService {
 		session.processing = true
 
 		const job = session.queue.shift()!
-		session.messages.push({ role: 'user', content: job.content })
+		const messageContent = job.authorName ? `[${job.authorName}]: ${job.content}` : job.content
+		session.messages.push({ role: 'user', content: messageContent })
 
 		const config = loadConfig()
 		const connection = config.connections[session.connectionNickname]
@@ -188,7 +208,12 @@ export class AIService {
 		try {
 			const model = this.buildModel(connection, session.modelId)
 			const toolNamesList = Object.keys(this.activeTools)
-			const systemPrompt = buildSystemPrompt(toolNamesList, session.summary)
+			const systemPrompt = buildSystemPrompt(toolNamesList, session.summary, {
+				id: session.channelId,
+				userId: session.channelUserId,
+				name: session.channelName,
+				authorName: job.authorName
+			})
 
 			session.emitter.emit('event', { type: 'start', sessionId: session.id } as DaemonEvent)
 
@@ -289,20 +314,66 @@ export class AIService {
 
 	private async compactSession(session: Session, model: any) {
 		if (session.messages.length < 20) return
+		const startTime = Date.now()
 		try {
-			const compactionPrompt = `You are a memory compaction agent... (summary omitted for brevity)`
-			const { text } = await generateText({
+			const personaFiles = readAllPersonaFiles()
+			const existingContext = Object.entries(personaFiles)
+				.map(([file, content]) => `### ${file}\n${content}`)
+				.join('\n\n')
+
+			const compactionPrompt = `You are a memory compaction agent for Tamias, an AI coding assistant.
+Your goal is to summarize the current conversation and extract new, IMPORTANT insights about the user to keep their persona files up-to-date.
+
+# Existing Persona Context
+The user's persistent memory currently contains:
+${existingContext}
+
+# Instructions
+1. **Summary**: Create a concise, high-level summary of the conversation so far. Focus on the core objective and current progress.
+2. **Session Name**: Suggest a short (2-4 words) descriptive name for this session (e.g., "Refactoring Auth Layer").
+3. **Insights**: Extract NEW facts, preferences, or recurring patterns about the user.
+   - DO NOT repeat information already present in the "Existing Persona Context".
+   - Be extremely brief and specific.
+   - Target files like "USER.md" (preferences/facts), "IDENTITY.md" (how they want to be addressed), or "SOUL.md" (personality traits).
+
+Return a structured object.`
+
+			const { object, usage } = await generateObject({
 				model,
+				schema: z.object({
+					summary: z.string().describe('A concise summary of the conversation history.'),
+					sessionName: z.string().describe('A short, descriptive name for the session.'),
+					insights: z.record(z.string(), z.string()).describe('New insights to append to persona files (e.g., {"USER.md": "Prefers functional programming"}).')
+				}),
 				system: compactionPrompt,
-				prompt: `Current history:\n${JSON.stringify(session.messages)}`,
+				prompt: `Current history to compact:\n${JSON.stringify(session.messages)}`,
 			})
-			const result = JSON.parse(text.replace(/```json\n?|\n?```/g, ''))
-			session.summary = result.summary
-			if (result.sessionName && (!session.name || session.name.startsWith('sess_'))) {
-				session.name = result.sessionName
+
+			logAiRequest({
+				timestamp: new Date().toISOString(),
+				sessionId: session.id,
+				model: session.model,
+				provider: session.connectionNickname,
+				action: 'compact',
+				durationMs: Date.now() - startTime,
+				tokens: {
+					total: usage?.totalTokens,
+				},
+				messages: [
+					{ role: 'system', content: compactionPrompt },
+					{ role: 'user', content: `Current history to compact:\n${JSON.stringify(session.messages)}` }
+				],
+				response: JSON.stringify(object),
+			})
+
+			session.summary = object.summary
+			if (object.sessionName && (!session.name || session.name.startsWith('sess_'))) {
+				session.name = object.sessionName
 			}
-			if (result.insights) updatePersonaFiles(result.insights)
-			session.messages = session.messages.slice(-4)
+			if (object.insights && Object.keys(object.insights).length > 0) {
+				updatePersonaFiles(object.insights as Record<string, string>)
+			}
+			session.messages = session.messages.slice(-10)
 		} catch (err) {
 			console.error('Failed to compact session:', err)
 		}
@@ -316,6 +387,8 @@ export class AIService {
 			updatedAt: session.updatedAt.toISOString(),
 			model: session.model,
 			summary: session.summary,
+			channelId: session.channelId,
+			channelUserId: session.channelUserId,
 			messages: session.messages,
 		}
 	}

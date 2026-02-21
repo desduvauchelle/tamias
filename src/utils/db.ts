@@ -51,6 +51,22 @@ const migrations = [
 		requestMessagesJson TEXT,
 		response TEXT
 	);
+	`,
+	// Version 2: Add bridge metadata to sessions for persistence across restarts
+	`
+	ALTER TABLE sessions ADD COLUMN channelId TEXT;
+	ALTER TABLE sessions ADD COLUMN channelUserId TEXT;
+	`,
+	// Version 3: Add sub-channel name to sessions
+	`
+	ALTER TABLE sessions ADD COLUMN channelName TEXT;
+	`,
+	// Version 4: Add indices for performance
+	`
+	CREATE INDEX IF NOT EXISTS idx_ai_logs_timestamp ON ai_logs(timestamp);
+	CREATE INDEX IF NOT EXISTS idx_ai_logs_sessionId ON ai_logs(sessionId);
+	CREATE INDEX IF NOT EXISTS idx_sessions_updatedAt ON sessions(updatedAt);
+	CREATE INDEX IF NOT EXISTS idx_sessions_bridge ON sessions(channelId, channelUserId);
 	`
 ]
 
@@ -60,7 +76,17 @@ db.transaction(() => {
 	const currentVersion = result?.user_version || 0
 
 	for (let i = currentVersion; i < migrations.length; i++) {
-		db.exec(migrations[i])
+		const statements = migrations[i].split(';').map(s => s.trim()).filter(s => s.length > 0)
+		for (const stmt of statements) {
+			try {
+				db.exec(stmt)
+			} catch (err: any) {
+				if (err.message.includes('duplicate column name')) {
+					continue
+				}
+				throw err
+			}
+		}
 	}
 
 	db.exec(`PRAGMA user_version = ${migrations.length}`)

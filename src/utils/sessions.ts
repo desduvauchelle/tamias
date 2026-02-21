@@ -13,6 +13,9 @@ export const SessionPersistSchema = z.object({
 	updatedAt: z.string(), // ISO String
 	model: z.string(),
 	summary: z.string().optional(),
+	channelId: z.string().optional(),
+	channelUserId: z.string().optional(),
+	channelName: z.string().optional(),
 	messages: z.array(MessageSchema),
 })
 
@@ -26,12 +29,15 @@ export function saveSessionToDisk(session: SessionPersist): void {
 		const modelId = rest.join('/')
 
 		db.prepare(`
-			INSERT INTO sessions (id, name, model, connectionNickname, modelId, createdAt, updatedAt, summary)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO sessions (id, name, model, connectionNickname, modelId, createdAt, updatedAt, summary, channelId, channelUserId, channelName)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
 				name = excluded.name,
 				updatedAt = excluded.updatedAt,
-				summary = excluded.summary
+				summary = excluded.summary,
+				channelId = excluded.channelId,
+				channelUserId = excluded.channelUserId,
+				channelName = excluded.channelName
 		`).run(
 			session.id,
 			session.name || null,
@@ -40,7 +46,10 @@ export function saveSessionToDisk(session: SessionPersist): void {
 			modelId,
 			session.createdAt,
 			session.updatedAt,
-			session.summary || null
+			session.summary || null,
+			session.channelId || null,
+			session.channelUserId || null,
+			session.channelName || null
 		)
 
 		// Synchronize messages by overwriting
@@ -55,7 +64,17 @@ export function saveSessionToDisk(session: SessionPersist): void {
 
 /** Load a session from disk */
 export function loadSessionFromDisk(id: string): SessionPersist | null {
-	const sessionRow = db.query<{ id: string, name: string | null, createdAt: string, updatedAt: string, model: string, summary: string | null }, [string]>('SELECT * FROM sessions WHERE id = ?').get(id)
+	const sessionRow = db.query<{
+		id: string,
+		name: string | null,
+		createdAt: string,
+		updatedAt: string,
+		model: string,
+		summary: string | null,
+		channelId: string | null,
+		channelUserId: string | null,
+		channelName: string | null
+	}, [string]>('SELECT * FROM sessions WHERE id = ?').get(id)
 
 	if (!sessionRow) return null
 
@@ -68,6 +87,9 @@ export function loadSessionFromDisk(id: string): SessionPersist | null {
 		updatedAt: sessionRow.updatedAt,
 		model: sessionRow.model,
 		summary: sessionRow.summary || undefined,
+		channelId: sessionRow.channelId || undefined,
+		channelUserId: sessionRow.channelUserId || undefined,
+		channelName: sessionRow.channelName || undefined,
 		messages: messagesRows as any
 	}
 }

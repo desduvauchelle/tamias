@@ -1,6 +1,6 @@
 import { join } from 'path'
 import { homedir } from 'os'
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, unlinkSync, appendFileSync } from 'fs'
 import { createServer } from 'net'
 
 const DAEMON_FILE = join(homedir(), '.tamias', 'daemon.json')
@@ -71,18 +71,22 @@ export async function isDaemonRunning(): Promise<boolean> {
 	}
 }
 
-/** Spawn daemon in detached mode, wait until it's ready (max 8s) */
 export async function autoStartDaemon(): Promise<DaemonInfo> {
-	// Derive project root from this file's location (src/utils/daemon.ts → ../../)
-	const projectRoot = join(import.meta.dir, '../..')
-	const entryPoint = join(projectRoot, 'src', 'index.ts')
-
-	// Spawn the daemon as a detached background process via index.ts
+	// Detection of compiled state
+	const isCompiled = import.meta.dir?.includes('$bunfs') || !existsSync(import.meta.dir || '')
+	const projectRoot = isCompiled ? process.cwd() : join(import.meta.dir, '../..')
 	const logPath = join(homedir(), '.tamias', 'daemon.log')
+
 	const logFile = Bun.file(logPath)
+	let spawnArgs: string[]
+	if (isCompiled) {
+		spawnArgs = [process.execPath, 'start', '--daemon']
+	} else {
+		spawnArgs = [process.argv[0], join(projectRoot, 'src', 'index.ts'), 'start', '--daemon']
+	}
 
 	const proc = Bun.spawn(
-		['bun', entryPoint, 'start', '--daemon'],
+		spawnArgs,
 		{
 			cwd: projectRoot,
 			detached: true,
@@ -91,15 +95,15 @@ export async function autoStartDaemon(): Promise<DaemonInfo> {
 	)
 	proc.unref()
 
-	// Wait for it to write daemon.json and respond to /health (up to 8s)
-	for (let i = 0; i < 80; i++) {
+	// Wait for it to write daemon.json and respond to /health (up to 15s)
+	for (let i = 0; i < 150; i++) {
 		await new Promise((r) => setTimeout(r, 100))
 		const running = await isDaemonRunning()
 		if (running) {
 			return readDaemonInfo()!
 		}
 	}
-	throw new Error('Daemon did not start in time. Run `tamias start` manually.')
+	throw new Error(`Daemon did not start in time. Check logs at ${logPath}`)
 }
 
 export function getDaemonUrl(): string {
