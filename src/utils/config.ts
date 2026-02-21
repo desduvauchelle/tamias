@@ -112,6 +112,14 @@ export const TamiasConfigSchema = z.object({
 
 export type TamiasConfig = z.infer<typeof TamiasConfigSchema>
 
+export const getDefaultWorkspacePath = () => {
+	const home = homedir()
+	const documents = join(home, 'Documents')
+	// On Linux, Documents might be lowercase or localized, but usually it's ~/Documents
+	// We'll stick to a common pattern: Documents/Tamias
+	return join(documents, 'Tamias')
+}
+
 const getConfigPath = () => {
 	const dir = join(homedir(), '.tamias')
 	if (!existsSync(dir)) {
@@ -127,7 +135,7 @@ export const loadConfig = (): TamiasConfig => {
 			version: '1.0',
 			connections: {},
 			bridges: { terminal: { enabled: true } },
-			workspacePath: join(homedir(), 'Documents', 'tamias-workspace')
+			workspacePath: getDefaultWorkspacePath()
 		}
 	}
 
@@ -191,7 +199,7 @@ export const loadConfig = (): TamiasConfig => {
 
 		// Migrate workspacePath
 		if (!data.workspacePath) {
-			data.workspacePath = join(homedir(), 'Documents', 'tamias-workspace')
+			data.workspacePath = getDefaultWorkspacePath()
 			if (!existsSync(data.workspacePath)) {
 				mkdirSync(data.workspacePath, { recursive: true })
 			}
@@ -415,7 +423,7 @@ export const renameEmailConfig = (oldNickname: string, newNickname: string): voi
 }
 
 export const getWorkspacePath = (): string => {
-	return loadConfig().workspacePath || join(homedir(), 'Documents', 'tamias-workspace')
+	return loadConfig().workspacePath || getDefaultWorkspacePath()
 }
 
 export const setWorkspacePath = (path: string): void => {

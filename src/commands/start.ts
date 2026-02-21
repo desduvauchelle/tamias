@@ -128,7 +128,30 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 		process.exit(1)
 	}
 
-	const bunPath = process.execPath
+	// Robust bun discovery
+	let bunPath = 'bun'
+	try {
+		const whichBun = Bun.which('bun')
+		if (whichBun && !whichBun.includes('tamias')) {
+			bunPath = whichBun
+		} else {
+			const commonBunPaths = [
+				join(homedir(), '.bun', 'bin', 'bun'),
+				'/usr/local/bin/bun',
+				'/opt/homebrew/bin/bun',
+				'/usr/bin/bun'
+			]
+			for (const p of commonBunPaths) {
+				if (fs.existsSync(p)) {
+					bunPath = p
+					break
+				}
+			}
+		}
+	} catch {
+		// fallback to 'bun'
+	}
+
 	const dashboardProc = Bun.spawn([bunPath, 'run', 'dev', '-p', dashboardPort.toString()], {
 		cwd: dashboardDir,
 		stdout: dashboardLogFile,

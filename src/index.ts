@@ -14,6 +14,7 @@ import { runUpdateCommand } from './commands/update.ts'
 import { cronCommand } from './commands/cron.ts'
 import { runEmailsCommand, runEmailsListCommand, runEmailsAddCommand, runEmailsEditCommand, runEmailsDeleteCommand } from './commands/emails.ts'
 import { runWorkspaceCommand } from './commands/workspace.ts'
+import { runUninstallCommand, runBackupCommand, runRestoreCommand } from './commands/maintenance.ts'
 
 const program = new Command()
 
@@ -217,5 +218,23 @@ program
 	.argument('[path]', 'The path to the restricted workspace directory')
 	.description('View or set the restricted workspace directory for the AI')
 	.action(runWorkspaceCommand)
+
+// ─── tamias maintenance ──────────────────────────────────────────────────────
+program
+	.command('uninstall')
+	.description('Completely remove Tamias and its data')
+	.action(runUninstallCommand)
+
+program
+	.command('backup')
+	.description('Create a backup of Tamias configuration and logs')
+	.option('-f, --file <path>', 'Custom filename or path for the backup archive')
+	.action((opts: { file?: string }) => runBackupCommand(opts))
+
+program
+	.command('restore')
+	.argument('<file>', 'The backup file to restore from')
+	.description('Restore Tamias configuration and logs from a backup')
+	.action(runRestoreCommand)
 
 program.parse(process.argv)

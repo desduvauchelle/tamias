@@ -1,6 +1,7 @@
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
 import { writePersonaFile, scaffoldFromTemplates, readPersonaFile } from '../utils/memory.ts'
+import { getDefaultWorkspacePath, setWorkspacePath } from '../utils/config.ts'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -217,6 +218,23 @@ export const runOnboarding = async (): Promise<void> => {
 	)
 
 	writePersonaFile('SOUL.md', personalSections.join('\n'))
+
+	// ── Phase 4: The Workspace ──────────────────────────────────────────────
+	p.note(`${emoji} Where should I store your projects and files?`, 'Phase 4')
+
+	const defaultPath = getDefaultWorkspacePath()
+	const workspacePath = await p.text({
+		message: 'Workspace directory:',
+		placeholder: defaultPath,
+		initialValue: defaultPath,
+		validate: (v) => {
+			if (!v?.trim()) return 'I need a place to work!'
+		},
+	})
+	if (p.isCancel(workspacePath)) { p.cancel('Maybe next time.'); process.exit(0) }
+
+	setWorkspacePath(workspacePath as string)
+	await dramatic(`\n  ${emoji} Workspace set to ${pc.cyan(workspacePath as string)}.`, 600)
 
 	// ── Scaffold remaining templates ────────────────────────────────────────
 	scaffoldFromTemplates() // ensures AGENTS, TOOLS, HEARTBEAT exist
