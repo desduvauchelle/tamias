@@ -35,9 +35,16 @@ jobs:
           bun build --compile --minify --sourcemap --target=bun-darwin-x64 --outfile ./tamias-darwin-x64 ./src/index.ts
           bun build --compile --minify --sourcemap --target=bun-linux-x64 --outfile ./tamias-linux-x64 ./src/index.ts
 
+      - name: Get Version
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.get_version.outputs.VERSION }}
           files: |
             tamias-darwin-arm64
             tamias-darwin-x64
