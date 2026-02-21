@@ -15,6 +15,7 @@ import { cronCommand } from './commands/cron.ts'
 import { runEmailsCommand, runEmailsListCommand, runEmailsAddCommand, runEmailsEditCommand, runEmailsDeleteCommand } from './commands/emails.ts'
 import { runWorkspaceCommand } from './commands/workspace.ts'
 import { runUninstallCommand, runBackupCommand, runRestoreCommand } from './commands/maintenance.ts'
+import { isOnboarded } from './utils/memory.ts'
 
 const program = new Command()
 
@@ -236,5 +237,11 @@ program
 	.argument('<file>', 'The backup file to restore from')
 	.description('Restore Tamias configuration and logs from a backup')
 	.action(runRestoreCommand)
+
+// First-run detection: if no subcommand given and not yet onboarded, launch chat (which triggers onboarding)
+if (process.argv.length <= 2 && !isOnboarded()) {
+	await runChatCommand()
+	process.exit(0)
+}
 
 program.parse(process.argv)

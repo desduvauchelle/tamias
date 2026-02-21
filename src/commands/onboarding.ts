@@ -1,7 +1,19 @@
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
+import { existsSync, mkdirSync, rmSync, symlinkSync } from 'fs'
+import { homedir } from 'os'
+import { join } from 'path'
 import { writePersonaFile, scaffoldFromTemplates, readPersonaFile } from '../utils/memory.ts'
-import { getDefaultWorkspacePath, setWorkspacePath } from '../utils/config.ts'
+import {
+	getDefaultWorkspacePath,
+	setWorkspacePath,
+	getAllModelOptions,
+	getBridgesConfig,
+	setBridgesConfig,
+} from '../utils/config.ts'
+import { setEnv, generateSecureEnvKey } from '../utils/env.ts'
+import { runConfigCommand } from './config.ts'
+import { runEmailsAddCommand } from './emails.ts'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -14,10 +26,159 @@ async function dramatic(text: string, delayMs = 800): Promise<void> {
 	console.log(pc.dim(text))
 }
 
+// ─── Channel quick-setup (inline, avoids sub-command intro/outro) ──────────────
+
+async function setupChannel(
+	platform: 'discord' | 'telegram',
+	emoji: string,
+): Promise<boolean> {
+	const config = getBridgesConfig()
+
+	if (platform === 'discord') {
+		p.note(
+			`1. Go to ${pc.cyan('https://discord.com/developers/applications')}\n` +
+			`2. Create an app or pick an existing one → Bot tab\n` +
+			`3. Click "Reset Token" to reveal your bot token\n` +
+			`4. Under Privileged Gateway Intents enable:\n` +
+			`   ${pc.bold('MESSAGE CONTENT INTENT')} (required to read messages)\n` +
+			`5. From OAuth2 → URL Generator add 'bot' scope + Send Messages\n` +
+			`   permission, then invite the bot to your server`,
+			'Discord Setup',
+		)
+	} else {
+		p.note(
+			`1. Open Telegram and message ${pc.cyan('@BotFather')}\n` +
+			`2. Send /newbot and follow the prompts\n` +
+			`3. Copy the API token BotFather gives you`,
+			'Telegram Setup',
+		)
+	}
+
+	const token = await p.text({
+		message: `Paste your ${platform === 'discord' ? 'Discord bot' : 'Telegram'} token:`,
+		placeholder: platform === 'discord' ? 'Bot token (starts with MT...)' : '123456:ABC...',
+		validate: (v) => { if (!v?.trim()) return 'Token is required' },
+	})
+	if (p.isCancel(token)) return false
+
+	const envKey = generateSecureEnvKey(platform)
+	setEnv(envKey, (token as string).trim())
+
+	if (platform === 'discord') {
+		config.discord = { enabled: true, envKeyName: envKey }
+	} else {
+		config.telegram = { enabled: true, envKeyName: envKey }
+	}
+	setBridgesConfig(config)
+
+	// Quick token validity check
+	const s = p.spinner()
+	s.start(`Verifying ${platform} token...`)
+	try {
+		if (platform === 'discord') {
+			const res = await fetch('https://discord.com/api/v10/users/@me', {
+				headers: { Authorization: `Bot ${(token as string).trim()}` },
+				signal: AbortSignal.timeout(5000),
+			})
+			if (res.ok) {
+				const bot = await res.json() as { username?: string }
+				s.stop(pc.green(`✅ Connected as ${pc.bold(bot.username ?? 'unknown')}`))
+			} else {
+				s.stop(pc.yellow(`⚠️  Token saved, but verification returned ${res.status}. Check it later.`))
+			}
+		} else {
+			const res = await fetch(`https://api.telegram.org/bot${(token as string).trim()}/getMe`, {
+				signal: AbortSignal.timeout(5000),
+			})
+			const data = await res.json() as { ok: boolean; result?: { username?: string; first_name?: string } }
+			if (data.ok) {
+				const name = data.result?.first_name ?? data.result?.username ?? 'unknown'
+				s.stop(pc.green(`✅ Connected as ${pc.bold(name)}`))
+			} else {
+				s.stop(pc.yellow('⚠️  Token saved, but could not verify. Check it later.'))
+			}
+		}
+	} catch {
+		s.stop(pc.yellow('⚠️  Token saved. Could not reach API to verify.'))
+	}
+	return true
+}
+
 // ─── Onboarding ────────────────────────────────────────────────────────────────
 
 export const runOnboarding = async (): Promise<void> => {
 	console.log('')
+
+	// ── Phase 0: Storage ───────────────────────────────────────────────────
+	p.intro(pc.bgMagenta(pc.black(' 🐿️  Tamias — First Run Setup ')))
+
+	const storageChoice = await p.select({
+		message: pc.bold('Where should I store my data and your files?'),
+		options: [
+			{
+				value: 'default',
+				label: `~/.tamias  ${pc.dim('(default hidden config folder)')}`,
+			},
+			{
+				value: 'documents',
+				label: `~/Documents/Tamias  ${pc.dim('(easy to find in Finder)')}`,
+			},
+			{ value: 'other', label: 'Other  — type a custom path' },
+		],
+	})
+	if (p.isCancel(storageChoice)) { p.cancel('Maybe next time.'); process.exit(0) }
+
+	let dataHome = join(homedir(), '.tamias')
+
+	if (storageChoice === 'documents') {
+		dataHome = join(homedir(), 'Documents', 'Tamias')
+	} else if (storageChoice === 'other') {
+		const customPath = await p.text({
+			message: 'Enter the full path:',
+			placeholder: '/Users/you/my-tamias-data',
+			validate: (v) => {
+				if (!v?.trim()) return 'Path is required'
+			},
+		})
+		if (p.isCancel(customPath)) { p.cancel('Maybe next time.'); process.exit(0) }
+
+		const resolved = (customPath as string).replace(/^~/, homedir()).trim()
+
+		if (!existsSync(resolved)) {
+			const create = await p.confirm({
+				message: `${pc.yellow(resolved)} does not exist. Create it?`,
+				initialValue: true,
+			})
+			if (p.isCancel(create) || !create) {
+				p.note('Using ~/.tamias instead.', 'Storage')
+			} else {
+				mkdirSync(resolved, { recursive: true })
+				dataHome = resolved
+			}
+		} else {
+			dataHome = resolved
+		}
+	}
+
+	// If a non-default path was chosen, create ~/.tamias as a symlink
+	const defaultHome = join(homedir(), '.tamias')
+	if (dataHome !== defaultHome) {
+		mkdirSync(dataHome, { recursive: true })
+		if (existsSync(defaultHome)) {
+			// If it's already a symlink pointing somewhere else, remove it
+			try { rmSync(defaultHome, { recursive: true }) } catch { }
+		}
+		try {
+			symlinkSync(dataHome, defaultHome)
+		} catch {
+			// If symlink fails, just use the dir directly (already created)
+		}
+		console.log(pc.dim(`\n  Data directory: ${dataHome}`))
+		console.log(pc.dim(`  Symlinked from: ~/.tamias`))
+	} else {
+		mkdirSync(defaultHome, { recursive: true })
+		console.log(pc.dim(`\n  Data directory: ~/.tamias`))
+	}
 
 	// ── Phase 1: The Awakening ──────────────────────────────────────────────
 	await dramatic('  ...', 1200)
@@ -26,7 +187,7 @@ export const runOnboarding = async (): Promise<void> => {
 	await dramatic(`  ${pc.bold("I'm alive!")}`, 1000)
 	await dramatic('', 400)
 
-	p.intro(pc.bgMagenta(pc.black(' 🐿️  First Run — Let\'s figure out who I am ')))
+	p.intro(pc.bgMagenta(pc.black(" 🐿️  Let's figure out who I am ")))
 
 	// Name
 	const name = await p.text({
@@ -89,7 +250,7 @@ export const runOnboarding = async (): Promise<void> => {
 
 	// Emoji
 	const emoji = await p.text({
-		message: "One more — pick an emoji. My signature.",
+		message: 'One more — pick an emoji. My signature.',
 		placeholder: '🐿️',
 		initialValue: '🐿️',
 		validate: (v) => { if (!v?.trim()) return 'Pick an emoji!' },
@@ -131,17 +292,16 @@ export const runOnboarding = async (): Promise<void> => {
 	})
 	if (p.isCancel(callThem)) { p.cancel('Maybe next time.'); process.exit(0) }
 
-	// Auto-detect timezone
 	const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone
 	const timezone = await p.text({
-		message: `What timezone are you in?`,
+		message: 'What timezone are you in?',
 		placeholder: detectedTz,
 		initialValue: detectedTz,
 	})
 	if (p.isCancel(timezone)) { p.cancel('Maybe next time.'); process.exit(0) }
 
 	const context = await p.text({
-		message: "Tell me a bit about yourself — what do you work on? What matters to you?",
+		message: 'Tell me a bit about yourself — what do you work on? What matters to you?',
 		placeholder: 'I build software, I love coffee, I have 2 cats...',
 	})
 	if (p.isCancel(context)) { p.cancel('Maybe next time.'); process.exit(0) }
@@ -193,7 +353,7 @@ export const runOnboarding = async (): Promise<void> => {
 	})
 	if (p.isCancel(talkStyle)) { p.cancel('Maybe next time.'); process.exit(0) }
 
-	// Build SOUL.md — start from template then append personalisation
+	// Build SOUL.md
 	scaffoldFromTemplates()
 	const baseSoul = readPersonaFile('SOUL.md') ?? ''
 
@@ -219,14 +379,91 @@ export const runOnboarding = async (): Promise<void> => {
 
 	writePersonaFile('SOUL.md', personalSections.join('\n'))
 
-	// ── Phase 4: The Workspace ──────────────────────────────────────────────
-	p.note(`${emoji} Where should I store your projects and files?`, 'Phase 4')
+	// ── Phase 4: AI Model Setup ─────────────────────────────────────────────
+	p.note(`${emoji} I need an AI brain to run on.`, 'Phase 4 — AI Model')
 
-	const defaultPath = getDefaultWorkspacePath()
+	const existingModels = getAllModelOptions()
+	let activeModel: string | null = existingModels.length > 0 ? existingModels[0] : null
+
+	if (!activeModel) {
+		p.note(
+			`No AI model configured yet. Let's fix that.\n\n` +
+			`You can use any of these providers:\n` +
+			`  ${pc.cyan('OpenAI')}      → https://platform.openai.com/api-keys\n` +
+			`  ${pc.cyan('Anthropic')}   → https://console.anthropic.com/settings/keys\n` +
+			`  ${pc.cyan('Google')}      → https://aistudio.google.com/app/apikey\n` +
+			`  ${pc.cyan('OpenRouter')}  → https://openrouter.ai/keys  (access all models)\n` +
+			`  ${pc.cyan('Ollama')}      → https://ollama.com  (runs locally, free)`,
+			'Get an API Key',
+		)
+
+		const doConfig = await p.confirm({
+			message: 'Configure an AI model now?',
+			initialValue: true,
+		})
+		if (p.isCancel(doConfig)) { p.cancel('Maybe next time.'); process.exit(0) }
+
+		if (doConfig) {
+			await runConfigCommand()
+			const updated = getAllModelOptions()
+			activeModel = updated.length > 0 ? updated[0] : null
+		}
+	} else {
+		p.note(
+			`Model configured: ${pc.cyan(activeModel)}\n` +
+			`You can add more later with ${pc.bold('tamias config')}`,
+			'AI Model',
+		)
+	}
+
+	// ── Phase 5: Channels ───────────────────────────────────────────────────
+	p.note(
+		`${emoji} I can chat with you beyond the terminal.\n\n` +
+		`Connect me to Discord or Telegram so I'm always a message away.`,
+		'Phase 5 — Channels',
+	)
+
+	const channelChoices = await p.multiselect({
+		message: 'Connect channels? (space to toggle, enter to continue)',
+		options: [
+			{ value: 'discord', label: '🎮 Discord' },
+			{ value: 'telegram', label: '✈️  Telegram' },
+		],
+		required: false,
+	}) as string[]
+
+	if (!p.isCancel(channelChoices)) {
+		if (channelChoices.includes('discord')) {
+			await setupChannel('discord', emoji as string)
+		}
+		if (channelChoices.includes('telegram')) {
+			await setupChannel('telegram', emoji as string)
+		}
+	}
+
+	// ── Phase 6: Email ──────────────────────────────────────────────────────
+	p.note(
+		`${emoji} I can send and read emails on your behalf.\n\n` +
+		`This uses Himalaya + a Gmail App Password.\n` +
+		`  ${pc.cyan('Gmail App Passwords')} → https://myaccount.google.com/apppasswords\n` +
+		`  ${pc.cyan('Himalaya config')}     → https://github.com/pimalaya/himalaya`,
+		'Phase 6 — Email',
+	)
+
+	const doEmail = await p.confirm({
+		message: 'Set up email access?',
+		initialValue: false,
+	})
+	if (!p.isCancel(doEmail) && doEmail) {
+		await runEmailsAddCommand()
+	}
+
+	// ── Phase 7: Workspace Path ─────────────────────────────────────────────
+	const defaultWorkspacePath = getDefaultWorkspacePath()
 	const workspacePath = await p.text({
-		message: 'Workspace directory:',
-		placeholder: defaultPath,
-		initialValue: defaultPath,
+		message: `${emoji} Where should I look for your projects and files?`,
+		placeholder: defaultWorkspacePath,
+		initialValue: defaultWorkspacePath,
 		validate: (v) => {
 			if (!v?.trim()) return 'I need a place to work!'
 		},
@@ -234,18 +471,56 @@ export const runOnboarding = async (): Promise<void> => {
 	if (p.isCancel(workspacePath)) { p.cancel('Maybe next time.'); process.exit(0) }
 
 	setWorkspacePath(workspacePath as string)
-	await dramatic(`\n  ${emoji} Workspace set to ${pc.cyan(workspacePath as string)}.`, 600)
 
-	// ── Scaffold remaining templates ────────────────────────────────────────
-	scaffoldFromTemplates() // ensures AGENTS, TOOLS, HEARTBEAT exist
+	// Scaffold remaining templates
+	scaffoldFromTemplates()
 
-	// ── Finale ──────────────────────────────────────────────────────────────
+	// ── Phase 8: Summary + Launch ───────────────────────────────────────────
 	console.log('')
 	await dramatic(`  ${emoji} Alright. I'm ${pc.bold(name as string)}.`, 800)
 	await dramatic(`  I know who I am, and I know who you are.`, 600)
-	await dramatic('', 400)
 	await dramatic(`  ${pc.green("Let's get to work.")}`, 800)
 	console.log('')
 
-	p.outro(pc.dim(`Your persona files are in ~/.tamias/memory/`))
+	// Build summary lines
+	const finalModel = getAllModelOptions()
+	const modelLabel = finalModel.length > 0
+		? finalModel[0]
+		: pc.yellow('None configured — run `tamias config`')
+
+	const bridgesCfg = getBridgesConfig()
+	const channelList: string[] = []
+	if (bridgesCfg.discord?.enabled && bridgesCfg.discord?.envKeyName) channelList.push('Discord')
+	if (bridgesCfg.telegram?.enabled && bridgesCfg.telegram?.envKeyName) channelList.push('Telegram')
+	const channelLabel = channelList.length > 0 ? channelList.join(', ') : 'None — run `tamias channels add`'
+
+	const displayDataHome = dataHome.replace(homedir(), '~')
+	const displayWorkspace = (workspacePath as string).replace(homedir(), '~')
+
+	// Auto-start daemon
+	let daemonPort = 9001
+	let dashboardPort = 5678
+	try {
+		const { autoStartDaemon } = await import('../utils/daemon.ts')
+		const info = await autoStartDaemon()
+		daemonPort = info.port
+		dashboardPort = info.dashboardPort ?? 5678
+	} catch {
+		// Daemon start failed — not fatal, user can run `tamias start` manually
+	}
+
+	p.note(
+		[
+			`${pc.bold('Files stored:')}   ${displayDataHome}`,
+			`${pc.bold('Workspace:')}      ${displayWorkspace}`,
+			`${pc.bold('AI model:')}       ${modelLabel}`,
+			`${pc.bold('Channels:')}       ${channelLabel}`,
+			``,
+			`${pc.green('✅')} ${pc.bold('Daemon is running')}`,
+			`   Type ${pc.cyan('tamias stop')} to stop it`,
+			``,
+			`${pc.bold('Web dashboard:')}  ${pc.cyan(`http://localhost:${dashboardPort}`)}`,
+		].join('\n'),
+		'Setup Complete',
+	)
 }

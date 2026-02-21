@@ -1,0 +1,192 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:   # allows release.yml to call this as a reusable workflow
+  workflow_dispatch:
+
+jobs:
+  # ─── 1. Type-check & Unit Tests ─────────────────────────────────────────────
+  test:
+    name: Type-check & Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: TypeScript type-check
+        run: bunx tsc --noEmit
+
+      - name: Run unit tests
+        run: bun test
+
+  # ─── 2. Install-script syntax ───────────────────────────────────────────────
+  install-script-syntax:
+    name: install.sh syntax check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check bash syntax
+        run: bash -n install.sh
+
+      - name: shellcheck (lint)
+        run: |
+          if command -v shellcheck &>/dev/null; then
+            shellcheck --severity=error install.sh
+          else
+            sudo apt-get install -y shellcheck -q
+            shellcheck --severity=error install.sh
+          fi
+
+  # ─── 3. Build smoke test ────────────────────────────────────────────────────
+  build:
+    name: Build binaries (smoke test)
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Compile linux-x64 binary
+        run: |
+          bun build --compile --target=bun-linux-x64 --outfile ./tamias-smoke ./src/index.ts
+
+      - name: Binary is executable
+        run: test -x ./tamias-smoke
+
+      - name: --help exits cleanly
+        run: ./tamias-smoke --help
+
+  # ─── 4. Onboarding integration test ─────────────────────────────────────────
+  onboarding-integration:
+    name: Onboarding flow (integration)
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Compile binary
+        run: |
+          bun build --compile --target=bun-linux-x64 --outfile ./tamias-test ./src/index.ts
+
+      - name: Run onboarding with piped answers
+        env:
+          # Use a temp HOME so we don't pollute and can assert file creation
+          HOME: /tmp/tamias-test-home
+          TAMIAS_CI: "1"
+        run: |
+          mkdir -p /tmp/tamias-test-home
+
+          # Answers fed via stdin (one per prompt, in order):
+          #   Phase 0 – storage choice  → Enter (default: ~/.tamias)
+          #   Phase 1 – name            → "CIBot"
+          #             creature        → Enter (first option: AI assistant)
+          #             vibe            → Enter (first option: warm & friendly)
+          #             emoji           → Enter (default: 🐿️)
+          #   Phase 2 – user name       → "Tester"
+          #             call them       → Enter (keep "Tester")
+          #             timezone        → Enter (auto-detected default)
+          #             context         → Enter (skip)
+          #   Phase 3 – purpose         → "Testing"
+          #             rules           → Enter (skip)
+          #             talk style      → Enter (first option: casual)
+          #   Phase 4 – model config    → "n" (no, skip for now)
+          #   Phase 5 – channels        → Enter (none selected)
+          #   Phase 6 – email           → "n" (no)
+          #   Phase 7 – workspace path  → Enter (default)
+          printf '%s\n' \
+            "" \
+            "CIBot" \
+            "" \
+            "" \
+            "" \
+            "Tester" \
+            "" \
+            "" \
+            "" \
+            "Testing" \
+            "" \
+            "" \
+            "n" \
+            "" \
+            "n" \
+            "" \
+            | timeout 60 ./tamias-test onboarding || EXIT_CODE=$?
+
+          # Exit codes: 0 = success, 1 = normal cancel/exit-after-outro is OK
+          # We only fail if binary crashed (>1) or timed out (124)
+          if [ "${EXIT_CODE:-0}" -eq 124 ]; then
+            echo "::error::Onboarding timed out — likely stuck waiting for input"
+            exit 1
+          fi
+          if [ "${EXIT_CODE:-0}" -gt 1 ]; then
+            echo "::error::Onboarding crashed with exit code ${EXIT_CODE}"
+            exit 1
+          fi
+
+      - name: Assert persona files were written
+        env:
+          HOME: /tmp/tamias-test-home
+        run: |
+          echo "Checking for IDENTITY.md..."
+          test -f /tmp/tamias-test-home/.tamias/memory/IDENTITY.md || {
+            echo "::error::IDENTITY.md was not created"
+            ls -la /tmp/tamias-test-home/.tamias/memory/ 2>/dev/null || echo "(memory dir missing)"
+            exit 1
+          }
+          echo "Checking for USER.md..."
+          test -f /tmp/tamias-test-home/.tamias/memory/USER.md || {
+            echo "::error::USER.md was not created"
+            exit 1
+          }
+          echo "Checking for SOUL.md..."
+          test -f /tmp/tamias-test-home/.tamias/memory/SOUL.md || {
+            echo "::error::SOUL.md was not created"
+            exit 1
+          }
+          echo "✅ All persona files created."
+          echo "--- IDENTITY.md ---"
+          cat /tmp/tamias-test-home/.tamias/memory/IDENTITY.md
+          echo "--- USER.md ---"
+          cat /tmp/tamias-test-home/.tamias/memory/USER.md
+
+      - name: Assert IDENTITY.md contains expected content
+        run: |
+          grep -q "CIBot" /tmp/tamias-test-home/.tamias/memory/IDENTITY.md || {
+            echo "::error::IDENTITY.md does not contain the bot name 'CIBot'"
+            cat /tmp/tamias-test-home/.tamias/memory/IDENTITY.md
+            exit 1
+          }
+          grep -q "Tester" /tmp/tamias-test-home/.tamias/memory/USER.md || {
+            echo "::error::USER.md does not contain the user name 'Tester'"
+            cat /tmp/tamias-test-home/.tamias/memory/USER.md
+            exit 1
+          }
+          echo "✅ Content assertions passed."
