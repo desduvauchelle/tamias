@@ -48,9 +48,15 @@ export class AIService {
 	public async initialize() {
 		scaffoldFromTemplates()
 		this.loadAllSessions()
+		await this.refreshTools()
+	}
+
+	public async refreshTools() {
 		try {
 			const { tools, mcpClients } = await buildActiveTools()
 			this.activeTools = tools
+			// Close old clients before replacing
+			for (const c of this.mcpClients) await c.close().catch(() => { })
 			this.mcpClients = mcpClients
 		} catch (err) {
 			console.error('[AIService] Failed to load tools:', err)

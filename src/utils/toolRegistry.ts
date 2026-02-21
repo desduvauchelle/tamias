@@ -6,6 +6,7 @@ import { terminalTools, TERMINAL_TOOL_NAME } from '../tools/terminal.ts'
 import { tamiasTools, TAMIAS_TOOL_NAME } from '../tools/tamias.ts'
 import { cronTools, CRON_TOOL_NAME } from '../tools/cron.ts'
 import { emailTools, EMAIL_TOOL_NAME } from '../tools/email.ts'
+import { workspaceTools, WORKSPACE_TOOL_NAME } from '../tools/workspace.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ToolSet = Record<string, any>
@@ -70,6 +71,7 @@ export async function buildActiveTools(): Promise<{
 		[TAMIAS_TOOL_NAME]: tamiasTools as ToolSet,
 		[CRON_TOOL_NAME]: cronTools as ToolSet,
 		[EMAIL_TOOL_NAME]: emailTools as ToolSet,
+		[WORKSPACE_TOOL_NAME]: workspaceTools as ToolSet,
 	}
 
 	for (const [toolName, allFunctions] of Object.entries(internalCatalog)) {

@@ -11,6 +11,15 @@ echo "--------------------------------------------------------"
 echo "🐿️ Installing Tamias from GitHub Releases"
 echo "--------------------------------------------------------"
 
+# 0. Check for Bun
+if ! command -v bun &> /dev/null; then
+    echo "=> Bun not found. Installing Bun..."
+    curl -fsSL https://bun.sh/install | bash
+    # Source bun for the current session if possible, though it usually requires a restart/new shell
+    export BUN_INSTALL="$HOME/.bun"
+    export PATH="$BUN_INSTALL/bin:$PATH"
+fi
+
 # 1. Determine OS and Architecture
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"

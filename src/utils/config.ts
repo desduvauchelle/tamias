@@ -96,6 +96,7 @@ export const TamiasConfigSchema = z.object({
 	internalTools: z.record(z.string(), InternalToolConfigSchema).optional(),
 	mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
 	bridges: BridgesConfigSchema.default({ terminal: { enabled: true } }),
+	workspacePath: z.string().optional(),
 	emails: z.record(z.string(), z.object({
 		nickname: z.string(),
 		enabled: z.boolean().default(false),
@@ -122,7 +123,12 @@ const getConfigPath = () => {
 export const loadConfig = (): TamiasConfig => {
 	const path = getConfigPath()
 	if (!existsSync(path)) {
-		return { version: '1.0', connections: {}, bridges: { terminal: { enabled: true } } }
+		return {
+			version: '1.0',
+			connections: {},
+			bridges: { terminal: { enabled: true } },
+			workspacePath: join(homedir(), 'Documents', 'tamias-workspace')
+		}
 	}
 
 	try {
@@ -183,6 +189,14 @@ export const loadConfig = (): TamiasConfig => {
 			}
 		}
 
+		// Migrate workspacePath
+		if (!data.workspacePath) {
+			data.workspacePath = join(homedir(), 'Documents', 'tamias-workspace')
+			if (!existsSync(data.workspacePath)) {
+				mkdirSync(data.workspacePath, { recursive: true })
+			}
+			needsMigration = true
+		}
 
 		if (needsMigration) {
 			saveConfig(data) // Remove plaintext secrets from the config file immediately
@@ -397,5 +411,18 @@ export const renameEmailConfig = (oldNickname: string, newNickname: string): voi
 	if (c.emails[newNickname]) throw new Error(`Email account '${newNickname}' already exists.`)
 	c.emails[newNickname] = { ...c.emails[oldNickname], nickname: newNickname }
 	delete c.emails[oldNickname]
+	saveConfig(c)
+}
+
+export const getWorkspacePath = (): string => {
+	return loadConfig().workspacePath || join(homedir(), 'Documents', 'tamias-workspace')
+}
+
+export const setWorkspacePath = (path: string): void => {
+	const c = loadConfig()
+	c.workspacePath = path
+	if (!existsSync(path)) {
+		mkdirSync(path, { recursive: true })
+	}
 	saveConfig(c)
 }

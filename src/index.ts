@@ -13,6 +13,7 @@ import { runUsageCommand } from './commands/usage.ts'
 import { runUpdateCommand } from './commands/update.ts'
 import { cronCommand } from './commands/cron.ts'
 import { runEmailsCommand, runEmailsListCommand, runEmailsAddCommand, runEmailsEditCommand, runEmailsDeleteCommand } from './commands/emails.ts'
+import { runWorkspaceCommand } from './commands/workspace.ts'
 
 const program = new Command()
 
@@ -209,5 +210,12 @@ emailsCmd
 	.argument('[nickname]', 'The nickname of the email account to delete')
 	.description('Delete an email account')
 	.action(runEmailsDeleteCommand)
+
+// ─── tamias workspace ─────────────────────────────────────────────────────────
+program
+	.command('workspace')
+	.argument('[path]', 'The path to the restricted workspace directory')
+	.description('View or set the restricted workspace directory for the AI')
+	.action(runWorkspaceCommand)
 
 program.parse(process.argv)

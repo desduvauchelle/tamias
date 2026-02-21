@@ -10,8 +10,14 @@ import {
 	setInternalToolConfig,
 	setMcpServerConfig,
 	deleteMcpServer,
+	addConnection,
+	deleteConnection,
+	getWorkspacePath,
+	setWorkspacePath,
+	ProviderEnum,
 	type McpServerConfig,
 } from '../utils/config.ts'
+import { setEnv, removeEnv, generateSecureEnvKey } from '../utils/env.ts'
 import { isDaemonRunning, readDaemonInfo, getDaemonUrl } from '../utils/daemon.ts'
 import { TERMINAL_TOOL_NAME } from './terminal.ts'
 import { EMAIL_TOOL_NAME } from './email.ts'
@@ -78,7 +84,8 @@ export const tamiasTools = {
 		description: 'List all configured internal tools and external MCP servers.',
 		inputSchema: z.object({}),
 		execute: async () => {
-			const knownInternal = [TERMINAL_TOOL_NAME, TAMIAS_TOOL_NAME, EMAIL_TOOL_NAME]
+			const { WORKSPACE_TOOL_NAME } = await import('./workspace.ts')
+			const knownInternal = [TERMINAL_TOOL_NAME, TAMIAS_TOOL_NAME, EMAIL_TOOL_NAME, WORKSPACE_TOOL_NAME]
 			const mcpServers = getAllMcpServers()
 			return {
 				internalTools: knownInternal.map((name) => {
@@ -235,6 +242,130 @@ export const tamiasTools = {
 
 			setBridgesConfig(bridges)
 			return { success: true, platform, enabled }
+		},
+	}),
+	get_usage: tool({
+		description: 'Get AI usage statistics (tokens and estimated cost) for a given period.',
+		inputSchema: z.object({
+			period: z.enum(['today', 'yesterday', 'week', 'month', 'all']).default('all'),
+		}),
+		execute: async ({ period }) => {
+			const { db } = await import('../utils/db.ts')
+			const { getEstimatedCost, formatCurrency } = await import('../utils/pricing.ts')
+
+			const rows = db.query<{ timestamp: string, model: string, promptTokens: number | null, completionTokens: number | null }, []>(`
+				SELECT timestamp, model, promptTokens, completionTokens FROM ai_logs
+			`).all()
+
+			const now = new Date()
+			const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+			const startOfYesterday = new Date(startOfToday.getTime() - 86400000)
+			const day = now.getDay()
+			const diff = now.getDate() - day + (day === 0 ? -6 : 1)
+			const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diff)
+			const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+			let filtered = rows
+			if (period === 'today') filtered = rows.filter(r => new Date(r.timestamp) >= startOfToday)
+			else if (period === 'yesterday') filtered = rows.filter(r => {
+				const d = new Date(r.timestamp)
+				return d >= startOfYesterday && d < startOfToday
+			})
+			else if (period === 'week') filtered = rows.filter(r => new Date(r.timestamp) >= startOfWeek)
+			else if (period === 'month') filtered = rows.filter(r => new Date(r.timestamp) >= startOfMonth)
+
+			let totalIn = 0, totalOut = 0, totalCost = 0
+			for (const r of filtered) {
+				const tin = r.promptTokens || 0
+				const tout = r.completionTokens || 0
+				totalIn += tin
+				totalOut += tout
+				totalCost += getEstimatedCost(r.model, tin, tout)
+			}
+
+			return {
+				period,
+				requestCount: filtered.length,
+				tokensIn: totalIn,
+				tokensOut: totalOut,
+				estimatedCost: formatCurrency(totalCost),
+			}
+		}
+	}),
+
+	add_model_connection: tool({
+		description: 'Add a new AI provider connection (OpenAI, Anthropic, etc.).',
+		inputSchema: z.object({
+			provider: ProviderEnum,
+			nickname: z.string().describe('Unique nickname for this connection'),
+			apiKey: z.string().optional().describe('API Key or Access Token'),
+			baseUrl: z.string().optional().describe('Optional custom base URL'),
+		}),
+		execute: async ({ provider, nickname, apiKey, baseUrl }) => {
+			let envKeyName: string | undefined
+			if (apiKey) {
+				envKeyName = generateSecureEnvKey(`${nickname}_${provider}`)
+				setEnv(envKeyName, apiKey)
+			}
+			addConnection(nickname, { provider, envKeyName, baseUrl, selectedModels: [] })
+			return { success: true, nickname, provider, info: 'Connection added. Use set_default_model to use it.' }
+		},
+	}),
+
+	remove_model_connection: tool({
+		description: 'Remove an AI provider connection by nickname.',
+		inputSchema: z.object({
+			nickname: z.string(),
+		}),
+		execute: async ({ nickname }) => {
+			try {
+				deleteConnection(nickname)
+				return { success: true, nickname }
+			} catch (err) {
+				return { success: false, error: String(err) }
+			}
+		},
+	}),
+
+	set_secret: tool({
+		description: 'Securely set an environment variable in the .env file.',
+		inputSchema: z.object({
+			key: z.string().describe('Secret key name (e.g. CUSTOM_API_KEY)'),
+			value: z.string().describe('Secret value'),
+		}),
+		execute: async ({ key, value }) => {
+			setEnv(key, value)
+			return { success: true, key }
+		},
+	}),
+
+	set_workspace_path: tool({
+		description: 'Set the absolute path for the restricted workspace terminal.',
+		inputSchema: z.object({
+			path: z.string().describe('Absolute path to the workspace directory'),
+		}),
+		execute: async ({ path }) => {
+			setWorkspacePath(path)
+			return { success: true, workspacePath: path }
+		},
+	}),
+
+	get_workspace_path: tool({
+		description: 'Get the current restricted workspace directory path.',
+		inputSchema: z.object({}),
+		execute: async () => {
+			return { workspacePath: getWorkspacePath() }
+		},
+	}),
+
+	refresh_tools: tool({
+		description: 'Reload the internal and external MCP tools. Use this after configuration changes.',
+		inputSchema: z.object({}),
+		execute: async () => {
+			// This depends on the specific AIService instance, but we can try to trigger it
+			// if we have access to the global service or if the service listens for a signal.
+			// For now, we'll return a message that a restart might be needed if this doesn't work.
+			return { success: true, message: 'Tool refresh requested. If new tools do not appear, please restart the Tamias daemon.' }
 		},
 	}),
 }

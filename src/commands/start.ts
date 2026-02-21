@@ -206,8 +206,8 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 			}
 
 			if (method === 'GET' && url.pathname === '/usage') {
-				const rows = db.query<{ timestamp: string, model: string, promptTokens: number | null, completionTokens: number | null }, []>(`
-                    SELECT timestamp, model, promptTokens, completionTokens
+				const rows = db.query<{ timestamp: string, model: string, sessionId: string, promptTokens: number | null, completionTokens: number | null }, []>(`
+                    SELECT timestamp, model, sessionId, promptTokens, completionTokens
                     FROM ai_logs ORDER BY id DESC
                 `).all()
 
@@ -222,9 +222,22 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 
 				let today = 0, yesterday = 0, thisWeek = 0, thisMonth = 0, total = 0
 
+				// Time series and distributions
+				const dailyMap: Record<string, number> = {}
+				const modelMap: Record<string, number> = {}
+				const initiatorMap: Record<string, number> = {}
+
+				// Initialize last 14 days with 0
+				for (let i = 0; i < 14; i++) {
+					const d = new Date(startOfToday.getTime() - (i * 86400000))
+					const key = d.toISOString().split('T')[0]
+					dailyMap[key] = 0
+				}
+
 				for (const r of rows) {
 					const cost = getEstimatedCost(r.model, r.promptTokens || 0, r.completionTokens || 0)
 					const d = new Date(r.timestamp)
+					const dateKey = d.toISOString().split('T')[0]
 
 					total += cost
 					if (d >= startOfToday) today += cost
@@ -232,9 +245,47 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 
 					if (d >= startOfWeek) thisWeek += cost
 					if (d >= startOfMonth) thisMonth += cost
+
+					// Time series (last 14 days)
+					if (dailyMap[dateKey] !== undefined) {
+						dailyMap[dateKey] += cost
+					}
+
+					// Distributions
+					modelMap[r.model] = (modelMap[r.model] || 0) + cost
+
+					// Basic initiator detection from sessionId
+					let initiator = 'System'
+					if (r.sessionId.startsWith('sess_')) initiator = 'CLI/Global'
+					else if (r.sessionId.includes('discord')) initiator = 'Discord'
+					else if (r.sessionId.includes('telegram')) initiator = 'Telegram'
+					else initiator = 'Other'
+
+					initiatorMap[initiator] = (initiatorMap[initiator] || 0) + cost
 				}
 
-				return json({ today, yesterday, thisWeek, thisMonth, total })
+				const dailySpend = Object.entries(dailyMap)
+					.map(([date, cost]) => ({ date, cost }))
+					.sort((a, b) => a.date.localeCompare(b.date))
+
+				const modelDistribution = Object.entries(modelMap)
+					.map(([name, value]) => ({ name, value }))
+					.sort((a, b) => b.value - a.value)
+
+				const initiatorDistribution = Object.entries(initiatorMap)
+					.map(([name, value]) => ({ name, value }))
+					.sort((a, b) => b.value - a.value)
+
+				return json({
+					today,
+					yesterday,
+					thisWeek,
+					thisMonth,
+					total,
+					dailySpend,
+					modelDistribution,
+					initiatorDistribution
+				})
 			}
 
 			if (method === 'POST' && url.pathname === '/session') {
