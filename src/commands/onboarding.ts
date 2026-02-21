@@ -109,6 +109,23 @@ async function setupChannel(
 export const runOnboarding = async (): Promise<void> => {
 	console.log('')
 
+	// Fast non-interactive mode for CI: create minimal persona files and exit
+	if (process.env.TAMIAS_CI === '1') {
+		const defaultHome = join(homedir(), '.tamias')
+		try { mkdirSync(defaultHome, { recursive: true }) } catch { }
+		const memoryDir = join(defaultHome, 'memory')
+		try { mkdirSync(memoryDir, { recursive: true }) } catch { }
+
+		writePersonaFile('IDENTITY.md', ['# IDENTITY', '', '- **Name:** CIBot', '- **Creature:** AI assistant', '- **Vibe:** warm & friendly', '- **Emoji:** 🐿️', ''].join('\n'))
+		writePersonaFile('USER.md', ['# USER', '', '- **Name:** Tester', '- **What to call them:** Tester', '- **Timezone:** UTC', '', ''].join('\n'))
+		writePersonaFile('SOUL.md', ['# SOUL', '', '## Purpose', '', 'Testing CI onboarding', ''].join('\n'))
+		scaffoldFromTemplates()
+		// try to set default workspace
+		try { setWorkspacePath(getDefaultWorkspacePath()) } catch { }
+		console.log(pc.green('✅ CI onboarding: persona files created'))
+		return
+	}
+
 	// ── Phase 0: Storage ───────────────────────────────────────────────────
 	p.intro(pc.bgMagenta(pc.black(' 🐿️  Tamias — First Run Setup ')))
 
