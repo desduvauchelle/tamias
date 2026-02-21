@@ -85,7 +85,12 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 	const dashboardLogPath = join(homedir(), '.tamias', 'dashboard.log')
 	const dashboardLogFile = Bun.file(dashboardLogPath)
 
-	const bunPath = Bun.which('bun') || 'bun'
+	if (!require('fs').existsSync(dashboardDir)) {
+		console.error(pc.red(`Dashboard directory not found: ${dashboardDir}`))
+		process.exit(1)
+	}
+
+	const bunPath = process.execPath
 	const dashboardProc = Bun.spawn([bunPath, 'run', 'dev', '-p', dashboardPort.toString()], {
 		cwd: dashboardDir,
 		stdout: dashboardLogFile,
