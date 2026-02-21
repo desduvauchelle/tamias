@@ -11,6 +11,7 @@ import { runModelCommand, runModelSetCommand } from './commands/model.ts'
 import { runOnboarding } from './commands/onboarding.ts'
 import { runUsageCommand } from './commands/usage.ts'
 import { runUpdateCommand } from './commands/update.ts'
+import { cronCommand } from './commands/cron.ts'
 
 const program = new Command()
 
@@ -18,6 +19,8 @@ program
 	.name('tamias')
 	.description('A secure, agentic AI chat interface powered by the Vercel AI SDK')
 	.version('1.0.0')
+
+program.addCommand(cronCommand)
 
 // ─── tamias config ────────────────────────────────────────────────────────────
 program

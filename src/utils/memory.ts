@@ -103,9 +103,14 @@ export function buildSystemPrompt(toolNames: string[], summary?: string): string
 		sections.push(files['USER.md'])
 	}
 
-	// Operating manual — safety, memory rules
+	// Operating manual
 	if (files['AGENTS.md']) {
 		sections.push(files['AGENTS.md'])
+	}
+
+	// Heartbeat agenda — periodic tasks
+	if (files['HEARTBEAT.md'] && files['HEARTBEAT.md'].trim()) {
+		sections.push(`# Periodic Tasks (HEARTBEAT.md)\n\n${files['HEARTBEAT.md']}`)
 	}
 
 	// Long-term memory

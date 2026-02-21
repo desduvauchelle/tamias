@@ -14,7 +14,7 @@ export type DaemonEvent =
 	| { type: 'start'; sessionId: string }
 	| { type: 'chunk'; text: string }
 	| { type: 'tool_call'; name: string; input: unknown }
-	| { type: 'done'; sessionId: string }
+	| { type: 'done'; sessionId: string; suppressed?: boolean }
 	| { type: 'error'; message: string }
 
 export interface IBridge {

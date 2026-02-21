@@ -76,12 +76,15 @@ export async function autoStartDaemon(): Promise<DaemonInfo> {
 	const entryPoint = join(projectRoot, 'src', 'index.ts')
 
 	// Spawn the daemon as a detached background process via index.ts
+	const logPath = join(homedir(), '.tamias', 'daemon.log')
+	const logFile = Bun.file(logPath)
+
 	const proc = Bun.spawn(
 		['bun', entryPoint, 'start', '--daemon'],
 		{
 			cwd: projectRoot,
 			detached: true,
-			stdio: ['ignore', 'ignore', 'ignore'],
+			stdio: ['ignore', logFile, logFile],
 		}
 	)
 	proc.unref()

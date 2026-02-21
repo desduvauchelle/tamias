@@ -148,6 +148,38 @@ tamias tools remove-mcp [name]  # Remove an external MCP server
 
 ---
 
+### `tamias cron`
+Manage recurring background tasks and heartbeats.
+
+```bash
+tamias cron list               # See all configured cron jobs
+tamias cron add                # Create a new recurring task (interactive if flags missing)
+# Options: --name, --schedule, --prompt, --target
+
+tamias cron edit [id]          # Update an existing job
+# Options: --name, --schedule, --prompt, --target, --enable, --disable
+
+tamias cron rm [id]            # Remove a job
+```
+
+**Common Flags**:
+- `--name <string>`: A descriptive name for the job.
+- `--schedule <string>`: The interval (e.g., `30m`) or 5-field cron.
+- `--prompt <string>`: The instructions for the agent.
+- `--target <string>`: Output destination (`last`, `discord:ID`, etc.).
+- `--enable` / `--disable`: Toggle the job status.
+
+**Schedule formats**:
+- Internal strings: `30s`, `1m`, `1h`, `1d`
+- Standard 5-field cron: `* * * * *` (minutes, hours, day of month, month, day of week)
+
+**Target formats**:
+- `last`: (Default) Sends output to the last active session.
+- `discord:<channelId>`: Sends output to a specific Discord channel.
+- `telegram:<chatId>`: Sends output to a specific Telegram chat.
+
+---
+
 ## Tools
 
 Tools make the AI **agentic** — it can call them autonomously and chain multiple calls to complete complex tasks.
@@ -191,8 +223,21 @@ Allows the AI to **self-manage** its own configuration and the daemon. Functions
 | `remove_mcp_server`| Remove an MCP server |
 | `daemon_status` | Get uptime, port, and PID |
 | `stop_daemon` | Shut down the Tamias daemon |
+| `list_channels` | List Discord/Telegram channel configs |
+| `configure_channel`| Enable/disable channels and set tokens |
 
-**The terminal tool is enabled by default.** The AI can use it without any extra setup.
+#### `cron` tool (built-in)
+
+Allows the AI to **manage its own schedule** and reminders. Functions:
+
+| Function | Description |
+|---|---|
+| `cron_list` | List all active cron jobs |
+| `cron_add` | Add a new recurring task or reminder |
+| `cron_edit` | Update an existing job |
+| `cron_remove` | Delete a job by ID |
+
+**The terminal and cron tools are enabled by default.** The AI can use them without any extra setup.
 
 ---
 
@@ -347,6 +392,6 @@ bun run build        # Build standalone binary
 - [x] Added basic memory for personality
 - [x] Add memory logic (update user/robot/memories), chat session length management (auto-summarize after 20 chats, and include summary in conversation memory instead of all the history, this should auto update memory files and conversation files)
 - [x] Bridge: We have terminal chats, but we want to connect to other chat interfaces, such as Discoard, Telegram for now. This bridge takes care of the connection and routing of messages between the daemon and the chat interface. The AI should be able to self add, remove, update this from a conversation. The messages from the various platforms need to be standardized to a single format before being sent to the daemon, and the response from the daemon needs to be converted to the appropriate format for the platform it's being sent to. The bridge should also handle the authentication with the various platforms, and the AI should be able to manage these connections from a conversation. The bridge should be able to handle multiple conversations at once, and route messages to the correct conversation through sessions.
-- [] Add notion of skills (directory of skills, and ability to load them on the fly, skills are at least a markdown file with a name, description, text to explain the whole skill and maybe other executble files that can be called by the skill to complete an action)
-- [] Add the notion of heartbeat, which is a cron job that runs every 30minutes by default but can be changed in the configuration file.
-- [] Add corn job management.
+- [x] Add notion of heartbeat, which is a cron job that runs every 30minutes by default but can be changed in the configuration file.
+- [x] Add cron job management.
+- [ ] Add the notion of skills (directory of skills, and ability to load them on the fly, skills are at least a markdown file with a name, description, text to explain the whole skill and maybe other executble files that can be called by the skill to complete an action) (In Progress)

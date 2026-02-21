@@ -4,6 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { loadConfig, getInternalToolConfig, type ToolFunctionConfig, type McpServerConfig } from './config.ts'
 import { terminalTools, TERMINAL_TOOL_NAME } from '../tools/terminal.ts'
 import { tamiasTools, TAMIAS_TOOL_NAME } from '../tools/tamias.ts'
+import { cronTools, CRON_TOOL_NAME } from '../tools/cron.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ToolSet = Record<string, any>
@@ -66,6 +67,7 @@ export async function buildActiveTools(): Promise<{
 	const internalCatalog: Record<string, ToolSet> = {
 		[TERMINAL_TOOL_NAME]: terminalTools as ToolSet,
 		[TAMIAS_TOOL_NAME]: tamiasTools as ToolSet,
+		[CRON_TOOL_NAME]: cronTools as ToolSet,
 	}
 
 	for (const [toolName, allFunctions] of Object.entries(internalCatalog)) {
