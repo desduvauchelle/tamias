@@ -1,5 +1,6 @@
 import { expect, test, describe, beforeEach, afterEach } from "bun:test"
-import { getDefaultWorkspacePath, loadConfig, saveConfig, TamiasConfig } from "./config"
+import { getDefaultWorkspacePath, loadConfig, saveConfig } from "./config"
+import type { TamiasConfig } from "./config"
 import { join } from "path"
 import { homedir } from "os"
 import { existsSync, unlinkSync, writeFileSync, mkdirSync, rmSync } from "fs"
