@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: dark --default, light;
+}
+
+@theme inline {
+  --font-mono: var(--font-geist-mono);
+}
