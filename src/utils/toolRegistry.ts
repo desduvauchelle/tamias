@@ -8,6 +8,7 @@ import { cronTools, CRON_TOOL_NAME } from '../tools/cron.ts'
 import { emailTools, EMAIL_TOOL_NAME } from '../tools/email.ts'
 import { githubTools, GITHUB_TOOL_NAME } from '../tools/github.ts'
 import { workspaceTools, WORKSPACE_TOOL_NAME } from '../tools/workspace.ts'
+import { geminiTools, GEMINI_TOOL_NAME } from '../tools/gemini.ts'
 import { createSubagentTools, SUBAGENT_TOOL_NAME } from '../tools/subagent.ts'
 import type { AIService } from '../services/aiService.ts'
 
@@ -76,6 +77,7 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 		[EMAIL_TOOL_NAME]: emailTools as ToolSet,
 		[GITHUB_TOOL_NAME]: githubTools as ToolSet,
 		[WORKSPACE_TOOL_NAME]: workspaceTools as ToolSet,
+		[GEMINI_TOOL_NAME]: geminiTools as ToolSet,
 		[SUBAGENT_TOOL_NAME]: createSubagentTools(aiService, sessionId) as ToolSet,
 	}
 

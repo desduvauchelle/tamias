@@ -42,6 +42,8 @@ export class DiscordBridge implements IBridge {
 			if (allowedChannels?.length && !allowedChannels.includes(message.channelId)) return
 
 			const channelId = message.channelId
+			console.log(`[Discord Bridge] Message received in channel ${channelId} from ${message.author.username}: "${message.content.slice(0, 80)}"`)
+
 			const sessionKey = this.channelSessions.get(channelId) ?? `dc_${channelId}`
 			this.channelSessions.set(channelId, sessionKey)
 
@@ -65,6 +67,7 @@ export class DiscordBridge implements IBridge {
 				content: message.content,
 			}
 
+			console.log(`[Discord Bridge] Dispatching to onMessage with channelUserId=${channelId}`)
 			this.onMessage?.(bridgeMsg, sessionKey)
 		})
 
@@ -78,12 +81,19 @@ export class DiscordBridge implements IBridge {
 	async handleDaemonEvent(event: DaemonEvent, sessionContext: any): Promise<void> {
 		if (!this.client) return
 		const channelId = String(sessionContext?.channelUserId ?? '')
-		if (!channelId) return
+		if (!channelId) {
+			console.error(`[Discord Bridge] handleDaemonEvent: no channelUserId in sessionContext`, sessionContext)
+			return
+		}
 
 		const ctx = this.contexts.get(channelId)
+		if (!ctx && event.type !== 'chunk') {
+			console.warn(`[Discord Bridge] handleDaemonEvent: no context found for channel ${channelId}, event=${event.type} (contexts: [${[...this.contexts.keys()].join(', ')}])`)
+		}
 
 		switch (event.type) {
 			case 'start': {
+				console.log(`[Discord Bridge] Processing started for channel ${channelId}, ctx found: ${!!ctx}`)
 				if (ctx) {
 					// 🧠 Add thinking reaction
 					try { await ctx.message.react('🧠') } catch { }
@@ -108,6 +118,7 @@ export class DiscordBridge implements IBridge {
 				if (ctx) {
 					clearInterval(ctx.typingInterval)
 					const fullText = ctx.buffer
+					console.log(`[Discord Bridge] Sending response to ${channelId} (${fullText.length} chars)`)
 					this.contexts.delete(channelId)
 
 					// Remove 👀 and 🧠 reactions

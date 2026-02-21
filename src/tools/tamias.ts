@@ -21,6 +21,7 @@ import { setEnv, removeEnv, generateSecureEnvKey } from '../utils/env.ts'
 import { isDaemonRunning, readDaemonInfo, getDaemonUrl } from '../utils/daemon.ts'
 import { TERMINAL_TOOL_NAME } from './terminal.ts'
 import { EMAIL_TOOL_NAME } from './email.ts'
+import { GEMINI_TOOL_NAME } from './gemini.ts'
 
 export const TAMIAS_TOOL_NAME = 'tamias'
 export const TAMIAS_TOOL_LABEL = '🤖 Tamias (self-management: models, tools, sessions, daemon)'
@@ -85,7 +86,7 @@ export const tamiasTools = {
 		inputSchema: z.object({}),
 		execute: async () => {
 			const { WORKSPACE_TOOL_NAME } = await import('./workspace.ts')
-			const knownInternal = [TERMINAL_TOOL_NAME, TAMIAS_TOOL_NAME, EMAIL_TOOL_NAME, WORKSPACE_TOOL_NAME]
+			const knownInternal = [TERMINAL_TOOL_NAME, TAMIAS_TOOL_NAME, EMAIL_TOOL_NAME, WORKSPACE_TOOL_NAME, GEMINI_TOOL_NAME]
 			const mcpServers = getAllMcpServers()
 			return {
 				internalTools: knownInternal.map((name) => {

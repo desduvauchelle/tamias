@@ -209,9 +209,13 @@ export class AIService {
 		const config = loadConfig()
 		const connection = config.connections[session.connectionNickname]
 		if (!connection) {
+			console.error(`[AIService] No connection found for "${session.connectionNickname}" (session ${session.id}, model "${session.model}"). Available: ${Object.keys(config.connections).join(', ')}`)
+			session.emitter.emit('event', { type: 'error', message: `No AI connection configured for "${session.connectionNickname}". Run 'tamias setup' to configure.` } as DaemonEvent)
 			session.processing = false
 			return
 		}
+
+		console.log(`[AIService] Processing message for session ${session.id} (${session.channelId}:${session.channelUserId ?? 'terminal'}) via ${session.model}`)
 
 		try {
 			await this.refreshTools(session.id)
@@ -305,6 +309,7 @@ export class AIService {
 				}).catch(() => { })
 			}
 		} catch (err) {
+			console.error(`[AIService] Error processing session ${session.id}:`, err)
 			session.emitter.emit('event', { type: 'error', message: String(err) } as DaemonEvent)
 		} finally {
 			session.processing = false

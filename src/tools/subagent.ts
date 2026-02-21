@@ -4,6 +4,7 @@ import { AIService } from '../services/aiService'
 import { loadAgents } from '../utils/agentsStore.ts'
 
 export const SUBAGENT_TOOL_NAME = 'subagent'
+export const SUBAGENT_TOOL_LABEL = '🧠 Sub-agent (spawn specialized agents)'
 
 export const createSubagentTools = (aiService: AIService, sessionId: string) => ({
 	spawn: tool({

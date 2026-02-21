@@ -129,7 +129,12 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 		// fallback to 'bun'
 	}
 
-	const dashboardProc = Bun.spawn([bunPath, 'run', 'dev', '-p', dashboardPort.toString()], {
+	// Use production mode if the dashboard has been built (`.next` dir exists),
+	// otherwise fall back to dev mode (e.g. running from project source).
+	const isBuilt = fs.existsSync(join(dashboardDir, '.next'))
+	const dashboardScript = isBuilt ? 'start' : 'dev'
+
+	const dashboardProc = Bun.spawn([bunPath, 'run', dashboardScript, '-p', dashboardPort.toString()], {
 		cwd: dashboardDir,
 		stdout: dashboardLogFile,
 		stderr: dashboardLogFile,
@@ -177,16 +182,21 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 	cronManager.start()
 
 	const onBridgeMessage = async (msg: BridgeMessage) => {
+		console.log(`[Bridge] Message from ${msg.channelId}:${msg.channelUserId} (${msg.channelName}) - "${msg.content.slice(0, 80)}"`)
 		let session = aiService.getSessionForBridge(msg.channelId, msg.channelUserId)
 		if (!session) {
+			console.log(`[Bridge] Creating new session for ${msg.channelId}:${msg.channelUserId}`)
 			session = aiService.createSession({
 				channelId: msg.channelId,
 				channelUserId: msg.channelUserId,
 				channelName: msg.channelName
 			})
-		} else if (msg.channelName && session.channelName !== msg.channelName) {
-			// Update channel name if it changed (e.g. channel renamed)
-			session.channelName = msg.channelName
+		} else {
+			console.log(`[Bridge] Reusing existing session ${session.id} for ${msg.channelId}:${msg.channelUserId}`)
+			if (msg.channelName && session.channelName !== msg.channelName) {
+				// Update channel name if it changed (e.g. channel renamed)
+				session.channelName = msg.channelName
+			}
 		}
 		await aiService.enqueueMessage(session.id, msg.content, msg.authorName)
 	}

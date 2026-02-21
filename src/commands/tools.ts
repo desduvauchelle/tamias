@@ -10,11 +10,25 @@ import {
 	type McpServerConfig,
 } from '../utils/config.ts'
 import { TERMINAL_TOOL_NAME, TERMINAL_TOOL_LABEL } from '../tools/terminal.ts'
+import { TAMIAS_TOOL_NAME, TAMIAS_TOOL_LABEL } from '../tools/tamias.ts'
+import { CRON_TOOL_NAME, CRON_TOOL_LABEL } from '../tools/cron.ts'
+import { EMAIL_TOOL_NAME, EMAIL_TOOL_LABEL } from '../tools/email.ts'
+import { GITHUB_TOOL_NAME, GITHUB_TOOL_LABEL } from '../tools/github.ts'
+import { WORKSPACE_TOOL_NAME, WORKSPACE_TOOL_LABEL } from '../tools/workspace.ts'
+import { GEMINI_TOOL_NAME, GEMINI_TOOL_LABEL } from '../tools/gemini.ts'
+import { SUBAGENT_TOOL_NAME, SUBAGENT_TOOL_LABEL } from '../tools/subagent.ts'
 
 // ─── Known internal tools ─────────────────────────────────────────────────────
 
 const INTERNAL_TOOLS: Record<string, string> = {
 	[TERMINAL_TOOL_NAME]: TERMINAL_TOOL_LABEL,
+	[TAMIAS_TOOL_NAME]: TAMIAS_TOOL_LABEL,
+	[CRON_TOOL_NAME]: CRON_TOOL_LABEL,
+	[EMAIL_TOOL_NAME]: EMAIL_TOOL_LABEL,
+	[GITHUB_TOOL_NAME]: GITHUB_TOOL_LABEL,
+	[WORKSPACE_TOOL_NAME]: WORKSPACE_TOOL_LABEL,
+	[GEMINI_TOOL_NAME]: GEMINI_TOOL_LABEL,
+	[SUBAGENT_TOOL_NAME]: SUBAGENT_TOOL_LABEL,
 }
 
 // ─── List ─────────────────────────────────────────────────────────────────────
