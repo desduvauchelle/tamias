@@ -2,72 +2,80 @@
 
 set -e
 
-# Configuration
+# ─── Config ───────────────────────────────────────────────────────────────────
 REPO="desduvauchelle/tamias"
 INSTALL_DIR="$HOME/.bun/bin"
 BINARY_NAME="tamias"
 
-# Setup temporary directory immediately
-TMP_DIR=$(mktemp -d /tmp/tamias-install.XXXXXX)
+# Pass --yes / -y (or TAMIAS_YES=1) to skip all prompts and use defaults.
+# Handy for CI and automated provisioning.
+AUTO_YES=0
+for arg in "$@"; do
+  case "$arg" in
+    --yes|-y) AUTO_YES=1 ;;
+  esac
+done
+[ "${TAMIAS_YES:-0}" = "1" ] && AUTO_YES=1
+
+# Helper: prompt via /dev/tty so it works even when stdin is a curl pipe.
+ask() {
+  local prompt="$1" default="$2" reply
+  if [ "$AUTO_YES" = "1" ]; then
+    echo "$default"
+    return
+  fi
+  printf "%s" "$prompt" > /dev/tty
+  read -r reply < /dev/tty
+  echo "${reply:-$default}"
+}
+
+TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-echo "--------------------------------------------------------"
-echo "🐿️ Installing Tamias from GitHub Releases"
-echo "--------------------------------------------------------"
+echo ""
+echo "  🐿️  Installing Tamias from GitHub Releases"
+echo "  ============================================"
 
 # 0. Check for Bun
 if ! command -v bun &> /dev/null; then
-    echo "=> Bun not found. Installing Bun..."
-    # Run the bun installer, which is generally robust
-    curl -fsSL https://bun.sh/install | bash
-    # Source bun for the current session if possible
-    export BUN_INSTALL="$HOME/.bun"
-    export PATH="$BUN_INSTALL/bin:$PATH"
+  echo ""
+  echo "=> Bun not found — installing Bun..."
+  curl -fsSL https://bun.sh/install | bash
+  export BUN_INSTALL="$HOME/.bun"
+  export PATH="$BUN_INSTALL/bin:$PATH"
+  echo "=> Bun installed."
 fi
+
+BUN_BIN=$(command -v bun || echo "$HOME/.bun/bin/bun")
 
 # 1. Determine OS and Architecture
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 
 case "$OS" in
-  darwin)
-    OS="darwin"
-    ;;
-  linux)
-    OS="linux"
-    ;;
-  *)
-    echo "Unsupported OS: $OS"
-    exit 1
-    ;;
+  darwin) ;;
+  linux)  ;;
+  *) echo "Unsupported OS: $OS"; exit 1 ;;
 esac
 
 case "$ARCH" in
-  x86_64 | amd64)
-    ARCH="x64"
-    ;;
-  aarch64 | arm64)
-    ARCH="arm64"
-    ;;
-  *)
-    echo "Unsupported architecture: $ARCH"
-    exit 1
-    ;;
+  x86_64|amd64)   ARCH="x64"   ;;
+  aarch64|arm64)  ARCH="arm64" ;;
+  *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
 ASSET_NAME="tamias-${OS}-${ARCH}"
 
-# 1.5 Choose storage location
+# ─── 1.5 Choose data directory ────────────────────────────────────────────────
 echo ""
 echo "  Where should Tamias store your data?"
 echo ""
-echo "  1) ~/.tamias              (default, hidden config folder)"
-echo "  2) ~/Documents/Tamias    (easy to find in Finder/Explorer)"
-echo "  3) Other                 (you choose the path)"
+echo "    1) ~/.tamias              (default — hidden config folder)"
+echo "    2) ~/Documents/Tamias    (easy to find in Finder)"
+echo "    3) Other                 (type a custom path)"
 echo ""
-printf "  Enter choice [1]: "
-read -r STORAGE_CHOICE
-STORAGE_CHOICE="${STORAGE_CHOICE:-1}"
+
+STORAGE_CHOICE=$(ask "  Your choice [1]: " "1")
 
 TAMIAS_DATA_HOME="$HOME/.tamias"
 
@@ -76,24 +84,24 @@ case "$STORAGE_CHOICE" in
     TAMIAS_DATA_HOME="$HOME/Documents/Tamias"
     ;;
   3)
-    printf "  Enter full path: "
-    read -r CUSTOM_PATH
-    # Expand ~ manually
-    CUSTOM_PATH="${CUSTOM_PATH/#\~/$HOME}"
-    if [ -z "$CUSTOM_PATH" ]; then
-      echo "  => No path given, defaulting to ~/.tamias"
-    elif [ ! -d "$CUSTOM_PATH" ]; then
-      printf "  Path does not exist. Create it? [Y/n]: "
-      read -r CREATE_CONFIRM
-      if [[ "$CREATE_CONFIRM" =~ ^[Nn] ]]; then
-        echo "  => Using ~/.tamias instead."
-      else
-        mkdir -p "$CUSTOM_PATH" || { echo "Error: Could not create $CUSTOM_PATH"; exit 1; }
-        TAMIAS_DATA_HOME="$CUSTOM_PATH"
-        echo "  => Created $CUSTOM_PATH"
-      fi
+    if [ "$AUTO_YES" = "1" ]; then
+      echo "  --yes flag active, using default ~/.tamias"
     else
-      TAMIAS_DATA_HOME="$CUSTOM_PATH"
+      CUSTOM_PATH=$(ask "  Full path: " "")
+      CUSTOM_PATH="${CUSTOM_PATH/#\~/$HOME}"
+      if [ -z "$CUSTOM_PATH" ]; then
+        echo "  => No path entered, using ~/.tamias"
+      elif [ ! -d "$CUSTOM_PATH" ]; then
+        CREATE=$(ask "  '$CUSTOM_PATH' doesn't exist. Create it? [Y/n]: " "Y")
+        if [[ "$CREATE" =~ ^[Nn] ]]; then
+          echo "  => Using ~/.tamias instead."
+        else
+          mkdir -p "$CUSTOM_PATH" || { echo "Error: Could not create $CUSTOM_PATH"; exit 1; }
+          TAMIAS_DATA_HOME="$CUSTOM_PATH"
+        fi
+      else
+        TAMIAS_DATA_HOME="$CUSTOM_PATH"
+      fi
     fi
     ;;
 esac
@@ -144,52 +152,63 @@ if [ ! -d "$INSTALL_DIR" ]; then
 fi
 
 # 4. Download and Install
-echo "=> Downloading $DOWNLOAD_URL ..."
-TMP_DIR=$(mktemp -d)
-TMP_BIN="$TMP_DIR/$BINARY_NAME"
-
-curl -sL --fail --progress-bar "$DOWNLOAD_URL" -o "$TMP_BIN"
-chmod +x "$TMP_BIN"
+echo ""
+echo "=> Downloading binary..."
+curl -fsSL --progress-bar "$DOWNLOAD_URL" -o "$TMP_DIR/$BINARY_NAME"
+chmod +x "$TMP_DIR/$BINARY_NAME"
 
 echo "=> Installing to $INSTALL_DIR ..."
 if [ ! -w "$INSTALL_DIR" ]; then
-    echo "=> Requires sudo to copy to $INSTALL_DIR"
-    sudo mv "$TMP_BIN" "$INSTALL_DIR/$BINARY_NAME"
+  echo "   (requires sudo)"
+  sudo mv "$TMP_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
 else
-    mv "$TMP_BIN" "$INSTALL_DIR/$BINARY_NAME"
+  mv "$TMP_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
 fi
 
-# 5. Setup Dashboard (Next.js source is needed for tamias start)
-echo "=> Setting up Dashboard..."
-DASHBOARD_PARENT="$HOME/.tamias"
-mkdir -p "$DASHBOARD_PARENT/src"
+# 5. Dashboard setup
+DASHBOARD_DIR="$HOME/.tamias/src/dashboard"
+mkdir -p "$HOME/.tamias/src"
 
-if [ ! -d "$DASHBOARD_PARENT/src/dashboard" ]; then
-    echo "=> Downloading dashboard source..."
-    # Download source to get dashboard
-    curl -sL "https://github.com/${REPO}/archive/refs/heads/main.zip" -o "$TMP_DIR/src.zip"
-    unzip -q "$TMP_DIR/src.zip" -d "$TMP_DIR"
+if [ ! -d "$DASHBOARD_DIR" ]; then
+  echo ""
+  echo "=> Downloading dashboard source..."
+  curl -fsSL "https://github.com/${REPO}/archive/refs/heads/main.zip" -o "$TMP_DIR/src.zip"
 
-    # The zip contains a folder like tamias-main or tamias-master
-    ZIP_FOLDER=$(find "$TMP_DIR" -maxdepth 1 -type d -name "tamias-*" | head -n 1)
+  echo "   Extracting..."
+  unzip -q "$TMP_DIR/src.zip" -d "$TMP_DIR/extracted"
 
-    if [ -d "$ZIP_FOLDER/src/dashboard" ]; then
-        mv "$ZIP_FOLDER/src/dashboard" "$DASHBOARD_PARENT/src/dashboard"
-        echo "=> Dashboard source installed to $DASHBOARD_PARENT/src/dashboard"
-    else
-        echo "⚠️ Could not find dashboard source in extract. ZIP_FOLDER=$ZIP_FOLDER"
-    fi
+  # Find the dashboard dir: prefer */src/dashboard, fall back to any dir named dashboard
+  DASH_SRC=""
+  DASH_SRC=$(find "$TMP_DIR/extracted" -mindepth 2 -maxdepth 6 -type d \
+    -path "*/src/dashboard" -print -quit 2>/dev/null || true)
+  if [ -z "$DASH_SRC" ]; then
+    DASH_SRC=$(find "$TMP_DIR/extracted" -mindepth 2 -maxdepth 6 -type d \
+      -name "dashboard" -print -quit 2>/dev/null || true)
+  fi
 
-    rm -rf "$ZIP_FOLDER" "$DASHBOARD_PARENT/src.zip"
+  if [ -n "$DASH_SRC" ] && [ -d "$DASH_SRC" ]; then
+    mv "$DASH_SRC" "$DASHBOARD_DIR"
+    echo "=> Dashboard source ready."
+  else
+    echo "WARNING: Dashboard source not found in zip — continuing without it."
+  fi
+else
+  echo ""
+  echo "=> Dashboard source already present — skipping download."
 fi
 
-# Install dashboard dependencies if bun is available
-if command -v bun &> /dev/null && [ -d "$DASHBOARD_PARENT/src/dashboard" ]; then
-    echo "=> Installing dashboard dependencies (this may take a minute)..."
-    cd "$DASHBOARD_PARENT/src/dashboard" && bun install &> /dev/null
-fi
+# Install dependencies and build
+if [ -d "$DASHBOARD_DIR" ] && [ -f "$DASHBOARD_DIR/package.json" ]; then
+  echo "=> Installing dashboard dependencies (may take a minute)..."
+  "$BUN_BIN" install --cwd "$DASHBOARD_DIR" 2>&1 | tail -3
 
-rm -rf "$TMP_DIR"
+  echo "=> Building dashboard..."
+  if "$BUN_BIN" run --cwd "$DASHBOARD_DIR" build 2>&1 | tail -5; then
+    echo "=> Dashboard built and ready."
+  else
+    echo "WARNING: Dashboard build failed — dev mode will still work."
+  fi
+fi
 
 # 6. PATH Setup
 SHELL_NAME=$(basename "$SHELL")
@@ -209,45 +228,35 @@ case "$SHELL_NAME" in
 esac
 
 NEEDS_RESTART=false
-
 if [ -n "$PROFILE_FILE" ] && [ -f "$PROFILE_FILE" ]; then
   if ! grep -q "$INSTALL_DIR" "$PROFILE_FILE"; then
-    if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-      echo "=> Adding $INSTALL_DIR to PATH in $PROFILE_FILE"
-      echo "" >> "$PROFILE_FILE"
-      echo "# Tamias PATH" >> "$PROFILE_FILE"
-      echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> "$PROFILE_FILE"
-      NEEDS_RESTART=true
-    fi
-  elif [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+    echo ""                                       >> "$PROFILE_FILE"
+    echo "# Tamias"                               >> "$PROFILE_FILE"
+    echo "export PATH=\"\$PATH:$INSTALL_DIR\""   >> "$PROFILE_FILE"
     NEEDS_RESTART=true
   fi
 fi
 
-DISPLAY_DATA_HOME="$TAMIAS_DATA_HOME"
-[ "$TAMIAS_DATA_HOME" = "$HOME/.tamias" ] && DISPLAY_DATA_HOME="~/.tamias" || true
+# Make tamias available in the current shell immediately (no restart needed)
+export PATH="$PATH:$INSTALL_DIR"
+
+DISPLAY_DATA_HOME="${TAMIAS_DATA_HOME/$HOME/~}"
 
 echo ""
-echo "╔══════════════════════════════════════════════════════╗"
-echo "║   🐿️  Tamias $VERSION — Installed!                     "
-echo "╠══════════════════════════════════════════════════════╣"
-echo "║   Data stored in: $DISPLAY_DATA_HOME"
-echo "╠══════════════════════════════════════════════════════╣"
-echo "║   To get started:                                    "
-echo "║                                                      "
-if [ "$NEEDS_RESTART" = true ]; then
-echo "║   1. Reload your shell:                              "
-echo "║      source $PROFILE_FILE"
-echo "║                                                      "
-echo "║   2. Then run:                                       "
-else
-echo "║   Run:                                               "
+echo "  ╔══════════════════════════════════════════════════════╗"
+echo "  ║  🐿️  Tamias $VERSION — Ready!                          "
+echo "  ╠══════════════════════════════════════════════════════╣"
+printf "  ║  Data dir  : %s\n"   "$DISPLAY_DATA_HOME"
+printf "  ║  Binary    : %s/%s\n" "$INSTALL_DIR" "$BINARY_NAME"
+echo "  ╠══════════════════════════════════════════════════════╣"
+if [ "$NEEDS_RESTART" = "true" ]; then
+  echo "  ║  PATH updated — open a new terminal, or run:"
+  printf "  ║    source %s\n" "$PROFILE_FILE"
+  echo "  ╠══════════════════════════════════════════════════════╣"
 fi
-echo "║      tamias                                          "
-echo "║                                                      "
-echo "║   This starts the setup wizard. After setup:         "
-echo "║      tamias start   — start the background daemon    "
-echo "║      tamias chat    — open the chat interface        "
-echo "║      tamias stop    — stop the daemon                "
-echo "╚══════════════════════════════════════════════════════╝"
+echo "  ║"
+echo "  ║  Run:  tamias"
+echo "  ║        (runs the setup wizard on first launch)"
+echo "  ║"
+echo "  ╚══════════════════════════════════════════════════════╝"
 echo ""
