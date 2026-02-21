@@ -1,8 +1,4 @@
-import { join } from 'path'
-import { homedir } from 'os'
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
-
-export const LOGS_ROOT = join(homedir(), '.tamias', 'logs', 'ai-requests')
+import { db } from './db'
 
 export interface AiLogPayload {
 	timestamp: string
@@ -20,31 +16,27 @@ export interface AiLogPayload {
 	response: string
 }
 
-function ensureLogsDir(): void {
-	if (!existsSync(LOGS_ROOT)) {
-		mkdirSync(LOGS_ROOT, { recursive: true })
-	}
-}
-
-/** Get the log file path based on the current month (YYYY-MM) */
-function getMonthLogFile(isoDate: string): string {
-	const month = isoDate.slice(0, 7) // e.g., "2024-02"
-	return join(LOGS_ROOT, `${month}.jsonl`)
-}
-
 /**
- * Appends a log entry to the JSONL file asynchronously.
- * Fire-and-forget to avoid blocking the main daemon process.
+ * Appends a log entry to the SQLite database.
  */
 export function logAiRequest(payload: AiLogPayload): void {
 	try {
-		ensureLogsDir()
-		const filePath = getMonthLogFile(payload.timestamp)
-		const line = JSON.stringify(payload) + '\n'
-
-		// Use synchronous write since it's just a single append locally,
-		// but we wrap the whole call in a try/catch so it doesn't crash the server.
-		writeFileSync(filePath, line, { flag: 'a', encoding: 'utf-8' })
+		db.prepare(`
+            INSERT INTO ai_logs (timestamp, sessionId, model, provider, action, durationMs, promptTokens, completionTokens, totalTokens, requestMessagesJson, response)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+			payload.timestamp,
+			payload.sessionId,
+			payload.model,
+			payload.provider,
+			payload.action,
+			payload.durationMs,
+			payload.tokens?.prompt || null,
+			payload.tokens?.completion || null,
+			payload.tokens?.total || null,
+			JSON.stringify(payload.messages),
+			payload.response
+		)
 	} catch (err) {
 		console.error('⚠️  Failed to write AI request log:', err)
 	}

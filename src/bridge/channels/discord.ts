@@ -149,6 +149,20 @@ export class DiscordBridge implements IBridge {
 				}
 				break
 			}
+			case 'file': {
+				if (ctx) {
+					try {
+						const channel = ctx.message.channel
+						const anyChannel = channel as any
+						if (typeof anyChannel.send === 'function') {
+							await anyChannel.send({ files: [{ attachment: event.buffer, name: event.name }] })
+						}
+					} catch (err) {
+						console.error(`[Discord Bridge] Failed to send file to ${channelId}:`, err)
+					}
+				}
+				break
+			}
 		}
 	}
 

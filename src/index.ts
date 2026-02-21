@@ -12,6 +12,7 @@ import { runOnboarding } from './commands/onboarding.ts'
 import { runUsageCommand } from './commands/usage.ts'
 import { runUpdateCommand } from './commands/update.ts'
 import { cronCommand } from './commands/cron.ts'
+import { runEmailsCommand, runEmailsListCommand, runEmailsAddCommand, runEmailsEditCommand, runEmailsDeleteCommand } from './commands/emails.ts'
 
 const program = new Command()
 
@@ -179,5 +180,34 @@ channelsCmd
 	.argument('[platform]', 'The channel platform to remove (e.g. discord or telegram)')
 	.description('Remove a channel configuration')
 	.action(runChannelsRemoveCommand)
+
+// ─── tamias emails ────────────────────────────────────────────────────────────
+const emailsCmd = program
+	.command('emails')
+	.description('Manage email accounts for the email MCP tool')
+	.action(runEmailsCommand)
+
+emailsCmd
+	.command('list')
+	.description('List configured email accounts')
+	.action(runEmailsListCommand)
+
+emailsCmd
+	.command('add')
+	.description('Add a new email account')
+	.action(runEmailsAddCommand)
+
+emailsCmd
+	.command('edit')
+	.argument('[nickname]', 'The nickname of the email account to edit')
+	.description('Edit an existing email account')
+	.action(runEmailsEditCommand)
+
+emailsCmd
+	.command('delete')
+	.alias('remove')
+	.argument('[nickname]', 'The nickname of the email account to delete')
+	.description('Delete an email account')
+	.action(runEmailsDeleteCommand)
 
 program.parse(process.argv)

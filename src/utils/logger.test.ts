@@ -1,13 +1,9 @@
 import { expect, test, describe } from "bun:test"
-import { logAiRequest, LOGS_ROOT } from "./logger.ts"
-import { join } from "path"
-import { existsSync, readFileSync, writeFileSync } from "fs"
+import { logAiRequest } from "./logger.ts"
+import { db } from "./db.ts"
 
 describe("Logger", () => {
-	const currentMonth = new Date().toISOString().slice(0, 7)
-	const expectedFile = join(LOGS_ROOT, `${currentMonth}.jsonl`)
-
-	test("appends AI request correctly and handles Vercel AI SDK token extraction", () => {
+	test("appends AI request correctly to SQLite and handles Vercel AI SDK token extraction", () => {
 		// Mock the Vercel AI SDK usage object
 		const mockVercelUsage = {
 			inputTokens: 120,
@@ -31,29 +27,24 @@ describe("Logger", () => {
 			response: "test response"
 		}
 
-		const initialLength = existsSync(expectedFile) ? readFileSync(expectedFile, 'utf-8').trim().split('\n').filter(Boolean).length : 0
+		const initialCount = db.query<{ count: number }, [string]>('SELECT COUNT(*) as count FROM ai_logs WHERE sessionId = ?').get('test-logger-session')?.count || 0
 
 		logAiRequest(payload)
 
-		expect(existsSync(expectedFile)).toBe(true)
-
-		const content = readFileSync(expectedFile, 'utf-8')
-		const lines = content.trim().split('\n').filter(Boolean)
+		const afterCount = db.query<{ count: number }, [string]>('SELECT COUNT(*) as count FROM ai_logs WHERE sessionId = ?').get('test-logger-session')?.count || 0
 
 		// Check log length increased by 1
-		expect(lines.length).toBe(initialLength + 1)
+		expect(afterCount).toBe(initialCount + 1)
 
-		const lastLine = lines[lines.length - 1]
-		const parsed = JSON.parse(lastLine!)
+		const lastLog = db.query<any, [string]>('SELECT * FROM ai_logs WHERE sessionId = ? ORDER BY id DESC LIMIT 1').get('test-logger-session')
 
-		expect(parsed.sessionId).toBe("test-logger-session")
-		expect(parsed.model).toBe("test-model-42")
-		expect(parsed.tokens.prompt).toBe(120)
-		expect(parsed.tokens.completion).toBe(45)
-		expect(parsed.durationMs).toBe(150)
+		expect(lastLog.sessionId).toBe("test-logger-session")
+		expect(lastLog.model).toBe("test-model-42")
+		expect(lastLog.promptTokens).toBe(120)
+		expect(lastLog.completionTokens).toBe(45)
+		expect(lastLog.durationMs).toBe(150)
 
-		// Cleanup: remove the test line we just appended
-		const cleaned = lines.filter(l => !l.includes('"sessionId":"test-logger-session"'))
-		writeFileSync(expectedFile, cleaned.join('\n') + (cleaned.length ? '\n' : ''), 'utf-8')
+		// Cleanup: remove the test row we just inserted
+		db.prepare('DELETE FROM ai_logs WHERE id = ?').run(lastLog.id)
 	})
 })

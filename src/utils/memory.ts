@@ -2,6 +2,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
 import { getBridgesConfig } from './config.ts'
+import { getLoadedSkills } from './skills.js'
 
 
 export const MEMORY_DIR = join(homedir(), '.tamias', 'memory')
@@ -10,7 +11,7 @@ const DAILY_DIR = join(MEMORY_DIR, 'daily')
 
 // ─── Persona files ────────────────────────────────────────────────────────────
 
-const PERSONA_FILES = ['IDENTITY.md', 'USER.md', 'SOUL.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md'] as const
+const PERSONA_FILES = ['SYSTEM.md', 'IDENTITY.md', 'USER.md', 'SOUL.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md'] as const
 
 function ensureMemoryDir(): void {
 	if (!existsSync(MEMORY_DIR)) mkdirSync(MEMORY_DIR, { recursive: true })
@@ -35,21 +36,31 @@ export function writePersonaFile(name: string, content: string): void {
 	writeFileSync(join(MEMORY_DIR, name), content, 'utf-8')
 }
 
-/** Copy template files (SOUL, AGENTS, TOOLS, HEARTBEAT) into memory dir as starting points */
+/** Copy template files into memory dir as starting points */
 export function scaffoldFromTemplates(): void {
 	ensureMemoryDir()
-	const toScaffold = ['SOUL.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md']
-	for (const file of toScaffold) {
+
+	// These files are only copied once if they don't exist
+	const toScaffoldOnce = ['SOUL.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md']
+	for (const file of toScaffoldOnce) {
 		const dest = join(MEMORY_DIR, file)
 		if (!existsSync(dest)) {
 			const src = join(TEMPLATES_DIR, file)
 			if (existsSync(src)) {
-				// Strip YAML frontmatter before copying
 				let content = readFileSync(src, 'utf-8')
 				content = stripFrontmatter(content)
 				writeFileSync(dest, content, 'utf-8')
 			}
 		}
+	}
+
+	// SYSTEM.md is force-overwritten every time to ensure upstream updates propagate
+	const systemSrc = join(TEMPLATES_DIR, 'SYSTEM.md')
+	if (existsSync(systemSrc)) {
+		const dest = join(MEMORY_DIR, 'SYSTEM.md')
+		let content = readFileSync(systemSrc, 'utf-8')
+		content = stripFrontmatter(content)
+		writeFileSync(dest, content, 'utf-8')
 	}
 }
 
@@ -87,6 +98,11 @@ export function buildSystemPrompt(toolNames: string[], summary?: string): string
 
 	sections.push(`# Memory Location\n\nYour memory and persona files (USER.md, IDENTITY.md, SOUL.md, AGENTS.md, MEMORY.md, and daily logs) are persistently stored at the absolute path \`~/.tamias/memory\`.\nWhen instructed to read or update your memory, you MUST use absolute paths pointing to this directory (e.g., \`~/.tamias/memory/USER.md\`).`)
 
+
+	// System framework overrides
+	if (files['SYSTEM.md']) {
+		sections.push(files['SYSTEM.md'])
+	}
 
 	// Soul first — defines core behaviour
 	if (files['SOUL.md']) {
@@ -130,7 +146,14 @@ export function buildSystemPrompt(toolNames: string[], summary?: string): string
 
 	// Tools
 	if (toolNames.length > 0) {
-		sections.push(`# Available Tools\n\nYou have access to: ${toolNames.map((t) => `\`${t}\``).join(', ')}.\nTool names use the format \`toolName__functionName\`.`)
+		sections.push(`# Available Tools\n\nYou have access to: ${toolNames.map((t) => `\`${t}\``).join(', ')}.\nTool names use the format \`toolName__functionName\`.\n`)
+	}
+
+	// Skills
+	const skills = getLoadedSkills()
+	if (skills.length > 0) {
+		const skillsList = skills.map(s => `- \`${s.name}\` (at \`${s.sourceDir}/SKILL.md\`): ${s.description}`).join('\n')
+		sections.push(`# Available Skills\n\nYou have access to the following skills. You can read their detailed instructions by reading their \`SKILL.md\` file using your file reading tools if you feel they are applicable to the task at hand.\n\n${skillsList}`)
 	}
 
 	// Active Channels

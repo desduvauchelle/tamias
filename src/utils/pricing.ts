@@ -29,6 +29,10 @@ const PRICING: Record<string, ModelPricing> = {
 	// DeepSeek (Approximation)
 	'deepseek-chat': { input: 0.14, output: 0.28 },
 	'deepseek-reasoner': { input: 0.55, output: 2.19 },
+
+	// Generic/Future fallbacks
+	'gpt-5-mini': { input: 0.15, output: 0.60 },
+	'gpt-5': { input: 2.50, output: 10.00 },
 }
 
 export function getEstimatedCost(modelId: string, inputTokens: number, outputTokens: number): number {
@@ -43,9 +47,17 @@ export function getEstimatedCost(modelId: string, inputTokens: number, outputTok
 	}
 
 	if (!pricing) {
-		// Default to something reasonable if unknown - maybe gpt-4o prices as a safe high-ish baseline?
-		// Or 0 to avoid misleading high numbers? Let's use 0 to be conservative.
-		return 0
+		// Heuristic fallbacks for unknown models based on name
+		if (cleanId.includes('mini') || cleanId.includes('flash') || cleanId.includes('haiku') || cleanId.includes('8b')) {
+			pricing = { input: 0.15, output: 0.60 } // Cheap tier fallback
+		} else if (cleanId.includes('pro') || cleanId.includes('sonnet') || cleanId.includes('70b') || cleanId.includes('gpt-4')) {
+			pricing = { input: 3.00, output: 15.00 } // Mid tier fallback
+		} else if (cleanId.includes('opus') || cleanId.includes('large') || cleanId.includes('o1') || cleanId.includes('o3')) {
+			pricing = { input: 15.00, output: 60.00 } // Expensive tier fallback
+		} else {
+			// Catch-all
+			return 0
+		}
 	}
 
 	const inputCost = (inputTokens / 1_000_000) * pricing.input
@@ -55,10 +67,13 @@ export function getEstimatedCost(modelId: string, inputTokens: number, outputTok
 }
 
 export function formatCurrency(amount: number): string {
+	if (amount > 0 && amount < 0.000001) {
+		return '<$0.000001'
+	}
 	return new Intl.NumberFormat('en-US', {
 		style: 'currency',
 		currency: 'USD',
 		minimumFractionDigits: 2,
-		maximumFractionDigits: 4,
+		maximumFractionDigits: 6,
 	}).format(amount)
 }

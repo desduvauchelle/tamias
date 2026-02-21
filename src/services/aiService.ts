@@ -26,7 +26,7 @@ export interface Session {
 	updatedAt: Date
 	queue: MessageJob[]
 	processing: boolean
-	messages: Array<{ role: 'user' | 'assistant'; content: string }>
+	messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
 	summary?: string
 	emitter: EventEmitter
 	heartbeatTimer: ReturnType<typeof setInterval> | null
@@ -60,7 +60,7 @@ export class AIService {
 	private loadAllSessions() {
 		const stored = listAllStoredSessions()
 		for (const s of stored) {
-			const full = loadSessionFromDisk(s.id, s.monthDir)
+			const full = loadSessionFromDisk(s.id)
 			if (full) {
 				const [nickname, ...rest] = full.model.split('/')
 				const session: Session = {

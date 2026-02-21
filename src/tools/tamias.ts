@@ -14,6 +14,7 @@ import {
 } from '../utils/config.ts'
 import { isDaemonRunning, readDaemonInfo, getDaemonUrl } from '../utils/daemon.ts'
 import { TERMINAL_TOOL_NAME } from './terminal.ts'
+import { EMAIL_TOOL_NAME } from './email.ts'
 
 export const TAMIAS_TOOL_NAME = 'tamias'
 export const TAMIAS_TOOL_LABEL = '🤖 Tamias (self-management: models, tools, sessions, daemon)'
@@ -77,7 +78,7 @@ export const tamiasTools = {
 		description: 'List all configured internal tools and external MCP servers.',
 		inputSchema: z.object({}),
 		execute: async () => {
-			const knownInternal = [TERMINAL_TOOL_NAME, TAMIAS_TOOL_NAME]
+			const knownInternal = [TERMINAL_TOOL_NAME, TAMIAS_TOOL_NAME, EMAIL_TOOL_NAME]
 			const mcpServers = getAllMcpServers()
 			return {
 				internalTools: knownInternal.map((name) => {

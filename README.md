@@ -1,5 +1,7 @@
 # Tamias 🐿️
 
+![Tamias Mascot](src/assets/mascot.png)
+
 > A secure, agentic AI chat interface for the terminal — powered by the Vercel AI SDK and Bun.
 
 Tamias lets you configure multiple AI provider connections (OpenAI, Anthropic, Google, OpenRouter), chat with any of them from the terminal, and give the AI access to **tools** — including a built-in terminal tool that lets it autonomously run commands, navigate your filesystem, read and write files, and more.

@@ -96,6 +96,17 @@ export const TamiasConfigSchema = z.object({
 	internalTools: z.record(z.string(), InternalToolConfigSchema).optional(),
 	mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
 	bridges: BridgesConfigSchema.default({ terminal: { enabled: true } }),
+	emails: z.record(z.string(), z.object({
+		nickname: z.string(),
+		enabled: z.boolean().default(false),
+		envKeyName: z.string().optional(),
+		appPassword: z.string().optional(), // legacy/temp
+		accountName: z.string().default('personal'),
+		isDefault: z.boolean().default(false),
+		permissions: z.object({
+			whitelist: z.array(z.string()).default([]),
+		}).default({ whitelist: [] }),
+	})).optional(),
 })
 
 export type TamiasConfig = z.infer<typeof TamiasConfigSchema>
@@ -148,6 +159,30 @@ export const loadConfig = (): TamiasConfig => {
 			delete data.bridges.telegram.botToken
 			needsMigration = true
 		}
+
+		// Migrate legacy single email tool config
+		const legacyData = data as any
+		if (legacyData.email) {
+			const old = legacyData.email
+			const nickname = 'default'
+			data.emails = { [nickname]: { ...old, nickname, isDefault: true } }
+			delete legacyData.email
+			needsMigration = true
+		}
+
+		if (data.emails) {
+			for (const [key, emailCfg] of Object.entries(data.emails)) {
+				if (emailCfg.appPassword) {
+					const envKey = generateSecureEnvKey(`EMAIL_${key.toUpperCase()}`)
+					setEnv(envKey, emailCfg.appPassword)
+					const anyCfg = emailCfg as any
+					anyCfg.envKeyName = envKey
+					delete anyCfg.appPassword
+					needsMigration = true
+				}
+			}
+		}
+
 
 		if (needsMigration) {
 			saveConfig(data) // Remove plaintext secrets from the config file immediately
@@ -314,5 +349,53 @@ export const getBotTokenForBridge = (platform: 'discord' | 'telegram'): string |
 export const setBridgesConfig = (bridgesConfig: BridgesConfig): void => {
 	const c = loadConfig()
 	c.bridges = bridgesConfig
+	saveConfig(c)
+}
+
+export const getAllEmailConfigs = () => {
+	const config = loadConfig()
+	return config.emails ?? {}
+}
+
+export const getEmailConfig = (nickname?: string) => {
+	const emails = getAllEmailConfigs()
+	if (nickname) return emails[nickname]
+	// Or first enabled one or marked as default
+	return Object.values(emails).find(e => e.isDefault) || Object.values(emails)[0]
+}
+
+export const getEmailPassword = (nickname?: string): string | undefined => {
+	const config = getEmailConfig(nickname)
+	if (!config || !config.envKeyName) return undefined
+	return getEnv(config.envKeyName)
+}
+
+export const setEmailConfig = (nickname: string, config: any): void => {
+	const c = loadConfig()
+	if (!c.emails) c.emails = {}
+	c.emails[nickname] = config
+	saveConfig(c)
+}
+
+export const updateEmailConfig = (nickname: string, config: any): void => {
+	const c = loadConfig()
+	if (!c.emails || !c.emails[nickname]) throw new Error(`Email account '${nickname}' not found.`)
+	c.emails[nickname] = { ...c.emails[nickname], ...config }
+	saveConfig(c)
+}
+
+export const deleteEmailConfig = (nickname: string): void => {
+	const c = loadConfig()
+	if (!c.emails || !c.emails[nickname]) throw new Error(`Email account '${nickname}' not found.`)
+	delete c.emails[nickname]
+	saveConfig(c)
+}
+
+export const renameEmailConfig = (oldNickname: string, newNickname: string): void => {
+	const c = loadConfig()
+	if (!c.emails || !c.emails[oldNickname]) throw new Error(`Email account '${oldNickname}' not found.`)
+	if (c.emails[newNickname]) throw new Error(`Email account '${newNickname}' already exists.`)
+	c.emails[newNickname] = { ...c.emails[oldNickname], nickname: newNickname }
+	delete c.emails[oldNickname]
 	saveConfig(c)
 }

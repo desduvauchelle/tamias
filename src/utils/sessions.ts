@@ -1,14 +1,8 @@
-import { join } from 'path'
-import { homedir } from 'os'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
+import { db } from './db'
 import { z } from 'zod'
 
-export const SESSIONS_ROOT = join(homedir(), '.tamias', 'sessions')
-
-// ─── Zod Schemas ──────────────────────────────────────────────────────────────
-
 export const MessageSchema = z.object({
-	role: z.enum(['user', 'assistant']),
+	role: z.enum(['user', 'assistant', 'system']),
 	content: z.string(),
 })
 
@@ -25,77 +19,70 @@ export const SessionPersistSchema = z.object({
 export type SessionPersist = z.infer<typeof SessionPersistSchema>
 export type Message = z.infer<typeof MessageSchema>
 
-// ─── Persistence Logic ────────────────────────────────────────────────────────
-
-function ensureSessionsDir(monthDir: string): void {
-	const path = join(SESSIONS_ROOT, monthDir)
-	if (!existsSync(path)) mkdirSync(path, { recursive: true })
-}
-
-/** Get the directory for a session based on its creation date (YYYY-MM) */
-function getMonthDir(isoDate: string): string {
-	return isoDate.slice(0, 7) // 2024-02
-}
-
 /** Save a session to disk */
 export function saveSessionToDisk(session: SessionPersist): void {
-	const monthDir = getMonthDir(session.createdAt)
-	ensureSessionsDir(monthDir)
+	db.transaction(() => {
+		const [connectionNickname, ...rest] = session.model.split('/')
+		const modelId = rest.join('/')
 
-	const filePath = join(SESSIONS_ROOT, monthDir, `${session.id}.json`)
-	writeFileSync(filePath, JSON.stringify(session, null, 2), 'utf-8')
+		db.prepare(`
+			INSERT INTO sessions (id, name, model, connectionNickname, modelId, createdAt, updatedAt, summary)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				name = excluded.name,
+				updatedAt = excluded.updatedAt,
+				summary = excluded.summary
+		`).run(
+			session.id,
+			session.name || null,
+			session.model,
+			connectionNickname,
+			modelId,
+			session.createdAt,
+			session.updatedAt,
+			session.summary || null
+		)
+
+		// Synchronize messages by overwriting
+		db.prepare('DELETE FROM messages WHERE sessionId = ?').run(session.id)
+
+		const insertMsg = db.prepare('INSERT INTO messages (sessionId, role, content) VALUES (?, ?, ?)')
+		for (const msg of session.messages) {
+			insertMsg.run(session.id, msg.role, msg.content)
+		}
+	})()
 }
 
-/** Load a session from disk with validation */
-export function loadSessionFromDisk(id: string, monthDir: string): SessionPersist | null {
-	const filePath = join(SESSIONS_ROOT, monthDir, `${id}.json`)
-	if (!existsSync(filePath)) return null
+/** Load a session from disk */
+export function loadSessionFromDisk(id: string): SessionPersist | null {
+	const sessionRow = db.query<{ id: string, name: string | null, createdAt: string, updatedAt: string, model: string, summary: string | null }, [string]>('SELECT * FROM sessions WHERE id = ?').get(id)
 
-	try {
-		const raw = readFileSync(filePath, 'utf-8')
-		const parsed = JSON.parse(raw)
-		return SessionPersistSchema.parse(parsed)
-	} catch (err) {
-		console.error(`⚠️  Failed to load session ${id} from ${monthDir}: ${err}`)
-		return null
+	if (!sessionRow) return null
+
+	const messagesRows = db.query<{ role: string, content: string }, [string]>('SELECT role, content FROM messages WHERE sessionId = ? ORDER BY id ASC').all(id)
+
+	return {
+		id: sessionRow.id,
+		name: sessionRow.name || undefined,
+		createdAt: sessionRow.createdAt,
+		updatedAt: sessionRow.updatedAt,
+		model: sessionRow.model,
+		summary: sessionRow.summary || undefined,
+		messages: messagesRows as any
 	}
 }
 
 /** List all sessions from disk, grouped by metadata */
-export function listAllStoredSessions(): Array<{ id: string, name?: string, monthDir: string, updatedAt: string }> {
-	if (!existsSync(SESSIONS_ROOT)) return []
-
-	const results: Array<{ id: string, name?: string, monthDir: string, updatedAt: string }> = []
-	const months = readdirSync(SESSIONS_ROOT).filter(f => /^\d{4}-\d{2}$/.test(f))
-
-	for (const month of months) {
-		const monthPath = join(SESSIONS_ROOT, month)
-		const files = readdirSync(monthPath).filter(f => f.endsWith('.json'))
-
-		for (const file of files) {
-			try {
-				const raw = readFileSync(join(monthPath, file), 'utf-8')
-				const parsed = JSON.parse(raw)
-				// Partial parse just for metadata
-				results.push({
-					id: parsed.id,
-					name: parsed.name,
-					monthDir: month,
-					updatedAt: parsed.updatedAt
-				})
-			} catch {
-				// Skip corrupt files
-			}
-		}
-	}
-
-	return results.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+export function listAllStoredSessions(): Array<{ id: string, name?: string, updatedAt: string }> {
+	const rows = db.query<{ id: string, name: string | null, updatedAt: string }, []>('SELECT id, name, updatedAt FROM sessions ORDER BY updatedAt DESC').all()
+	return rows.map(r => ({
+		id: r.id,
+		name: r.name || undefined,
+		updatedAt: r.updatedAt
+	}))
 }
 
 /** Delete a session from disk */
-export function deleteSessionFromDisk(id: string, monthDir: string): void {
-	const filePath = join(SESSIONS_ROOT, monthDir, `${id}.json`)
-	if (existsSync(filePath)) {
-		unlinkSync(filePath)
-	}
+export function deleteSessionFromDisk(id: string): void {
+	db.prepare('DELETE FROM sessions WHERE id = ?').run(id)
 }

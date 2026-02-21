@@ -16,6 +16,7 @@ export type DaemonEvent =
 	| { type: 'tool_call'; name: string; input: unknown }
 	| { type: 'done'; sessionId: string; suppressed?: boolean }
 	| { type: 'error'; message: string }
+	| { type: 'file'; name: string; buffer: Buffer; mimeType: string }
 
 export interface IBridge {
 	name: string

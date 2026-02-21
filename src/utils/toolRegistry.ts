@@ -5,6 +5,7 @@ import { loadConfig, getInternalToolConfig, type ToolFunctionConfig, type McpSer
 import { terminalTools, TERMINAL_TOOL_NAME } from '../tools/terminal.ts'
 import { tamiasTools, TAMIAS_TOOL_NAME } from '../tools/tamias.ts'
 import { cronTools, CRON_TOOL_NAME } from '../tools/cron.ts'
+import { emailTools, EMAIL_TOOL_NAME } from '../tools/email.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ToolSet = Record<string, any>
@@ -68,6 +69,7 @@ export async function buildActiveTools(): Promise<{
 		[TERMINAL_TOOL_NAME]: terminalTools as ToolSet,
 		[TAMIAS_TOOL_NAME]: tamiasTools as ToolSet,
 		[CRON_TOOL_NAME]: cronTools as ToolSet,
+		[EMAIL_TOOL_NAME]: emailTools as ToolSet,
 	}
 
 	for (const [toolName, allFunctions] of Object.entries(internalCatalog)) {

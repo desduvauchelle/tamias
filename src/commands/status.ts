@@ -16,14 +16,16 @@ export const runStatusCommand = async () => {
 	const uptimeMs = Date.now() - new Date(info.startedAt).getTime()
 	const uptime = formatUptime(uptimeMs)
 
-	console.log([
+	const statusLines = [
 		'',
 		`  ${pc.green('●')} Daemon is ${pc.green('running')}`,
-		`  Port:    ${pc.bold(String(info.port))}`,
-		`  PID:     ${info.pid}`,
-		`  Uptime:  ${uptime}`,
-		`  Started: ${new Date(info.startedAt).toLocaleTimeString()}`,
-	].join('\n'))
+		`  Port:      ${pc.bold(String(info.port))}`,
+		`  Dashboard: ${pc.cyan(info.dashboardPort ? `http://localhost:${info.dashboardPort}` : 'Not running')}`,
+		`  PID:       ${info.pid}`,
+		`  Uptime:    ${uptime}`,
+		`  Started:   ${new Date(info.startedAt).toLocaleTimeString()}`,
+	]
+	console.log(statusLines.join('\n'))
 
 	try {
 		const res = await fetch(`${getDaemonUrl()}/sessions`)

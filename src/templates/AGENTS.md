@@ -122,9 +122,14 @@ Reactions are lightweight social signals. Humans use them constantly — they sa
 
 ## Tools
 
-Skills provide your tools. When you need one, check its `SKILL.md`. Keep local notes (camera names, SSH details, voice preferences) in `TOOLS.md`.
-
 **🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
+
+**🧩 Custom Skills:** You can extend your own capabilities by creating or updating skills.
+- **Location:** user skills are at `~/.tamias/skills/<skill-name>/SKILL.md`
+- **Structure:** Use a directory named with lowercase-no-spaces. Include a `SKILL.md` with YAML frontmatter (`name` and `description`).
+- **Creation:** Use `write_to_file` to create the directory and `SKILL.md`. The system will automatically detect and load it.
+- **Usage:** When you create a skill, describe what it does in the `description` so you know when to consult it in future sessions.
+
 
 **📝 Platform Formatting:**
 

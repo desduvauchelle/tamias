@@ -1,12 +1,17 @@
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
+import { join } from 'path'
+import { homedir } from 'os'
 import { findFreePort, writeDaemonInfo, clearDaemonInfo } from '../utils/daemon.ts'
 import { loadConfig, getDefaultModel, getAllModelOptions } from '../utils/config.ts'
 import { autoUpdateDaemon } from '../utils/update.ts'
 import { AIService, type Session } from '../services/aiService.ts'
 import { BridgeManager } from '../bridge/index.ts'
 import { CronManager } from '../bridge/cronManager.ts'
+import { watchSkills } from '../utils/skills.ts'
 import { ensureDefaultHeartbeat, type CronJob } from '../utils/cronStore.ts'
+import { db } from '../utils/db.ts'
+import { getEstimatedCost } from '../utils/pricing.ts'
 import type { DaemonEvent, BridgeMessage } from '../bridge/types.ts'
 
 const encoder = new TextEncoder()
@@ -51,6 +56,9 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 			p.note('Spawning background process...', 'Status')
 			const info = await autoStartDaemon()
 			p.outro(pc.green(`✅ Daemon started in background (PID: ${info.pid}, Port: ${info.port})`))
+			if (info.dashboardPort) {
+				p.outro(pc.green(`✅ Dashboard running at http://localhost:${info.dashboardPort}`))
+			}
 			process.exit(0)
 		} catch (err) {
 			p.cancel(pc.red(`Failed to start daemon: ${err}`))
@@ -67,12 +75,34 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 	}
 
 	const port = await findFreePort(9001)
-	writeDaemonInfo({ pid: process.pid, port, startedAt: new Date().toISOString() })
+	const dashboardPort = await findFreePort(5678)
+
+	// Start Next.js dashboard
+	const projectRoot = join(import.meta.dir, '../..')
+	const dashboardDir = join(projectRoot, 'src', 'dashboard')
+	const dashboardLogPath = join(homedir(), '.tamias', 'dashboard.log')
+	const dashboardLogFile = Bun.file(dashboardLogPath)
+
+	const dashboardProc = Bun.spawn(['bun', 'run', 'dev', '-p', dashboardPort.toString()], {
+		cwd: dashboardDir,
+		stdout: dashboardLogFile,
+		stderr: dashboardLogFile,
+	})
+	dashboardProc.unref()
+
+	writeDaemonInfo({
+		pid: process.pid,
+		port,
+		startedAt: new Date().toISOString(),
+		dashboardPort,
+		dashboardPid: dashboardProc.pid
+	})
 
 	// Initialize components
 	const bridgeManager = new BridgeManager()
 	const aiService = new AIService(bridgeManager)
 	await aiService.initialize()
+	await watchSkills()
 
 	// Cron setup
 	ensureDefaultHeartbeat()
@@ -138,6 +168,75 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 				return json(list)
 			}
 
+			if (method === 'GET' && url.pathname === '/logs') {
+				const rawLogs = db.query<{ timestamp: string, sessionId: string, model: string, provider: string, action: string, durationMs: number, promptTokens: number | null, completionTokens: number | null, totalTokens: number | null, requestMessagesJson: string, response: string }, []>(`
+                    SELECT timestamp, sessionId, model, provider, action, durationMs,
+                        promptTokens, completionTokens, totalTokens, requestMessagesJson, response
+                    FROM ai_logs ORDER BY id DESC LIMIT 100
+                `).all()
+
+				const logs = rawLogs.map((r, idx) => {
+					let msgs: any[] = []
+					try {
+						msgs = JSON.parse(r.requestMessagesJson || '[]')
+					} catch (e) {
+						console.error('Failed to parse logs messages:', e)
+					}
+					const systemMsg = msgs.find(m => m.role === 'system')?.content || ''
+					const userMsgs = msgs.filter(m => m.role === 'user').map(m => m.content)
+
+					const inputSnippet = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1] : ''
+					const cost = getEstimatedCost(r.model, r.promptTokens || 0, r.completionTokens || 0)
+
+					return {
+						id: `log-${idx}`,
+						timestamp: r.timestamp,
+						initiator: r.sessionId,
+						model: r.model,
+						systemPromptSnippet: systemMsg,
+						inputSnippet: inputSnippet,
+						outputSnippet: r.response,
+						estimatedCostUsd: cost,
+						tokensPrompt: r.promptTokens || 0,
+						tokensCompletion: r.completionTokens || 0
+					}
+				})
+
+				return json({ logs })
+			}
+
+			if (method === 'GET' && url.pathname === '/usage') {
+				const rows = db.query<{ timestamp: string, model: string, promptTokens: number | null, completionTokens: number | null }, []>(`
+                    SELECT timestamp, model, promptTokens, completionTokens
+                    FROM ai_logs ORDER BY id DESC
+                `).all()
+
+				const now = new Date()
+				const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+				const startOfYesterday = new Date(startOfToday.getTime() - 86400000)
+
+				const day = now.getDay()
+				const diff = now.getDate() - day + (day === 0 ? -6 : 1)
+				const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diff)
+				const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+				let today = 0, yesterday = 0, thisWeek = 0, thisMonth = 0, total = 0
+
+				for (const r of rows) {
+					const cost = getEstimatedCost(r.model, r.promptTokens || 0, r.completionTokens || 0)
+					const d = new Date(r.timestamp)
+
+					total += cost
+					if (d >= startOfToday) today += cost
+					else if (d >= startOfYesterday) yesterday += cost
+
+					if (d >= startOfWeek) thisWeek += cost
+					if (d >= startOfMonth) thisMonth += cost
+				}
+
+				return json({ today, yesterday, thisWeek, thisMonth, total })
+			}
+
 			if (method === 'POST' && url.pathname === '/session') {
 				const body = await req.json() as any
 				const session = aiService.createSession({ model: body.model, channelId: body.channelId, channelUserId: body.channelUserId })
@@ -187,6 +286,9 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 				await bridgeManager.destroyAll()
 				await aiService.shutdown()
 				cronManager.stop()
+				if (dashboardProc) {
+					try { dashboardProc.kill() } catch { /* ignore */ }
+				}
 				clearDaemonInfo()
 				setTimeout(() => process.exit(0), 200)
 				return json({ ok: true })
@@ -196,7 +298,15 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 		},
 	})
 
-	process.on('SIGTERM', () => { clearDaemonInfo(); process.exit(0) })
-	process.on('SIGINT', () => { clearDaemonInfo(); process.exit(0) })
+	process.on('SIGTERM', () => {
+		if (dashboardProc) { try { dashboardProc.kill() } catch { /* ignore */ } }
+		clearDaemonInfo()
+		process.exit(0)
+	})
+	process.on('SIGINT', () => {
+		if (dashboardProc) { try { dashboardProc.kill() } catch { /* ignore */ } }
+		clearDaemonInfo()
+		process.exit(0)
+	})
 	await new Promise<void>(() => { })
 }

@@ -1,9 +1,8 @@
-import { join } from 'path'
-import { existsSync, readFileSync, readdirSync } from 'fs'
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
-import { LOGS_ROOT, type AiLogPayload } from '../utils/logger.ts'
+import { type AiLogPayload } from '../utils/logger.ts'
 import { getEstimatedCost, formatCurrency } from '../utils/pricing.ts'
+import { db } from '../utils/db.ts'
 
 type Period = 'today' | 'yesterday' | 'week' | 'month' | 'all'
 
@@ -16,28 +15,35 @@ export const runUsageCommand = async (periodStr: string = 'all') => {
 
 	p.intro(pc.bgMagenta(pc.white(` Tamias — AI Usage (${period}) `)))
 
-	if (!existsSync(LOGS_ROOT)) {
+	const rows = db.query<{ timestamp: string, sessionId: string, model: string, provider: string, action: string, durationMs: number, promptTokens: number | null, completionTokens: number | null, totalTokens: number | null, requestMessagesJson: string, response: string }, []>(`
+		SELECT timestamp, sessionId, model, provider, action, durationMs,
+			promptTokens, completionTokens, totalTokens, requestMessagesJson, response
+		FROM ai_logs ORDER BY id DESC
+	`).all()
+
+	if (rows.length === 0) {
 		p.note('No AI requests logged yet.', 'Stats')
 		p.outro('Start a chat to generate some logs!')
 		return
 	}
 
-	const files = readdirSync(LOGS_ROOT).filter(f => f.endsWith('.jsonl'))
-	const logs: AiLogPayload[] = []
+	const logs: AiLogPayload[] = rows.map(r => ({
+		timestamp: r.timestamp,
+		sessionId: r.sessionId,
+		model: r.model,
+		provider: r.provider,
+		action: r.action as 'chat' | 'compact',
+		durationMs: r.durationMs,
+		tokens: {
+			prompt: r.promptTokens || 0,
+			completion: r.completionTokens || 0,
+			total: r.totalTokens || 0,
+		},
+		messages: JSON.parse(r.requestMessagesJson || '[]'),
+		response: r.response
+	}))
 
-	for (const file of files) {
-		const content = readFileSync(join(LOGS_ROOT, file), 'utf-8')
-		for (const line of content.split('\n')) {
-			if (!line.trim()) continue
-			try {
-				logs.push(JSON.parse(line))
-			} catch {
-				// skip
-			}
-		}
-	}
-
-	// Sort logs by timestamp
+	// Sort logs by timestamp just to be sure, although ORDER BY id DESC does most of it (we need it descending)
 	logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
 	// Filter by period

@@ -15,6 +15,8 @@ export interface DaemonInfo {
 	pid: number
 	port: number
 	startedAt: string
+	dashboardPort?: number
+	dashboardPid?: number
 }
 
 /** Find a free TCP port above 9000, avoiding common ones */

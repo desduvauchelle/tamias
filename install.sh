@@ -92,8 +92,54 @@ fi
 
 rm -rf "$TMP_DIR"
 
+# 5. PATH Setup
+SHELL_NAME=$(basename "$SHELL")
+PROFILE_FILE=""
+
+case "$SHELL_NAME" in
+  zsh)
+    PROFILE_FILE="$HOME/.zshrc"
+    ;;
+  bash)
+    if [ -f "$HOME/.bash_profile" ]; then
+      PROFILE_FILE="$HOME/.bash_profile"
+    else
+      PROFILE_FILE="$HOME/.bashrc"
+    fi
+    ;;
+esac
+
+if [ -n "$PROFILE_FILE" ] && [ -f "$PROFILE_FILE" ]; then
+  if grep -q "$INSTALL_DIR" "$PROFILE_FILE"; then
+    if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+      echo "--------------------------------------------------------"
+      echo "✅ Tamias $VERSION is installed!"
+      echo "=> $INSTALL_DIR is already in $PROFILE_FILE but not in current PATH."
+      echo "🚀 Please restart your terminal or run:"
+      echo "   source $PROFILE_FILE"
+      echo "--------------------------------------------------------"
+      exit 0
+    fi
+  elif [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+    echo "=> Adding $INSTALL_DIR to PATH in $PROFILE_FILE"
+    echo "" >> "$PROFILE_FILE"
+    echo "# Tamias PATH" >> "$PROFILE_FILE"
+    echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> "$PROFILE_FILE"
+
+    echo "--------------------------------------------------------"
+    echo "✅ Tamias $VERSION installed successfully!"
+    echo "🚀 PATH updated. Please restart your terminal or run:"
+    echo "   source $PROFILE_FILE"
+    echo "--------------------------------------------------------"
+    exit 0
+  fi
+fi
+
 echo "--------------------------------------------------------"
 echo "✅ Tamias $VERSION installed successfully!"
-echo "If $INSTALL_DIR is not in your PATH, you may need to add it."
+if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+  echo "⚠️ $INSTALL_DIR is not in your PATH."
+  echo "You may need to add it manually to your shell profile."
+fi
 echo "Run 'tamias' to get started."
 echo "--------------------------------------------------------"
