@@ -1,7 +1,7 @@
 import { Command } from 'commander'
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
-import { loadCronJobs, addCronJob, removeCronJob, updateCronJob } from '../utils/cronStore'
+import { loadCronJobs, addCronJob, removeCronJob, updateCronJob, DEFAULT_HEARTBEAT_CONFIG } from '../utils/cronStore'
 
 export const cronCommand = new Command('cron')
 	.description('Manage recurring cron jobs and heartbeats')
@@ -35,12 +35,20 @@ cronCommand
 	.option('-s, --schedule <schedule>', 'Schedule (e.g. "30m", "1h", or cron expression)')
 	.option('-p, --prompt <prompt>', 'Prompt for the agent')
 	.option('-t, --target <target>', 'Output target (e.g. "discord:channel-id", "last")', 'last')
+	.option('--heartbeat', 'Add the default 30m heartbeat job')
 	.action(async (opts) => {
 		try {
 			let name = opts.name
 			let schedule = opts.schedule
 			let prompt = opts.prompt
 			let target = opts.target
+
+			if (opts.heartbeat) {
+				name = name || DEFAULT_HEARTBEAT_CONFIG.name
+				schedule = schedule || DEFAULT_HEARTBEAT_CONFIG.schedule
+				prompt = prompt || DEFAULT_HEARTBEAT_CONFIG.prompt
+				target = target || DEFAULT_HEARTBEAT_CONFIG.target
+			}
 
 			if (!name) {
 				name = await p.text({

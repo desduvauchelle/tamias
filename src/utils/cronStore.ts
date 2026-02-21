@@ -81,17 +81,19 @@ export const getCronJob = (id: string): CronJob | undefined => {
 	return jobs.find(j => j.id === id)
 }
 
+export const DEFAULT_HEARTBEAT_CONFIG = {
+	name: 'Default Heartbeat',
+	schedule: '30m',
+	prompt: 'Check your periodic tasks and instructions in ~/.tamias/memory/HEARTBEAT.md. If there are pending items or checks requested there, perform them now. If nothing needs your attention, reply with HEARTBEAT_OK.',
+	target: 'last'
+}
+
 /**
  * Ensures a default heartbeat job exists if no jobs are present
  */
 export const ensureDefaultHeartbeat = () => {
 	const jobs = loadCronJobs()
 	if (jobs.length === 0) {
-		addCronJob({
-			name: 'Default Heartbeat',
-			schedule: '30m',
-			prompt: 'Check your periodic tasks and instructions in ~/.tamias/memory/HEARTBEAT.md. If there are pending items or checks requested there, perform them now. If nothing needs your attention, reply with HEARTBEAT_OK.',
-			target: 'last'
-		})
+		addCronJob(DEFAULT_HEARTBEAT_CONFIG)
 	}
 }

@@ -167,6 +167,7 @@ tamias cron rm [id]            # Remove a job
 - `--schedule <string>`: The interval (e.g., `30m`) or 5-field cron.
 - `--prompt <string>`: The instructions for the agent.
 - `--target <string>`: Output destination (`last`, `discord:ID`, etc.).
+- `--heartbeat`: Pre-fill everything with the default 30m heartbeat config.
 - `--enable` / `--disable`: Toggle the job status.
 
 **Schedule formats**:
