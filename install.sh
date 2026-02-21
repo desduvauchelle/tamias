@@ -99,6 +99,36 @@ else
     mv "$TMP_BIN" "$INSTALL_DIR/$BINARY_NAME"
 fi
 
+# 5. Setup Dashboard (Next.js source is needed for tamias start)
+echo "=> Setting up Dashboard..."
+DASHBOARD_PARENT="$HOME/.tamias"
+mkdir -p "$DASHBOARD_PARENT/src"
+
+if [ ! -d "$DASHBOARD_PARENT/src/dashboard" ]; then
+    echo "=> Downloading dashboard source..."
+    # Download source to get dashboard
+    curl -sL "https://github.com/${REPO}/archive/refs/heads/main.zip" -o "$DASHBOARD_PARENT/src.zip"
+    unzip -q "$DASHBOARD_PARENT/src.zip" -d "$DASHBOARD_PARENT"
+
+    # The zip contains a folder like tamias-main
+    ZIP_FOLDER=$(ls -d "$DASHBOARD_PARENT/tamias-"* | head -n 1)
+
+    if [ -d "$ZIP_FOLDER/src/dashboard" ]; then
+        mv "$ZIP_FOLDER/src/dashboard" "$DASHBOARD_PARENT/src/dashboard"
+        echo "=> Dashboard source installed to $DASHBOARD_PARENT/src/dashboard"
+    else
+        echo "⚠️ Could not find dashboard source in zip. You may need to manually clone the repository."
+    fi
+
+    rm -rf "$ZIP_FOLDER" "$DASHBOARD_PARENT/src.zip"
+fi
+
+# Install dashboard dependencies if bun is available
+if command -v bun &> /dev/null && [ -d "$DASHBOARD_PARENT/src/dashboard" ]; then
+    echo "=> Installing dashboard dependencies (this may take a minute)..."
+    cd "$DASHBOARD_PARENT/src/dashboard" && bun install &> /dev/null
+fi
+
 rm -rf "$TMP_DIR"
 
 # 5. PATH Setup

@@ -79,14 +79,52 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 	const dashboardPort = await findFreePort(5678)
 
 	// Start Next.js dashboard
+	const fs = require('fs')
 	const isCompiled = import.meta.dir?.includes('$bunfs') || !import.meta.filename
-	const projectRoot = isCompiled ? process.cwd() : join(import.meta.dir, '../..')
-	const dashboardDir = join(projectRoot, 'src', 'dashboard')
+
+	// Robust project root detection
+	let projectRoot = ''
+	if (import.meta.filename) {
+		// If we have a filename, we can likely find it relative to current file
+		const currentFileDir = import.meta.dir
+		const possibleRoot = join(currentFileDir, '../..')
+		if (fs.existsSync(join(possibleRoot, 'src', 'dashboard'))) {
+			projectRoot = possibleRoot
+		}
+	}
+
+	// Fallback to CWD if not found or compiled
+	if (!projectRoot) {
+		projectRoot = process.cwd()
+	}
+
+	let dashboardDir = join(projectRoot, 'src', 'dashboard')
+
+	// If still not found, check common installation paths or environmental hints
+	if (!fs.existsSync(dashboardDir)) {
+		const altPaths = [
+			join(process.cwd(), 'src', 'dashboard'),
+			join(process.cwd(), 'dashboard'),
+			join(homedir(), '.tamias', 'src', 'dashboard'),
+			join(homedir(), '.tamias', 'dashboard'),
+			'/usr/local/lib/node_modules/tamias/src/dashboard',
+			'/usr/local/lib/node_modules/tamias/dashboard',
+		]
+		for (const alt of altPaths) {
+			if (fs.existsSync(alt)) {
+				dashboardDir = alt
+				break
+			}
+		}
+	}
+
 	const dashboardLogPath = join(homedir(), '.tamias', 'dashboard.log')
 	const dashboardLogFile = Bun.file(dashboardLogPath)
 
-	if (!require('fs').existsSync(dashboardDir)) {
-		console.error(pc.red(`Dashboard directory not found: ${dashboardDir}`))
+	if (!fs.existsSync(dashboardDir)) {
+		console.error(pc.red(`Dashboard directory not found.`))
+		console.error(pc.yellow(`Looked in: ${dashboardDir}`))
+		console.error(pc.yellow(`Please ensure you are running tamias from the project root or it is correctly installed.`))
 		process.exit(1)
 	}
 
