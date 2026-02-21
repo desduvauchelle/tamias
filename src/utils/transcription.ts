@@ -1,6 +1,5 @@
 import { pipeline, env } from '@xenova/transformers'
-import wavefilePkg from 'wavefile'
-const WaveFile = wavefilePkg.WaveFile
+import { WaveFile } from 'wavefile'
 import ffmpeg from 'fluent-ffmpeg'
 import ffmpegStatic from 'ffmpeg-static'
 import { Readable } from 'stream'
