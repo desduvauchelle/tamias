@@ -35,6 +35,8 @@ export interface Session {
 	channelId: string
 	channelUserId?: string
 	channelName?: string
+	parentSessionId?: string
+	isSubagent?: boolean
 }
 
 export interface CreateSessionOptions {
@@ -42,6 +44,8 @@ export interface CreateSessionOptions {
 	channelId?: string
 	channelUserId?: string
 	channelName?: string
+	parentSessionId?: string
+	isSubagent?: boolean
 }
 
 export class AIService {
@@ -58,12 +62,12 @@ export class AIService {
 	public async initialize() {
 		scaffoldFromTemplates()
 		this.loadAllSessions()
-		await this.refreshTools()
+		// We can't refresh tools globally anymore since it depends on sessionId
 	}
 
-	public async refreshTools() {
+	public async refreshTools(sessionId: string) {
 		try {
-			const { tools, mcpClients } = await buildActiveTools()
+			const { tools, mcpClients } = await buildActiveTools(this, sessionId)
 			this.activeTools = tools
 			// Close old clients before replacing
 			for (const c of this.mcpClients) await c.close().catch(() => { })
@@ -96,6 +100,8 @@ export class AIService {
 					channelId: full.channelId || 'terminal',
 					channelUserId: full.channelUserId,
 					channelName: full.channelName,
+					parentSessionId: (full as any).parentSessionId,
+					isSubagent: (full as any).isSubagent || false,
 				}
 				this.sessions.set(full.id, session)
 				if (session.channelId && session.channelUserId) {
@@ -139,6 +145,8 @@ export class AIService {
 			channelId: options.channelId || 'terminal',
 			channelUserId: options.channelUserId,
 			channelName: options.channelName,
+			parentSessionId: options.parentSessionId,
+			isSubagent: options.isSubagent || false,
 		}
 
 		if (session.channelId && session.channelUserId) {
@@ -206,13 +214,15 @@ export class AIService {
 		}
 
 		try {
+			await this.refreshTools(session.id)
 			const model = this.buildModel(connection, session.modelId)
 			const toolNamesList = Object.keys(this.activeTools)
 			const systemPrompt = buildSystemPrompt(toolNamesList, session.summary, {
 				id: session.channelId,
 				userId: session.channelUserId,
 				name: session.channelName,
-				authorName: job.authorName
+				authorName: job.authorName,
+				isSubagent: session.isSubagent
 			})
 
 			session.emitter.emit('event', { type: 'start', sessionId: session.id } as DaemonEvent)
@@ -279,6 +289,15 @@ export class AIService {
 			saveSessionToDisk(this.toPersist(session))
 
 			session.emitter.emit('event', { type: 'done', sessionId: session.id, suppressed } as DaemonEvent)
+
+			// If this is a subagent, report back to parent session if it exists
+			if (session.isSubagent && session.parentSessionId) {
+				const parentSession = this.sessions.get(session.parentSessionId)
+				if (parentSession) {
+					const report = `[Subagent Report from ${session.id}]:\n${fullResponse}`
+					this.enqueueMessage(parentSession.id, report).catch(console.error)
+				}
+			}
 
 			if (session.messages.length >= 20) {
 				this.compactSession(session, model).then(() => {
@@ -390,7 +409,9 @@ Return a structured object.`
 			channelId: session.channelId,
 			channelUserId: session.channelUserId,
 			messages: session.messages,
-		}
+			parentSessionId: session.parentSessionId,
+			isSubagent: session.isSubagent,
+		} as any
 	}
 
 	public async shutdown() {

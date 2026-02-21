@@ -183,6 +183,27 @@ tamias cron rm [id]            # Remove a job
 
 ---
 
+### `tamias agents`
+Manage reusable agent templates (personas). These can be used by the AI to spawn specialized sub-agents.
+
+```bash
+tamias agents list               # See all registered agents
+tamias agents add                # Register a new reusable agent
+# Options: --name, --model, --instructions
+
+tamias agents edit [id]          # Update an existing agent
+# Options: --name, --model, --instructions
+
+tamias agents rm [id]            # Remove an agent definition
+```
+
+**Common Flags**:
+- `--name <string>`: A descriptive name for the agent (e.g. "Researcher").
+- `--model <string>`: Optional model override for this agent.
+- `--instructions <string>`: The system prompt/instructions for this agent.
+
+---
+
 ## Tools
 
 Tools make the AI **agentic** — it can call them autonomously and chain multiple calls to complete complex tasks.
@@ -240,7 +261,15 @@ Allows the AI to **manage its own schedule** and reminders. Functions:
 | `cron_edit` | Update an existing job |
 | `cron_remove` | Delete a job by ID |
 
-**The terminal and cron tools are enabled by default.** The AI can use them without any extra setup.
+#### `subagent` tool (built-in)
+
+Allows the AI to **delegate tasks** to specialized worker sessions.
+
+| Function | Description |
+|---|---|
+| `spawn` | Create a new sub-agent session for a task. Supports `agentId` (reusable persona), `model`, and `instructions`. |
+
+**The terminal, cron, and subagent tools are enabled by default.** The AI can use them without any extra setup.
 
 ---
 
@@ -397,4 +426,6 @@ bun run build        # Build standalone binary
 - [x] Bridge: We have terminal chats, but we want to connect to other chat interfaces, such as Discoard, Telegram for now. This bridge takes care of the connection and routing of messages between the daemon and the chat interface. The AI should be able to self add, remove, update this from a conversation. The messages from the various platforms need to be standardized to a single format before being sent to the daemon, and the response from the daemon needs to be converted to the appropriate format for the platform it's being sent to. The bridge should also handle the authentication with the various platforms, and the AI should be able to manage these connections from a conversation. The bridge should be able to handle multiple conversations at once, and route messages to the correct conversation through sessions.
 - [x] Add notion of heartbeat, which is a cron job that runs every 30minutes by default but can be changed in the configuration file.
 - [x] Add cron job management.
-- [ ] Add the notion of skills (directory of skills, and ability to load them on the fly, skills are at least a markdown file with a name, description, text to explain the whole skill and maybe other executble files that can be called by the skill to complete an action) (In Progress)
+- [x] Add multi-agent (sub-agent) support with result auto-reporting.
+- [x] Add persistent agent definition management (personas).
+- [ ] Add the notion of skills (directory of skills, and ability to load them on the fly...) (In Progress)

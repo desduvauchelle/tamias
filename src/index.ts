@@ -15,6 +15,7 @@ import { cronCommand } from './commands/cron.ts'
 import { runEmailsCommand, runEmailsListCommand, runEmailsAddCommand, runEmailsEditCommand, runEmailsDeleteCommand } from './commands/emails.ts'
 import { runWorkspaceCommand } from './commands/workspace.ts'
 import { runUninstallCommand, runBackupCommand, runRestoreCommand } from './commands/maintenance.ts'
+import { agentsCommand } from './commands/agents.ts'
 import { isOnboarded } from './utils/memory.ts'
 
 const program = new Command()
@@ -25,6 +26,7 @@ program
 	.version('1.0.0')
 
 program.addCommand(cronCommand)
+program.addCommand(agentsCommand)
 
 // ─── tamias config ────────────────────────────────────────────────────────────
 program

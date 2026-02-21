@@ -87,7 +87,7 @@ export function readAllPersonaFiles(): Record<string, string> {
 // ─── System prompt builder ────────────────────────────────────────────────────
 
 /** Build a full system prompt from persona files + tool list */
-export function buildSystemPrompt(toolNames: string[], summary?: string, channel?: { id: string, userId?: string, name?: string, authorName?: string }): string {
+export function buildSystemPrompt(toolNames: string[], summary?: string, channel?: { id: string, userId?: string, name?: string, authorName?: string, isSubagent?: boolean }): string {
 	const files = readAllPersonaFiles()
 	const sections: string[] = []
 
@@ -102,6 +102,11 @@ export function buildSystemPrompt(toolNames: string[], summary?: string, channel
 		channelSection += '.'
 		if (channel.userId) channelSection += ` Session Identifier: \`${channel.userId}\`.`
 		if (channel.authorName) channelSection += `\nCurrent interlocutor: **${channel.authorName}**.`
+
+		if (channel.isSubagent) {
+			channelSection += `\n\n# SUB-AGENT MODE\nYou are currently operating as a **sub-agent**. Your goal is to complete the specific task delegated to you and then report your findings back to the main agent.
+Be concise, accurate, and focus ONLY on the assigned task. Your final response will be automatically delivered to the parent agent.`
+		}
 
 		sections.push(channelSection)
 	}

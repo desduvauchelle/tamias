@@ -1,6 +1,6 @@
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
-import { existsSync, mkdirSync, rmSync, symlinkSync } from 'fs'
+import { mkdirSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { writePersonaFile, scaffoldFromTemplates, readPersonaFile } from '../utils/memory.ts'
@@ -126,76 +126,11 @@ export const runOnboarding = async (): Promise<void> => {
 		return
 	}
 
-	// ── Phase 0: Storage ───────────────────────────────────────────────────
+	// Config, memory, and code always live in ~/.tamias
+	const dataHome = join(homedir(), '.tamias')
+	mkdirSync(dataHome, { recursive: true })
+
 	p.intro(pc.bgMagenta(pc.black(' 🐿️  Tamias — First Run Setup ')))
-
-	const storageChoice = await p.select({
-		message: pc.bold('Where should I store my data and your files?'),
-		options: [
-			{
-				value: 'default',
-				label: `~/.tamias  ${pc.dim('(default hidden config folder)')}`,
-			},
-			{
-				value: 'documents',
-				label: `~/Documents/Tamias  ${pc.dim('(easy to find in Finder)')}`,
-			},
-			{ value: 'other', label: 'Other  — type a custom path' },
-		],
-	})
-	if (p.isCancel(storageChoice)) { p.cancel('Maybe next time.'); process.exit(0) }
-
-	let dataHome = join(homedir(), '.tamias')
-
-	if (storageChoice === 'documents') {
-		dataHome = join(homedir(), 'Documents', 'Tamias')
-	} else if (storageChoice === 'other') {
-		const customPath = await p.text({
-			message: 'Enter the full path:',
-			placeholder: '/Users/you/my-tamias-data',
-			validate: (v) => {
-				if (!v?.trim()) return 'Path is required'
-			},
-		})
-		if (p.isCancel(customPath)) { p.cancel('Maybe next time.'); process.exit(0) }
-
-		const resolved = (customPath as string).replace(/^~/, homedir()).trim()
-
-		if (!existsSync(resolved)) {
-			const create = await p.confirm({
-				message: `${pc.yellow(resolved)} does not exist. Create it?`,
-				initialValue: true,
-			})
-			if (p.isCancel(create) || !create) {
-				p.note('Using ~/.tamias instead.', 'Storage')
-			} else {
-				mkdirSync(resolved, { recursive: true })
-				dataHome = resolved
-			}
-		} else {
-			dataHome = resolved
-		}
-	}
-
-	// If a non-default path was chosen, create ~/.tamias as a symlink
-	const defaultHome = join(homedir(), '.tamias')
-	if (dataHome !== defaultHome) {
-		mkdirSync(dataHome, { recursive: true })
-		if (existsSync(defaultHome)) {
-			// If it's already a symlink pointing somewhere else, remove it
-			try { rmSync(defaultHome, { recursive: true }) } catch { }
-		}
-		try {
-			symlinkSync(dataHome, defaultHome)
-		} catch {
-			// If symlink fails, just use the dir directly (already created)
-		}
-		console.log(pc.dim(`\n  Data directory: ${dataHome}`))
-		console.log(pc.dim(`  Symlinked from: ~/.tamias`))
-	} else {
-		mkdirSync(defaultHome, { recursive: true })
-		console.log(pc.dim(`\n  Data directory: ~/.tamias`))
-	}
 
 	// ── Phase 1: The Awakening ──────────────────────────────────────────────
 	await dramatic('  ...', 1200)
@@ -478,7 +413,7 @@ export const runOnboarding = async (): Promise<void> => {
 	// ── Phase 7: Workspace Path ─────────────────────────────────────────────
 	const defaultWorkspacePath = getDefaultWorkspacePath()
 	const workspacePath = await p.text({
-		message: `${emoji} Where should I look for your projects and files?`,
+		message: `${emoji} Where are your projects? (I'll scan here for context)`,
 		placeholder: defaultWorkspacePath,
 		initialValue: defaultWorkspacePath,
 		validate: (v) => {
@@ -511,7 +446,6 @@ export const runOnboarding = async (): Promise<void> => {
 	if (bridgesCfg.telegram?.enabled && bridgesCfg.telegram?.envKeyName) channelList.push('Telegram')
 	const channelLabel = channelList.length > 0 ? channelList.join(', ') : 'None — run `tamias channels add`'
 
-	const displayDataHome = dataHome.replace(homedir(), '~')
 	const displayWorkspace = (workspacePath as string).replace(homedir(), '~')
 
 	// Auto-start daemon
@@ -528,7 +462,6 @@ export const runOnboarding = async (): Promise<void> => {
 
 	p.note(
 		[
-			`${pc.bold('Files stored:')}   ${displayDataHome}`,
 			`${pc.bold('Workspace:')}      ${displayWorkspace}`,
 			`${pc.bold('AI model:')}       ${modelLabel}`,
 			`${pc.bold('Channels:')}       ${channelLabel}`,

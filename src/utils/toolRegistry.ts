@@ -6,7 +6,10 @@ import { terminalTools, TERMINAL_TOOL_NAME } from '../tools/terminal.ts'
 import { tamiasTools, TAMIAS_TOOL_NAME } from '../tools/tamias.ts'
 import { cronTools, CRON_TOOL_NAME } from '../tools/cron.ts'
 import { emailTools, EMAIL_TOOL_NAME } from '../tools/email.ts'
+import { githubTools, GITHUB_TOOL_NAME } from '../tools/github.ts'
 import { workspaceTools, WORKSPACE_TOOL_NAME } from '../tools/workspace.ts'
+import { createSubagentTools, SUBAGENT_TOOL_NAME } from '../tools/subagent.ts'
+import type { AIService } from '../services/aiService.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ToolSet = Record<string, any>
@@ -55,7 +58,7 @@ function applyFunctionConfig(
 /**
  * Build a merged tools object from all enabled internal tools + external MCPs.
  */
-export async function buildActiveTools(): Promise<{
+export async function buildActiveTools(aiService: AIService, sessionId: string): Promise<{
 	tools: ToolSet
 	mcpClients: Array<{ close: () => Promise<void> }>
 	toolNames: string[]
@@ -71,7 +74,9 @@ export async function buildActiveTools(): Promise<{
 		[TAMIAS_TOOL_NAME]: tamiasTools as ToolSet,
 		[CRON_TOOL_NAME]: cronTools as ToolSet,
 		[EMAIL_TOOL_NAME]: emailTools as ToolSet,
+		[GITHUB_TOOL_NAME]: githubTools as ToolSet,
 		[WORKSPACE_TOOL_NAME]: workspaceTools as ToolSet,
+		[SUBAGENT_TOOL_NAME]: createSubagentTools(aiService, sessionId) as ToolSet,
 	}
 
 	for (const [toolName, allFunctions] of Object.entries(internalCatalog)) {

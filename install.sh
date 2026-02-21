@@ -66,61 +66,10 @@ esac
 
 ASSET_NAME="tamias-${OS}-${ARCH}"
 
-# ─── 1.5 Choose data directory ────────────────────────────────────────────────
+# ~/.tamias is the canonical home for all Tamias data
+mkdir -p "$HOME/.tamias"
 echo ""
-echo "  Where should Tamias store your data?"
-echo ""
-echo "    1) ~/.tamias              (default — hidden config folder)"
-echo "    2) ~/Documents/Tamias    (easy to find in Finder)"
-echo "    3) Other                 (type a custom path)"
-echo ""
-
-STORAGE_CHOICE=$(ask "  Your choice [1]: " "1")
-
-TAMIAS_DATA_HOME="$HOME/.tamias"
-
-case "$STORAGE_CHOICE" in
-  2)
-    TAMIAS_DATA_HOME="$HOME/Documents/Tamias"
-    ;;
-  3)
-    if [ "$AUTO_YES" = "1" ]; then
-      echo "  --yes flag active, using default ~/.tamias"
-    else
-      CUSTOM_PATH=$(ask "  Full path: " "")
-      CUSTOM_PATH="${CUSTOM_PATH/#\~/$HOME}"
-      if [ -z "$CUSTOM_PATH" ]; then
-        echo "  => No path entered, using ~/.tamias"
-      elif [ ! -d "$CUSTOM_PATH" ]; then
-        CREATE=$(ask "  '$CUSTOM_PATH' doesn't exist. Create it? [Y/n]: " "Y")
-        if [[ "$CREATE" =~ ^[Nn] ]]; then
-          echo "  => Using ~/.tamias instead."
-        else
-          mkdir -p "$CUSTOM_PATH" || { echo "Error: Could not create $CUSTOM_PATH"; exit 1; }
-          TAMIAS_DATA_HOME="$CUSTOM_PATH"
-        fi
-      else
-        TAMIAS_DATA_HOME="$CUSTOM_PATH"
-      fi
-    fi
-    ;;
-esac
-
-# Ensure the chosen dir exists
-mkdir -p "$TAMIAS_DATA_HOME"
-
-# If a non-default path was chosen, symlink ~/.tamias → chosen dir
-if [ "$TAMIAS_DATA_HOME" != "$HOME/.tamias" ]; then
-  if [ -d "$HOME/.tamias" ] && [ ! -L "$HOME/.tamias" ]; then
-    # Real directory already exists — move contents over
-    cp -rn "$HOME/.tamias/." "$TAMIAS_DATA_HOME/" 2>/dev/null || true
-    rm -rf "$HOME/.tamias"
-  fi
-  ln -sfn "$TAMIAS_DATA_HOME" "$HOME/.tamias"
-  echo "  => Data dir: $TAMIAS_DATA_HOME (symlinked as ~/.tamias)"
-else
-  echo "  => Data dir: $HOME/.tamias"
-fi
+echo "  => Data dir: ~/.tamias"
 echo ""
 
 # 2. Fetch latest release info

@@ -103,10 +103,10 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 	// If still not found, check common installation paths or environmental hints
 	if (!fs.existsSync(dashboardDir)) {
 		const altPaths = [
+			join(homedir(), '.tamias', 'src', 'dashboard'),	// canonical install location
+			join(homedir(), '.tamias', 'dashboard'),
 			join(process.cwd(), 'src', 'dashboard'),
 			join(process.cwd(), 'dashboard'),
-			join(homedir(), '.tamias', 'src', 'dashboard'),
-			join(homedir(), '.tamias', 'dashboard'),
 			'/usr/local/lib/node_modules/tamias/src/dashboard',
 			'/usr/local/lib/node_modules/tamias/dashboard',
 		]
