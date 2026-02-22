@@ -49,7 +49,7 @@ export const runEmailsAddCommand = async () => {
 	p.intro(pc.bgGreen(pc.white(' Tamias — Add Email Account ')))
 
 	const nickname = await p.text({
-		message: 'Enter a nickname for this account (e.g. personal, work):',
+		message: 'Enter a Display Name for this account (e.g. Personal, Work):',
 		validate: (v) => {
 			if (!v) return 'Nickname is required'
 			if (/\s/.test(v)) return 'Nickname cannot contain spaces'
@@ -59,7 +59,7 @@ export const runEmailsAddCommand = async () => {
 	if (p.isCancel(nickname)) { p.cancel('Cancelled.'); process.exit(0) }
 
 	const accountName = await p.text({
-		message: 'Enter the Himalaya account name (from your himalaya config.toml):',
+		message: 'Enter the Himalaya Account ID (as defined in your himalaya config.toml):',
 		placeholder: nickname as string,
 		initialValue: nickname as string,
 	})
@@ -153,7 +153,7 @@ export const runEmailsEditCommand = async (slug?: string) => {
 
 	if (selected.includes('nickname')) {
 		const newNickname = await p.text({
-			message: 'New nickname:',
+			message: 'New Display Name:',
 			validate: (v) => {
 				if (!v) return 'Required'
 				if (/\s/.test(v)) return 'No spaces'
@@ -166,7 +166,7 @@ export const runEmailsEditCommand = async (slug?: string) => {
 	}
 
 	if (selected.includes('accountName')) {
-		const newVal = await p.text({ message: 'New Himalaya account name:' })
+		const newVal = await p.text({ message: 'New Himalaya Account ID (from config.toml):' })
 		if (p.isCancel(newVal)) { p.cancel('Cancelled.'); process.exit(0) }
 		updates.accountName = newVal
 	}

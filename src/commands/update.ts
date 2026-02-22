@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { execSync } from 'node:child_process'
-import pkg from '../../package.json'
+import { VERSION } from '../utils/version.ts'
 
 const REPO = 'desduvauchelle/tamias'
 
@@ -12,7 +12,7 @@ export const runUpdateCommand = async () => {
 	p.intro(pc.bgBlue(pc.white(' Tamias CLI Update ')))
 
 	try {
-		const currentVersion = pkg.version
+		const currentVersion = VERSION
 		p.note(`Current version: v${currentVersion}`)
 
 		const s = p.spinner()
@@ -110,9 +110,23 @@ export const runUpdateCommand = async () => {
 				execSync(`curl -fsSL "${zipUrl}" -o "${tmpDir}/src.zip"`)
 				execSync(`unzip -q "${tmpDir}/src.zip" -d "${tmpDir}/extracted"`)
 
-				// Find dashboard in ZIP
-				const extractedRoot = fs.readdirSync(join(tmpDir, 'extracted'))[0]
-				const newDashSrc = join(tmpDir, 'extracted', extractedRoot, 'src', 'dashboard')
+				// Find dashboard in ZIP - be robust about the root directory name
+				const extractedDirs = fs.readdirSync(join(tmpDir, 'extracted'))
+				let newDashSrc = ''
+
+				for (const dir of extractedDirs) {
+					const candidate = join(tmpDir, 'extracted', dir, 'src', 'dashboard')
+					if (fs.existsSync(candidate)) {
+						newDashSrc = candidate
+						break
+					}
+					// Also check if dashboard is at the root of the extracted dir (older versions?)
+					const candidate2 = join(tmpDir, 'extracted', dir, 'dashboard')
+					if (fs.existsSync(candidate2)) {
+						newDashSrc = candidate2
+						break
+					}
+				}
 
 				if (fs.existsSync(newDashSrc)) {
 					// Backup current dashboard just in case? Or just replace.
@@ -120,13 +134,17 @@ export const runUpdateCommand = async () => {
 					fs.rmSync(dashboardDir, { recursive: true, force: true })
 					fs.cpSync(newDashSrc, dashboardDir, { recursive: true })
 
-					s.message('Installing dashboard dependencies...')
-					execSync(`bun install`, { cwd: dashboardDir, stdio: 'ignore' })
+					if (fs.existsSync(join(dashboardDir, 'package.json'))) {
+						s.message('Installing dashboard dependencies...')
+						execSync(`bun install`, { cwd: dashboardDir, stdio: 'ignore' })
 
-					s.message('Building dashboard...')
-					execSync(`bun run build`, { cwd: dashboardDir, stdio: 'ignore' })
+						s.message('Building dashboard...')
+						execSync(`bun run build`, { cwd: dashboardDir, stdio: 'ignore' })
 
-					s.message('Dashboard updated and built.')
+						s.message('Dashboard updated and built.')
+					} else {
+						p.log.warn(`No package.json found in ${dashboardDir}. Skipping install/build.`)
+					}
 				}
 			} catch (e) {
 				p.log.error(`Dashboard update failed: ${String(e)}`)

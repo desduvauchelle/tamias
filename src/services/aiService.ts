@@ -46,6 +46,7 @@ export interface CreateSessionOptions {
 	channelName?: string
 	parentSessionId?: string
 	isSubagent?: boolean
+	id?: string
 }
 
 export class AIService {
@@ -133,7 +134,7 @@ export class AIService {
 		const modelId = rest.join('/') || modelStr
 
 		const session: Session = {
-			id: `sess_${Math.random().toString(36).slice(2, 10)}`,
+			id: options.id ?? `sess_${Math.random().toString(36).slice(2, 10)}`,
 			model: modelStr,
 			connectionNickname: nickname,
 			modelId,

@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import type { BridgeManager } from '../bridge/index.ts'
-import pkg from '../../package.json'
+import { VERSION } from './version.ts'
 
 const REPO = 'desduvauchelle/tamias'
 
@@ -10,7 +10,7 @@ const REPO = 'desduvauchelle/tamias'
  */
 export async function autoUpdateDaemon(bridgeManager: BridgeManager) {
 	try {
-		const currentVersion = pkg.version as string
+		const currentVersion = VERSION
 
 		const currentExecPath = process.execPath
 		const isCompiled = !currentExecPath.includes('/bun') && !currentExecPath.includes('/node')

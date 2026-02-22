@@ -19,14 +19,14 @@ import { agentsCommand } from './commands/agents.ts'
 import { runReadmeCommand } from './commands/readme.ts'
 import { runDoctorCommand } from './commands/doctor.ts'
 import { isOnboarded } from './utils/memory.ts'
-import pkg from '../package.json'
+import { VERSION } from './utils/version.ts'
 
 const program = new Command()
 
 program
 	.name('tamias')
 	.description('A secure, agentic AI chat interface powered by the Vercel AI SDK')
-	.version(pkg.version)
+	.version(VERSION)
 
 program.addCommand(cronCommand)
 program.addCommand(agentsCommand)

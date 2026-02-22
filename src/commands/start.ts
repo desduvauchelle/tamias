@@ -129,10 +129,12 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 		// fallback to 'bun'
 	}
 
-	// Use production mode if the dashboard has been built (`.next` dir exists),
-	// otherwise fall back to dev mode (e.g. running from project source).
+	// Use production mode if the dashboard has been built (`.next` dir exists)
+	// AND we are not explicitly in dev mode via environment variable.
+	// Otherwise fall back to dev mode (e.g. running from project source).
 	const isBuilt = fs.existsSync(join(dashboardDir, '.next'))
-	const dashboardScript = isBuilt ? 'start' : 'dev'
+	const isDev = process.env.TAMIAS_DEV === 'true' || !isBuilt
+	const dashboardScript = isDev ? 'dev' : 'start'
 
 	const dashboardProc = Bun.spawn([bunPath, 'run', dashboardScript, '-p', dashboardPort.toString()], {
 		cwd: dashboardDir,
@@ -357,7 +359,7 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 
 			if (method === 'POST' && url.pathname === '/session') {
 				const body = await req.json() as any
-				const session = aiService.createSession({ model: body.model, channelId: body.channelId, channelUserId: body.channelUserId })
+				const session = aiService.createSession({ id: body.id, model: body.model, channelId: body.channelId, channelUserId: body.channelUserId })
 				return json({ sessionId: session.id, model: session.model })
 			}
 

@@ -7,6 +7,7 @@ export async function GET() {
 		return NextResponse.json({
 			internalTools: config.internalTools || {},
 			mcpServers: config.mcpServers || {},
+			emails: config.emails || {},
 			availableInternalTools: {
 				terminal: 'Terminal / Shell Access',
 				tamias: 'Tamias Core System',
@@ -19,17 +20,18 @@ export async function GET() {
 			}
 		})
 	} catch (error) {
-		return NextResponse.json({ internalTools: {}, mcpServers: {}, availableInternalTools: {} })
+		return NextResponse.json({ internalTools: {}, mcpServers: {}, emails: {}, availableInternalTools: {} })
 	}
 }
 
 export async function POST(request: Request) {
 	try {
-		const { internalTools, mcpServers } = await request.json()
+		const { internalTools, mcpServers, emails } = await request.json()
 		const config = await getTamiasConfig()
 
 		if (internalTools) config.internalTools = internalTools
 		if (mcpServers) config.mcpServers = mcpServers
+		if (emails) config.emails = emails
 
 		await saveTamiasConfig(config)
 		return NextResponse.json({ success: true })

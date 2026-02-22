@@ -106,7 +106,8 @@ export const TamiasConfigSchema = z.object({
 		isDefault: z.boolean().default(false),
 		permissions: z.object({
 			whitelist: z.array(z.string()).default([]),
-		}).default({ whitelist: [] }),
+			canSend: z.boolean().default(true),
+		}).default({ whitelist: [], canSend: true }),
 	})).optional(),
 })
 

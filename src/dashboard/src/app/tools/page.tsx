@@ -12,6 +12,18 @@ export type InternalToolConfig = {
 	functions?: Record<string, ToolFunctionConfig>
 }
 
+export type EmailAccountConfig = {
+	nickname: string
+	enabled: boolean
+	envKeyName?: string
+	accountName: string
+	isDefault: boolean
+	permissions: {
+		whitelist: string[]
+		canSend: boolean
+	}
+}
+
 export type McpServerConfig = {
 	enabled: boolean
 	label?: string
@@ -61,6 +73,137 @@ function ToolFunctionRow({
 					/>
 				</div>
 			)}
+		</div>
+	)
+}
+
+function EmailAccountCard({
+	config,
+	onChange,
+	onRemove
+}: {
+	config: EmailAccountConfig
+	onChange: (c: EmailAccountConfig) => void
+	onRemove: () => void
+}) {
+	return (
+		<div className={`card bg-base-200 border ${config.enabled ? 'border-info/40' : 'border-base-300 opacity-60 hover:opacity-100'} transition-all`}>
+			<div className="card-body p-4 space-y-3">
+				<div className="flex items-center gap-4">
+					<span className="text-3xl w-10 text-center shrink-0">📧</span>
+					<div className="flex-1">
+						<div className="flex items-center gap-2">
+							<div className="flex flex-col flex-1">
+								<span className="text-[8px] uppercase font-bold text-base-content/40 ml-0.5">Display Name</span>
+								<input
+									type="text"
+									className="input input-xs input-ghost font-mono font-bold text-sm text-info p-0 h-auto w-full"
+									value={config.nickname}
+									onChange={e => onChange({ ...config, nickname: e.target.value })}
+								/>
+							</div>
+							{config.isDefault && <span className="badge badge-info badge-xs uppercase font-bold text-[8px]">Default</span>}
+						</div>
+						<div className="flex flex-col w-full">
+							<span className="text-[8px] uppercase font-bold text-base-content/40 ml-0.5">Himalaya Account ID</span>
+							<input
+								type="text"
+								placeholder="e.g. personal"
+								className="input input-xs input-ghost text-[10px] text-base-content/60 lowercase p-0 h-auto w-full"
+								value={config.accountName}
+								onChange={e => onChange({ ...config, accountName: e.target.value })}
+							/>
+						</div>
+					</div>
+					<div className="flex flex-col items-end gap-2">
+						<input
+							type="checkbox"
+							className="toggle toggle-info toggle-sm shrink-0"
+							checked={config.enabled}
+							onChange={e => onChange({ ...config, enabled: e.target.checked })}
+						/>
+						<button onClick={onRemove} className="btn btn-xs btn-ghost text-error opacity-20 hover:opacity-100">✕</button>
+					</div>
+				</div>
+
+				{config.enabled && (
+					<div className="space-y-3 pt-2 border-t border-base-content/5">
+						<div className="flex items-center justify-between">
+							<span className="text-[10px] uppercase font-bold text-base-content/40">Default Account</span>
+							<input
+								type="checkbox"
+								className="checkbox checkbox-xs checkbox-info"
+								checked={config.isDefault}
+								onChange={e => onChange({ ...config, isDefault: e.target.checked })}
+							/>
+						</div>
+						<div className="flex items-center justify-between">
+							<span className="text-[10px] uppercase font-bold text-base-content/40">Can Send Emails</span>
+							<input
+								type="checkbox"
+								className="checkbox checkbox-xs checkbox-info"
+								checked={config.permissions.canSend}
+								onChange={e => onChange({ ...config, permissions: { ...config.permissions, canSend: e.target.checked } })}
+							/>
+						</div>
+						<div className="space-y-1">
+							<label className="text-[10px] uppercase font-bold text-base-content/40 ml-1">Destination Whitelist</label>
+							<input
+								type="text"
+								placeholder="Limit to: boss@company.com (comma separated)"
+								className="input input-xs input-bordered w-full font-mono text-[10px]"
+								value={config.permissions.whitelist.join(', ')}
+								onChange={e => {
+									const val = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+									onChange({ ...config, permissions: { ...config.permissions, whitelist: val } })
+								}}
+							/>
+						</div>
+					</div>
+				)}
+			</div>
+		</div>
+	)
+}
+
+function GeminiToolCard({
+	config,
+	onChange
+}: {
+	config: InternalToolConfig
+	onChange: (c: InternalToolConfig) => void
+}) {
+	return (
+		<div className={`card bg-base-200 border ${config.enabled ? 'border-primary/40' : 'border-base-300 opacity-60 hover:opacity-100'} transition-all`}>
+			<div className="card-body p-4 space-y-3">
+				<div className="flex items-center gap-4">
+					<span className="text-3xl w-10 text-center shrink-0">♊</span>
+					<div className="flex-1">
+						<div className="font-mono font-bold text-sm text-primary uppercase">Gemini CLI</div>
+						<div className="text-[10px] text-base-content/50">Run prompts in project directories</div>
+					</div>
+					<input
+						type="checkbox"
+						className="toggle toggle-primary toggle-sm shrink-0"
+						checked={config.enabled}
+						onChange={e => onChange({ ...config, enabled: e.target.checked })}
+					/>
+				</div>
+
+				{config.enabled && (
+					<div className="space-y-3 pt-2 border-t border-base-content/5">
+						<div className="p-3 bg-base-300/50 rounded-lg space-y-2">
+							<p className="text-[10px] font-bold uppercase text-base-content/40">Setup Required</p>
+							<div className="flex flex-col gap-2">
+								<a href="https://github.com/google-gemini/gemini-cli" target="_blank" className="btn btn-xs btn-outline btn-primary">Install Gemini CLI</a>
+								<div className="text-[10px] leading-relaxed opacity-70">
+									Once installed, run <code className="bg-base-content/10 px-1 rounded">gemini auth login</code> in your terminal to authenticate.
+								</div>
+							</div>
+						</div>
+					</div>
+				)}
+			</div>
 		</div>
 	)
 }
@@ -308,6 +451,7 @@ function McpServerCard({
 export default function ToolsPage() {
 	const [internalTools, setInternalTools] = useState<Record<string, InternalToolConfig>>({})
 	const [availableInternalTools, setAvailableInternalTools] = useState<Record<string, string>>({})
+	const [emails, setEmails] = useState<Record<string, EmailAccountConfig>>({})
 	const [mcpServers, setMcpServers] = useState<Record<string, McpServerConfig>>({})
 	const [saving, setSaving] = useState(false)
 	const [saved, setSaved] = useState(false)
@@ -318,6 +462,7 @@ export default function ToolsPage() {
 			.then(d => {
 				setInternalTools(d.internalTools || {})
 				setAvailableInternalTools(d.availableInternalTools || {})
+				setEmails(d.emails || {})
 				setMcpServers(d.mcpServers || {})
 			})
 	}, [])
@@ -327,7 +472,7 @@ export default function ToolsPage() {
 		await fetch('/api/tools', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ internalTools, mcpServers }),
+			body: JSON.stringify({ internalTools, mcpServers, emails }),
 		})
 		setSaving(false)
 		setSaved(true)
@@ -348,6 +493,23 @@ export default function ToolsPage() {
 		})
 	}
 
+	const addEmailAccount = () => {
+		const newId = `email-${Date.now().toString().slice(-4)}`
+		setEmails({
+			...emails,
+			[newId]: {
+				nickname: newId,
+				enabled: true,
+				accountName: 'personal',
+				isDefault: Object.keys(emails).length === 0,
+				permissions: {
+					whitelist: [],
+					canSend: true
+				}
+			}
+		})
+	}
+
 	const updateMcpServer = (id: string, update: McpServerConfig) => {
 		setMcpServers({ ...mcpServers, [id]: update })
 	}
@@ -362,8 +524,25 @@ export default function ToolsPage() {
 		setInternalTools({ ...internalTools, [id]: update })
 	}
 
+	const updateEmailAccount = (id: string, update: EmailAccountConfig) => {
+		const newEmails = { ...emails, [id]: update }
+		// If this is set to default, unset others
+		if (update.isDefault) {
+			Object.keys(newEmails).forEach(k => {
+				if (k !== id) newEmails[k].isDefault = false
+			})
+		}
+		setEmails(newEmails)
+	}
+
+	const removeEmailAccount = (id: string) => {
+		const updated = { ...emails }
+		delete updated[id]
+		setEmails(updated)
+	}
+
 	return (
-		<div className="p-6 max-w-5xl max-h-screen overflow-y-auto space-y-12 font-mono pb-24 mx-auto">
+		<div className="p-6 max-w-6xl max-h-screen overflow-y-auto space-y-12 font-mono pb-24 mx-auto">
 			<div className="flex justify-between items-start">
 				<div>
 					<h1 className="text-3xl font-black text-primary uppercase tracking-tighter">TOOLS & MCP SERVERS</h1>
@@ -380,13 +559,44 @@ export default function ToolsPage() {
 			</div>
 
 			<section className="space-y-6">
+				<div className="border-b-2 border-info/20 pb-4 flex justify-between items-end">
+					<h2 className="text-2xl font-black flex items-center gap-3 uppercase text-info">Email Accounts</h2>
+					<button onClick={addEmailAccount} className="btn btn-sm btn-info">+ Add Account</button>
+				</div>
+
+				{Object.keys(emails).length === 0 ? (
+					<div className="text-sm text-base-content/30 italic p-12 border-2 border-dashed rounded-2xl border-base-300 text-center bg-base-200/50">
+						No email accounts configured. Add one to enable email capabilities via Himalaya.
+					</div>
+				) : (
+					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+						{Object.entries(emails).map(([id, config]) => (
+							<EmailAccountCard
+								key={id}
+								config={config}
+								onChange={(u) => updateEmailAccount(id, u)}
+								onRemove={() => removeEmailAccount(id)}
+							/>
+						))}
+					</div>
+				)}
+			</section>
+
+			<section className="space-y-6">
 				<div className="border-b-2 border-primary/20 pb-4 flex justify-between items-end">
 					<h2 className="text-2xl font-black flex items-center gap-3 uppercase">Internal Tools</h2>
 					<p className="text-xs text-base-content/50 font-bold uppercase tracking-widest hidden md:block">Native Tamias capabilities</p>
 				</div>
 
 				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-					{Object.entries(availableInternalTools).map(([id, label]) => (
+					{/* Specialized Gemini Card */}
+					<GeminiToolCard
+						config={internalTools['gemini'] || { enabled: true }}
+						onChange={(u) => updateInternalTool('gemini', u)}
+					/>
+
+					{/* Other Internal Tools */}
+					{Object.entries(availableInternalTools).filter(([id]) => id !== 'gemini' && id !== 'email').map(([id, label]) => (
 						<InternalToolCard
 							key={id}
 							id={id}
