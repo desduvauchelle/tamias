@@ -16,6 +16,7 @@ export interface MessageJob {
 	sessionId: string
 	content: string
 	authorName?: string
+	attachments?: BridgeMessage['attachments']
 }
 
 export interface Session {
@@ -194,10 +195,10 @@ export class AIService {
 		}
 	}
 
-	public async enqueueMessage(sessionId: string, content: string, authorName?: string) {
+	public async enqueueMessage(sessionId: string, content: string, authorName?: string, attachments?: BridgeMessage['attachments']) {
 		const session = this.sessions.get(sessionId)
 		if (!session) throw new Error('Session not found')
-		session.queue.push({ sessionId, content, authorName })
+		session.queue.push({ sessionId, content, authorName, attachments })
 		this.processSession(session).catch(console.error)
 	}
 
@@ -206,7 +207,23 @@ export class AIService {
 		session.processing = true
 
 		const job = session.queue.shift()!
-		const messageContent = job.authorName ? `[${job.authorName}]: ${job.content}` : job.content
+		let messageContent = job.authorName ? `[${job.authorName}]: ${job.content}` : job.content
+
+		// Handle attachments (especially text files)
+		if (job.attachments && job.attachments.length > 0) {
+			for (const att of job.attachments) {
+				if (att.type === 'file' && att.buffer && (att.mimeType.startsWith('text/') || att.mimeType === 'application/json' || att.mimeType === 'application/javascript' || att.mimeType === 'application/typescript' || att.mimeType === 'application/octet-stream')) {
+					// Check if it looks like text even if octet-stream
+					const text = att.buffer.toString('utf-8')
+					// Rough check for binary
+					const isLikelyText = !/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(text.slice(0, 1024))
+					if (isLikelyText) {
+						messageContent += `\n\n--- ATTACHED FILE: ${att.url?.split('/').pop() || 'unknown'} ---\n${text}\n--- END ATTACHED FILE ---`
+					}
+				}
+			}
+		}
+
 		session.messages.push({ role: 'user', content: messageContent })
 
 		const config = loadConfig()

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getTamiasConfig, saveTamiasConfig, getTamiasEnv, setTamiasEnvVar } from '../tamias'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
 	try {
 		const config = await getTamiasConfig()

@@ -1,24 +1,29 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { join } from 'path'
 import { homedir } from 'os'
-import { Database } from 'bun:sqlite'
+import { readFile } from 'fs/promises' // Added import for readFile
+
+export const dynamic = 'force-dynamic'
 
 const DB_PATH = join(homedir(), '.tamias', 'data.sqlite')
+const DAEMON_FILE = join(homedir(), '.tamias', 'daemon.json') // Added DAEMON_FILE constant
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
-	const sessionId = (await params).id
-
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
 	try {
-		// We use bun:sqlite directly since we know the path and the dashboard runs in bun
-		const db = new Database(DB_PATH)
+		const { id: sessionId } = await params
 
-		const messages = db.query('SELECT role, content FROM messages WHERE sessionId = ? ORDER BY id ASC').all(sessionId)
+		// Get daemon port
+		const str = await readFile(DAEMON_FILE, 'utf-8')
+		const info = JSON.parse(str)
+		if (!info.port) throw new Error('Daemon not running')
 
-		db.close()
+		const res = await fetch(`http://127.0.0.1:${info.port}/session/${sessionId}/messages`, { cache: 'no-store' })
+		if (!res.ok) throw new Error(`Daemon returned ${res.status}`)
 
-		return NextResponse.json({ messages })
-	} catch (err) {
-		console.error(`Failed to load history for ${sessionId}:`, err)
-		return NextResponse.json({ messages: [], error: String(err) })
+		const data = await res.json()
+		return NextResponse.json({ messages: data.messages || [] })
+	} catch (error) {
+		console.error(`Failed to load history:`, error)
+		return NextResponse.json({ messages: [], error: String(error) })
 	}
 }

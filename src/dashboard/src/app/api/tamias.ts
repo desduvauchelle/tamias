@@ -81,27 +81,20 @@ export async function getTamiasSkills() {
 					const skillDir = join(dirPath, entry.name)
 					const skillFile = join(skillDir, 'SKILL.md')
 					try {
-						const content = await readFile(skillFile, 'utf8')
-						let name = entry.name
-						let description = 'No description provided.'
+						const rawContent = await readFile(skillFile, 'utf8')
+						const { data, content } = (await import('gray-matter')).default(rawContent)
 
-						if (content.startsWith('---')) {
-							const endMatch = content.indexOf('---', 3)
-							if (endMatch !== -1) {
-								const frontmatter = content.substring(3, endMatch).trim()
-								for (const line of frontmatter.split('\\n')) {
-									if (line.trim().startsWith('name:')) {
-										name = line.replace('name:', '').trim()
-										if (name.startsWith('"') && name.endsWith('"')) name = name.slice(1, -1)
-									} else if (line.trim().startsWith('description:')) {
-										description = line.replace('description:', '').trim()
-										if (description.startsWith('"') && description.endsWith('"')) description = description.slice(1, -1)
-									}
-								}
-							}
-						}
+						const name = data.name || entry.name
+						const description = data.description || 'No description provided.'
 
-						skills.push({ name, description, content, isBuiltIn, folder: entry.name })
+						skills.push({
+							name,
+							description,
+							content: rawContent,
+							isBuiltIn,
+							folder: entry.name,
+							filePath: skillFile
+						})
 					} catch (e) { /* skip */ }
 				}
 			}
@@ -120,15 +113,13 @@ export async function saveTamiasSkill(name: string, description: string, content
 	const { mkdir, writeFile } = await import('fs/promises')
 	await mkdir(skillDir, { recursive: true })
 
-	let finalContent = content
-	if (!content.startsWith("---")) {
-		finalContent = `---
-name: "${name}"
-description: "${description}"
----
+	const { data, content: body } = (await import('gray-matter')).default(content)
+	const matter = (await import('gray-matter')).default
 
-${content}`
-	}
+	const finalContent = matter.stringify(body, {
+		name,
+		description
+	})
 
 	await writeFile(join(skillDir, 'SKILL.md'), finalContent, 'utf8')
 }

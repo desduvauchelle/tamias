@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getTamiasSkills, saveTamiasSkill } from '../tamias'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
 	const skills = await getTamiasSkills()
 	return NextResponse.json(skills)

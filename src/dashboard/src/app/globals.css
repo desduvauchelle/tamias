@@ -2,6 +2,7 @@
 @plugin "daisyui" {
   themes: dark --default, light;
 }
+@plugin "@tailwindcss/typography";
 
 @theme inline {
   --font-mono: var(--font-geist-mono);

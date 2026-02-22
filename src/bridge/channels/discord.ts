@@ -58,6 +58,27 @@ export class DiscordBridge implements IBridge {
 			const channelRef = message.channel
 			const channelName = 'name' in channelRef ? `#${(channelRef as any).name}` : 'DM'
 
+			const attachments: BridgeMessage['attachments'] = []
+			if (message.attachments.size > 0) {
+				for (const [_, attachment] of message.attachments) {
+					try {
+						const response = await fetch(attachment.url)
+						if (!response.ok) throw new Error(`Failed to download attachment: ${response.statusText}`)
+						const arrayBuffer = await response.arrayBuffer()
+						const buffer = Buffer.from(arrayBuffer)
+
+						attachments.push({
+							type: attachment.contentType?.startsWith('image/') ? 'image' : 'file',
+							url: attachment.url,
+							buffer,
+							mimeType: attachment.contentType || 'application/octet-stream'
+						})
+					} catch (err) {
+						console.error(`[Discord Bridge] Failed to download attachment ${attachment.name}:`, err)
+					}
+				}
+			}
+
 			const bridgeMsg: BridgeMessage = {
 				channelId: 'discord',
 				channelUserId: channelId,
@@ -65,9 +86,10 @@ export class DiscordBridge implements IBridge {
 				authorId: message.author.id,
 				authorName: message.author.username,
 				content: message.content,
+				attachments
 			}
 
-			console.log(`[Discord Bridge] Dispatching to onMessage with channelUserId=${channelId}`)
+			console.log(`[Discord Bridge] Dispatching to onMessage with channelUserId=${channelId}${attachments.length ? ` and ${attachments.length} attachments` : ''}`)
 			this.onMessage?.(bridgeMsg, sessionKey)
 		})
 

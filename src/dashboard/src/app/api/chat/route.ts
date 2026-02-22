@@ -9,10 +9,20 @@ export async function POST(req: Request) {
 	try {
 		const { searchParams } = new URL(req.url)
 		const sessionId = searchParams.get('sessionId')
-		const { messages } = await req.json()
-		const lastMessage = messages[messages.length - 1]?.content
+		const body = await req.json()
+		console.log('Chat API Request Body:', JSON.stringify(body, null, 2))
+
+		let lastMessage = ''
+		if (Array.isArray(body.messages)) {
+			lastMessage = body.messages[body.messages.length - 1]?.content || body.messages[body.messages.length - 1]?.text || ''
+		} else if (body.text) {
+			lastMessage = body.text
+		} else if (body.content) {
+			lastMessage = body.content
+		}
 
 		if (!sessionId || !lastMessage) {
+			console.error('Missing sessionId or lastMessage. sessionId:', sessionId, 'lastMessage:', lastMessage)
 			return NextResponse.json({ error: 'Missing sessionId or message content' }, { status: 400 })
 		}
 
@@ -25,40 +35,36 @@ export async function POST(req: Request) {
 
 		const daemonUrl = `http://127.0.0.1:${info.port}`
 
-		// Helper to send message
-		const sendMessageToDaemon = async () => {
-			return fetch(`${daemonUrl}/message`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ sessionId, content: lastMessage })
-			})
+		// 1. Ensure session exists (idempotent)
+		const sessionResponse = await fetch(`${daemonUrl}/session`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ id: sessionId })
+		})
+
+		if (!sessionResponse.ok) {
+			const error = await sessionResponse.text()
+			return NextResponse.json({ error: `Failed to ensure session: ${error}` }, { status: sessionResponse.status })
 		}
 
-		// 1. Send message to daemon
-		let msgRes = await sendMessageToDaemon()
-
-		// If session not found, create it and retry
-		if (msgRes.status === 404 || (msgRes.status === 500)) {
-			// Try to create session with this ID
-			await fetch(`${daemonUrl}/session`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ id: sessionId })
-			})
-			// Retry sending message
-			msgRes = await sendMessageToDaemon()
-		}
-
-		if (!msgRes.ok) {
-			const error = await msgRes.text()
-			return NextResponse.json({ error: `Daemon error: ${error}` }, { status: msgRes.status })
-		}
-
-		// 2. Connect to stream
+		// 2. Connect to stream FIRST so we don't miss any chunks
 		const streamRes = await fetch(`${daemonUrl}/session/${sessionId}/stream`)
 		if (!streamRes.ok || !streamRes.body) {
 			return NextResponse.json({ error: 'Failed to connect to daemon stream' }, { status: 500 })
 		}
+
+		// 3. Send message asynchronously (start it and then consume the stream)
+		const sendMessagePromise = fetch(`${daemonUrl}/message`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ sessionId, content: lastMessage })
+		}).then(async r => {
+			if (!r.ok) {
+				const error = await r.text()
+				console.error(`Failed to send message: ${error}`)
+			}
+			return r
+		})
 
 		// 3. Transform SSE stream to AI SDK "Data Stream" format
 		const reader = streamRes.body.getReader()

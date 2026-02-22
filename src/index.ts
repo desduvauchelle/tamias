@@ -26,7 +26,7 @@ const program = new Command()
 program
 	.name('tamias')
 	.description('A secure, agentic AI chat interface powered by the Vercel AI SDK')
-	.version(VERSION)
+	.version(VERSION, '-v, --version')
 
 program.addCommand(cronCommand)
 program.addCommand(agentsCommand)

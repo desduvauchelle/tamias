@@ -207,11 +207,14 @@ export default function SkillsPage() {
 					<div className="flex flex-col h-full">
 						<div className="p-6 border-b border-base-200/50 flex justify-between items-start">
 							<div>
-								<div className="flex items-center gap-3 mb-2">
+								<div className="flex items-center gap-3 mb-1">
 									<h2 className="text-2xl font-bold">{activeSkill.name}</h2>
 									{activeSkill.isBuiltIn && (
 										<span className="badge badge-accent badge-outline text-xs">Built-in</span>
 									)}
+								</div>
+								<div className="text-xs font-mono text-base-content/40 mb-3 truncate max-w-lg" title={activeSkill.filePath}>
+									{activeSkill.filePath}
 								</div>
 								<p className="text-base-content/70">{activeSkill.description}</p>
 							</div>

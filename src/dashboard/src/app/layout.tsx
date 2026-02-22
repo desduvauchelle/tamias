@@ -10,7 +10,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-	title: "AegisOS Dashboard",
+	title: "TamiasOS Dashboard",
 	description: "Autonomous Agent Control Center",
 }
 

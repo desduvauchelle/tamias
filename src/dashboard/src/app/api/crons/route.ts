@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getTamiasCrons, saveTamiasCrons } from '../tamias'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
 	try {
 		const crons = await getTamiasCrons()

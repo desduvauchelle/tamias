@@ -200,7 +200,7 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 				session.channelName = msg.channelName
 			}
 		}
-		await aiService.enqueueMessage(session.id, msg.content, msg.authorName)
+		await aiService.enqueueMessage(session.id, msg.content, msg.authorName, msg.attachments)
 	}
 	await bridgeManager.initializeAll(config, onBridgeMessage).catch(console.error)
 
@@ -361,6 +361,12 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 				const body = await req.json() as any
 				const session = aiService.createSession({ id: body.id, model: body.model, channelId: body.channelId, channelUserId: body.channelUserId })
 				return json({ sessionId: session.id, model: session.model })
+			}
+
+			if (method === 'GET' && url.pathname.startsWith('/session/') && url.pathname.endsWith('/messages')) {
+				const id = url.pathname.split('/')[2]!
+				const messages = db.query('SELECT role, content FROM messages WHERE sessionId = ? ORDER BY id ASC').all(id)
+				return json({ messages })
 			}
 
 			if (method === 'DELETE' && url.pathname.startsWith('/session/') && !url.pathname.endsWith('/stream')) {

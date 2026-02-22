@@ -19,12 +19,14 @@
 		"build": "bun build --compile --outfile=tamias src/index.ts",
 		"dev": "bun --hot src/index.ts",
 		"install-it": "chmod +x install.sh && ./install.sh",
-		"test": "bun test",
-		"type-check": "bunx tsc --noEmit"
+		"test": "bun test src/tests",
+		"type-check": "bunx tsc --noEmit",
+		"prepare": "husky"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",
-		"@types/fluent-ffmpeg": "^2.1.28"
+		"@types/fluent-ffmpeg": "^2.1.28",
+		"husky": "^9.1.7"
 	},
 	"peerDependencies": {
 		"typescript": "^5.0.0"
