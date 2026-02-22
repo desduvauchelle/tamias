@@ -13,9 +13,11 @@
 		"usage": "bun run src/index.ts usage",
 		"onboarding": "bun run src/index.ts onboarding",
 		"models": "bun run src/index.ts models",
+		"model": "bun run src/index.ts model",
 		"chat": "bun run src/index.ts chat",
 		"cron": "bun run src/index.ts cron",
 		"build": "bun build --compile --outfile=tamias src/index.ts",
+		"dev": "bun --hot src/index.ts",
 		"install-it": "chmod +x install.sh && ./install.sh",
 		"test": "bun test",
 		"type-check": "bunx tsc --noEmit"

@@ -68,6 +68,7 @@ A central background process that maintains connections, manages message queues,
 - `tamias chat`: Launch an interactive CLI chat session.
 - `tamias onboarding`: Re-run the first-run setup wizard.
 - `tamias update`: Check for and install updates (Binary + Dashboard).
+- `tamias doctor`: Check and fix system dependencies (himalaya, git, etc.).
 
 ### Daemon Management
 - `tamias start`: Start the background process (use `--daemon` for quiet mode).
@@ -130,6 +131,9 @@ Integrated Git workflow for the AI.
 
 ### `email`
 AI-driven email management via the `himalaya` CLI.
+> [!NOTE]
+> Requires the `himalaya` CLI. If missing, Tamias will offer to install it for you during setup or via `tamias doctor`.
+
 | Function | Description |
 |---|---|
 | `list_emails` | Fetch recent envelopes |

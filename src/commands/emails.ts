@@ -9,11 +9,15 @@ import {
 	setEmailConfig,
 } from '../utils/config.ts'
 import { generateSecureEnvKey, setEnv } from '../utils/env.ts'
+import { hasDependency, ensureDependency } from '../utils/dependencies.ts'
 
 /**
  * Display all configured email accounts
  */
 export const runEmailsListCommand = async () => {
+	if (!hasDependency('himalaya')) {
+		p.log.warn(pc.yellow('⚠️  The "himalaya" CLI is missing. Email tools will not function. Run "tamias doctor" to fix.'))
+	}
 	p.intro(pc.bgBlue(pc.white(' Tamias — Email Accounts ')))
 	const emails = getAllEmailConfigs()
 	const emailList = Object.values(emails)
@@ -40,6 +44,8 @@ export const runEmailsListCommand = async () => {
  * Add a new email account
  */
 export const runEmailsAddCommand = async () => {
+	await ensureDependency('himalaya') // Prompt to install if missing
+
 	p.intro(pc.bgGreen(pc.white(' Tamias — Add Email Account ')))
 
 	const nickname = await p.text({

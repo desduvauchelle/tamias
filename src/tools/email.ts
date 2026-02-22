@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { getEmailConfig, getEmailPassword } from '../utils/config.ts'
+import { hasDependency } from '../utils/dependencies.ts'
 
 const execAsync = promisify(exec)
 
@@ -16,6 +17,9 @@ export const emailTools = {
 			pageSize: z.number().optional().default(10).describe('Number of emails per page'),
 		}),
 		execute: async ({ account, page, pageSize }: { account?: string; page: number; pageSize: number }) => {
+			if (!hasDependency('himalaya')) {
+				return { success: false, error: 'The "himalaya" CLI is not installed. Please run "tamias doctor --fix" to install it automatically.' }
+			}
 			const config = getEmailConfig(account)
 			if (!config || !config.enabled) {
 				const errorMsg = account ? `Email account '${account}' is not configured or enabled.` : 'No email account is configured or enabled.'
@@ -41,6 +45,9 @@ export const emailTools = {
 			id: z.string().describe('The ID of the email message to read'),
 		}),
 		execute: async ({ account, id }: { account?: string; id: string }) => {
+			if (!hasDependency('himalaya')) {
+				return { success: false, error: 'The "himalaya" CLI is not installed. Please run "tamias doctor --fix" to install it.' }
+			}
 			const config = getEmailConfig(account)
 			if (!config || !config.enabled) {
 				return { success: false, error: 'Email tool is not enabled.' }
@@ -64,6 +71,9 @@ export const emailTools = {
 			body: z.string().describe('Email message body content'),
 		}),
 		execute: async ({ account, to, subject, body }: { account?: string; to: string; subject: string; body: string }) => {
+			if (!hasDependency('himalaya')) {
+				return { success: false, error: 'The "himalaya" CLI is not installed. Run "tamias doctor --fix" to install it.' }
+			}
 			const config = getEmailConfig(account)
 			if (!config || !config.enabled) {
 				return { success: false, error: 'Email tool is not enabled.' }

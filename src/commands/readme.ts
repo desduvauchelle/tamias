@@ -2,7 +2,7 @@ import { Command } from 'commander'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { marked } from 'marked'
-import { TerminalRenderer } from 'marked-terminal'
+import TerminalRenderer from 'marked-terminal'
 import pc from 'picocolors'
 
 export const runReadmeCommand = () => {

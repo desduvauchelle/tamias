@@ -17,6 +17,7 @@ import { runWorkspaceCommand } from './commands/workspace.ts'
 import { runUninstallCommand, runBackupCommand, runRestoreCommand } from './commands/maintenance.ts'
 import { agentsCommand } from './commands/agents.ts'
 import { runReadmeCommand } from './commands/readme.ts'
+import { runDoctorCommand } from './commands/doctor.ts'
 import { isOnboarded } from './utils/memory.ts'
 import pkg from '../package.json'
 
@@ -242,11 +243,17 @@ program
 	.description('Restore Tamias configuration and logs from a backup')
 	.action(runRestoreCommand)
 
-// ─── tamias readme ────────────────────────────────────────────────────────────
 program
 	.command('readme')
 	.description('View the Tamias README.md with terminal formatting')
 	.action(runReadmeCommand)
+
+// ─── tamias doctor ────────────────────────────────────────────────────────────
+program
+	.command('doctor')
+	.description('Check and fix system dependencies (himalaya, git, etc.)')
+	.option('--fix', 'Automatically attempt to install missing dependencies')
+	.action((opts: { fix?: boolean }) => runDoctorCommand(opts))
 
 // First-run detection: if no subcommand given and not yet onboarded, launch chat (which triggers onboarding)
 if (process.argv.length <= 2 && !isOnboarded()) {
