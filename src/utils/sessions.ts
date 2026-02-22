@@ -33,6 +33,9 @@ export function saveSessionToDisk(session: SessionPersist): void {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
 				name = excluded.name,
+				model = excluded.model,
+				connectionNickname = excluded.connectionNickname,
+				modelId = excluded.modelId,
 				updatedAt = excluded.updatedAt,
 				summary = excluded.summary,
 				channelId = excluded.channelId,

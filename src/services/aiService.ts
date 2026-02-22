@@ -8,6 +8,7 @@ import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultMo
 import { buildActiveTools } from '../utils/toolRegistry'
 import { buildSystemPrompt, updatePersonaFiles, scaffoldFromTemplates, readAllPersonaFiles } from '../utils/memory'
 import { saveSessionToDisk, type SessionPersist, listAllStoredSessions, loadSessionFromDisk } from '../utils/sessions'
+import { db } from '../utils/db'
 import { logAiRequest } from '../utils/logger'
 import type { DaemonEvent, BridgeMessage } from '../bridge/types'
 import { BridgeManager } from '../bridge'
@@ -64,8 +65,44 @@ export class AIService {
 
 	public async initialize() {
 		scaffoldFromTemplates()
+		this.healStaleSessionModels()
 		this.loadAllSessions()
 		// We can't refresh tools globally anymore since it depends on sessionId
+	}
+
+	/** Directly update sessions in SQLite whose connectionNickname no longer exists in config */
+	private healStaleSessionModels() {
+		const config = loadConfig()
+		const validNicknames = new Set(Object.keys(config.connections))
+		if (validNicknames.size === 0) return
+
+		const replacement = getDefaultModels().find(m => {
+			const [nick] = m.split('/')
+			return validNicknames.has(nick)
+		}) ?? getAllModelOptions()[0]
+
+		if (!replacement) return
+
+		const [repNick, ...repRest] = replacement.split('/')
+		const repModelId = repRest.join('/')
+
+		// Find sessions with dead connectionNickname and update them in the DB
+		try {
+			const placeholders = [...validNicknames].map(() => '?').join(',')
+			const staleSessions = db.query<{ id: string, model: string }, string[]>(
+				`SELECT id, model FROM sessions WHERE connectionNickname NOT IN (${placeholders})`
+			).all(...validNicknames)
+
+			if (staleSessions.length > 0) {
+				console.log(`[AIService] Healing ${staleSessions.length} stale session(s) in DB: ${staleSessions.map(s => `${s.id}(${s.model})`).join(', ')} → ${replacement}`)
+				const stmt = db.prepare(`UPDATE sessions SET model = ?, connectionNickname = ?, modelId = ? WHERE id = ?`)
+				for (const s of staleSessions) {
+					stmt.run(replacement, repNick, repModelId, s.id)
+				}
+			}
+		} catch (err) {
+			console.error('[AIService] healStaleSessionModels failed:', err)
+		}
 	}
 
 	public async refreshTools(sessionId: string) {
@@ -74,7 +111,7 @@ export class AIService {
 			this.activeTools = tools
 			this.toolDocs = toolDocs
 			// Close old clients before replacing
-			for (const c of this.mcpClients) await c.close().catch(() => { })
+			for (const c of this.mcpClients) await c.close().catch((err) => console.error('[AIService] Failed to close MCP client:', err))
 			this.mcpClients = mcpClients
 		} catch (err) {
 			console.error('[AIService] Failed to load tools:', err)
@@ -129,6 +166,10 @@ export class AIService {
 					this.bridgeSessionMap.set(`${session.channelId}:${session.channelUserId}`, session.id)
 				}
 				this.attachBridgeListeners(session)
+				// Persist healed model back to DB so it survives next restart
+				if (resolvedModel !== full.model) {
+					saveSessionToDisk(this.toPersist(session))
+				}
 			}
 		}
 	}
@@ -337,7 +378,7 @@ export class AIService {
 				const usage = await Promise.race([
 					result.usage,
 					new Promise(resolve => setTimeout(() => resolve({}), 2000))
-				]).catch(() => ({})) as any
+				]).catch((err) => { console.warn('[AIService] Failed to retrieve usage stats:', err); return {} }) as any
 
 				logAiRequest({
 					timestamp: new Date().toISOString(),
@@ -384,7 +425,7 @@ export class AIService {
 				if (session.messages.length >= 20) {
 					this.compactSession(session, model).then(() => {
 						saveSessionToDisk(this.toPersist(session))
-					}).catch(() => { })
+					}).catch((err) => console.error(`[AIService] Session compaction failed for ${session.id}:`, err))
 				}
 
 				session.processing = false
@@ -509,6 +550,6 @@ Return a structured object.`
 	}
 
 	public async shutdown() {
-		for (const client of this.mcpClients) await client.close().catch(() => { })
+		for (const client of this.mcpClients) await client.close().catch((err) => console.error('[AIService] Failed to close MCP client during shutdown:', err))
 	}
 }

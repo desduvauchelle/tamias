@@ -240,6 +240,7 @@ export const loadConfig = (): TamiasConfig => {
 			console.error('Configuration file is invalid:', JSON.stringify(err.issues, null, 2))
 			process.exit(1)
 		}
+		console.error('Failed to load config file, using defaults:', err)
 		return { version: '1.0', connections: {}, bridges: { terminal: { enabled: true } } }
 	}
 }
