@@ -65,6 +65,8 @@ jobs:
           bun install
           bun run build
           # Copy static assets and public into the standalone bundle
+          # (mkdir -p in case Next.js did not create .next/standalone/.next/ yet)
+          mkdir -p .next/standalone/.next
           cp -r .next/static .next/standalone/.next/static
           cp -r public .next/standalone/public
           # Tarball the standalone dir so update/install can extract it without bun install or build
