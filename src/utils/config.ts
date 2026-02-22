@@ -215,14 +215,19 @@ export const loadConfig = (): TamiasConfig => {
 			needsMigration = true
 		}
 
-		// Proactive cleanup of dead connections/models from other computers
-		if (data.defaultModels?.some(m => m.startsWith('lc-openai'))) {
-			data.defaultModels = data.defaultModels.filter(m => !m.startsWith('lc-openai'))
-			needsMigration = true
-		}
-		if (data.connections['lc-openai']) {
-			delete data.connections['lc-openai']
-			needsMigration = true
+		// Proactive cleanup of defaultModels entries for connections that no longer exist.
+		// Only applies when there are configured connections — if connections is empty we can't
+		// distinguish "just set up" from "all deleted", so we leave defaultModels alone.
+		const validNicknames = new Set(Object.keys(data.connections))
+		if (validNicknames.size > 0 && data.defaultModels?.length) {
+			const pruned = data.defaultModels.filter(m => {
+				const [nick] = m.split('/')
+				return validNicknames.has(nick)
+			})
+			if (pruned.length !== data.defaultModels.length) {
+				data.defaultModels = pruned
+				needsMigration = true
+			}
 		}
 
 		if (needsMigration) {
@@ -277,6 +282,12 @@ export const renameConnection = (oldNickname: string, newNickname: string) => {
 	if (currentConfig.defaultConnection === oldNickname) {
 		currentConfig.defaultConnection = newNickname
 	}
+	// Update any defaultModels entries that referenced the old nickname
+	if (currentConfig.defaultModels?.length) {
+		currentConfig.defaultModels = currentConfig.defaultModels.map(m =>
+			m.startsWith(`${oldNickname}/`) ? `${newNickname}/${m.slice(oldNickname.length + 1)}` : m
+		)
+	}
 	saveConfig(currentConfig)
 }
 
@@ -291,6 +302,12 @@ export const deleteConnection = (nickname: string) => {
 	if (currentConfig.defaultConnection === nickname) {
 		const remaining = Object.keys(currentConfig.connections)
 		currentConfig.defaultConnection = remaining[0] ?? undefined
+	}
+	// Prune any defaultModels entries that belonged to this connection
+	if (currentConfig.defaultModels?.length) {
+		currentConfig.defaultModels = currentConfig.defaultModels.filter(
+			m => !m.startsWith(`${nickname}/`)
+		)
 	}
 	saveConfig(currentConfig)
 }

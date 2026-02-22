@@ -76,25 +76,26 @@ describe("AIService Fallback", () => {
 
 		const currentDefaults = configUtils.getDefaultModels()
 		const sessionModel = "invalid-conn/old-model"
-		const fallbacks = ['openai/gpt-4o', 'anthropic/claude-3-5-sonnet', 'google/gemini-pro']
+		const allConfiguredModels = configUtils.getAllModelOptions()
 		const config = configUtils.loadConfig()
 
 		const modelsToTry = [
 			...currentDefaults,
 			sessionModel,
-			...fallbacks
+			...allConfiguredModels,
 		].filter((m, i, arr) => {
 			if (!m) return false
 			if (arr.indexOf(m) !== i) return false
 			const [nick] = m.split('/')
-			// Match implementation: skip any unconfigured connection unless it is a fallback
-			if (!config.connections[nick] && !fallbacks.includes(m)) return false
+			// Only include models whose connection is configured on this machine
+			if (!config.connections[nick]) return false
 			return true
 		})
 
 		expect(modelsToTry).toContain("valid-conn/gpt-4o")
 		expect(modelsToTry).not.toContain("invalid-conn/old-model")
 		expect(modelsToTry[0]).toBe("valid-conn/gpt-4o")
-		expect(modelsToTry).toContain("openai/gpt-4o")
+		// Generic names like 'openai' are not in connections, so they should NOT appear
+		expect(modelsToTry).not.toContain("openai/gpt-4o")
 	})
 })

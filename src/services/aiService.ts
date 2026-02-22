@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels } from '../utils/config'
+import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getAllModelOptions } from '../utils/config'
 import { buildActiveTools } from '../utils/toolRegistry'
 import { buildSystemPrompt, updatePersonaFiles, scaffoldFromTemplates, readAllPersonaFiles } from '../utils/memory'
 import { saveSessionToDisk, type SessionPersist, listAllStoredSessions, loadSessionFromDisk } from '../utils/sessions'
@@ -227,24 +227,20 @@ export class AIService {
 		session.messages.push({ role: 'user', content: messageContent })
 
 		const config = loadConfig()
-		// Priority: Current default models -> session's persisted model -> hardcoded safety fallbacks
-		// We avoid anything starting with 'lc-openai' if it's not actually configured, as it's from another machine.
+		// Priority order: configured default models → session's stored model → any other configured model
+		// Only include models whose connection actually exists on this machine.
 		const currentDefaults = getDefaultModels()
-		const fallbacks = ['openai/gpt-4o', 'anthropic/claude-3-5-sonnet', 'google/gemini-pro']
+		const allConfiguredModels = getAllModelOptions()
 		const modelsToTry = [
 			...currentDefaults,
 			session.model,
-			...fallbacks
+			...allConfiguredModels,
 		].filter((m, i, arr) => {
 			if (!m) return false
-			if (arr.indexOf(m) !== i) return false
+			if (arr.indexOf(m) !== i) return false // deduplicate
 			const [nick] = m.split('/')
-			// If we don't have this connection configured, skip it entirely.
-			// This avoids "No connection found" errors for old models from other machines.
-			if (!config.connections[nick] && !fallbacks.includes(m)) {
-				if (nick === 'lc-openai') {
-					console.log(`[AIService] Skipping dead connection "${nick}" from another computer.`)
-				}
+			if (!config.connections[nick]) {
+				console.log(`[AIService] Skipping model "${m}" — connection "${nick}" not configured on this machine.`)
 				return false
 			}
 			return true
@@ -305,14 +301,6 @@ export class AIService {
 					suppressed = true
 				}
 
-				// If we successfuly used a fallback model, update the session so it sticks
-				if (session.model !== currentModelStr) {
-					console.log(`[AIService] Permanently updating session ${session.id} model from ${session.model} to ${currentModelStr}`)
-					session.model = currentModelStr
-					const { saveSessionToDisk } = await import('../utils/sessions.ts')
-					saveSessionToDisk(this.toPersist(session))
-				}
-
 				const usage = await Promise.race([
 					result.usage,
 					new Promise(resolve => setTimeout(() => resolve({}), 2000))
@@ -340,8 +328,9 @@ export class AIService {
 				session.messages.push({ role: 'assistant', content: fullResponse })
 				session.updatedAt = new Date()
 
-				// Update session model if it was a fallback
+				// If we used a fallback model, update the session so next messages use it directly
 				if (currentModelStr !== session.model) {
+					console.log(`[AIService] Permanently updating session ${session.id} model from ${session.model} to ${currentModelStr}`)
 					session.model = currentModelStr
 					session.modelId = modelId
 					session.connectionNickname = nickname
