@@ -132,14 +132,24 @@ export async function performUpdate(onProgress: ProgressCallback = () => { }): P
 					fs.rmSync(dashboardDir, { recursive: true, force: true })
 					fs.cpSync(newDashSrc, dashboardDir, { recursive: true })
 
+					// Copy README.md for the dashboard docs page
+					const zipRoot = join(newDashSrc, '..', '..')
+					if (fs.existsSync(join(zipRoot, 'README.md'))) {
+						fs.copyFileSync(join(zipRoot, 'README.md'), join(homedir(), '.tamias', 'README.md'))
+					}
+
 					if (fs.existsSync(join(dashboardDir, 'package.json'))) {
 						onProgress({ message: 'Installing dashboard dependencies...', type: 'info' })
 						execSync(`bun install`, { cwd: dashboardDir, stdio: 'ignore' })
 
 						onProgress({ message: 'Building dashboard...', type: 'info' })
-						execSync(`bun run build`, { cwd: dashboardDir, stdio: 'ignore' })
-
-						onProgress({ message: 'Dashboard updated and built.', type: 'info' })
+						try {
+							execSync(`bun run build`, { cwd: dashboardDir, stdio: 'ignore' })
+							onProgress({ message: 'Dashboard updated and built.', type: 'info' })
+						} catch (buildError) {
+							onProgress({ message: 'Dashboard build failed. It will run in dev mode.', type: 'warn' })
+							throw buildError // Rethrow to trigger the outer catch
+						}
 					} else {
 						onProgress({ message: `No package.json found in ${dashboardDir}. Skipping install/build.`, type: 'warn' })
 					}

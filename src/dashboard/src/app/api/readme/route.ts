@@ -11,10 +11,28 @@ export async function GET() {
 		// Actually, in Next.js app dir, the project root is usually where package.json is.
 		// Let's use process.cwd() or similar, but since this is a monorepo-ish structure,
 		// let's try to find it relative to the dashboard root.
-		const projectRoot = join(process.cwd(), '..', '..')
-		const readmePath = join(projectRoot, 'README.md')
+		const candidatePaths = [
+			join(process.cwd(), '..', '..', 'README.md'), // local dev path
+			join(process.cwd(), '..', 'README.md'),       // installed path
+		]
 
-		const content = await readFile(readmePath, 'utf-8')
+		let content = ''
+		let found = false
+
+		for (const readmePath of candidatePaths) {
+			try {
+				content = await readFile(readmePath, 'utf-8')
+				found = true
+				break
+			} catch (e) {
+				// continue
+			}
+		}
+
+		if (!found) {
+			return NextResponse.json({ error: 'Could not find README.md' }, { status: 404 })
+		}
+
 		return NextResponse.json({ content })
 	} catch (error) {
 		console.error('Error reading README:', error)

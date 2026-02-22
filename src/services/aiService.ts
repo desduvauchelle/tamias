@@ -239,9 +239,12 @@ export class AIService {
 			if (!m) return false
 			if (arr.indexOf(m) !== i) return false
 			const [nick] = m.split('/')
-			// If it's the dead lc-openai connection and we don't have it configured, skip it early
-			if (nick === 'lc-openai' && !config.connections[nick]) {
-				console.log(`[AIService] Skipping dead connection "${nick}" from another computer.`)
+			// If we don't have this connection configured, skip it entirely.
+			// This avoids "No connection found" errors for old models from other machines.
+			if (!config.connections[nick] && !fallbacks.includes(m)) {
+				if (nick === 'lc-openai') {
+					console.log(`[AIService] Skipping dead connection "${nick}" from another computer.`)
+				}
 				return false
 			}
 			return true
@@ -300,6 +303,25 @@ export class AIService {
 
 				if (fullResponse.trim() === 'HEARTBEAT_OK') {
 					suppressed = true
+				}
+
+				// If we successfuly used a fallback model, update the session so it sticks
+				if (session.model !== currentModelStr) {
+					console.log(`[AIService] Permanently updating session ${session.id} model from ${session.model} to ${currentModelStr}`)
+					session.model = currentModelStr
+					const { saveSessionToDisk } = await import('../utils/sessions.ts')
+					saveSessionToDisk({
+						id: session.id,
+						name: session.name,
+						createdAt: session.createdAt.toISOString(),
+						updatedAt: new Date().toISOString(),
+						model: session.model,
+						summary: session.summary,
+						channelId: session.channelId,
+						channelUserId: session.channelUserId,
+						channelName: session.channelName,
+						messages: session.messages
+					})
 				}
 
 				const usage = await Promise.race([

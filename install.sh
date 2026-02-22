@@ -146,6 +146,12 @@ if [ ! -d "$DASHBOARD_DIR" ]; then
   if [ -n "$DASH_SRC" ] && [ -d "$DASH_SRC" ]; then
     mv "$DASH_SRC" "$DASHBOARD_DIR"
     echo "=> Dashboard source ready."
+
+    # Copy README.md for the dashboard docs page
+    ROOT_SRC=$(dirname "$(dirname "$DASH_SRC")")
+    if [ -f "$ROOT_SRC/README.md" ]; then
+      cp "$ROOT_SRC/README.md" "$HOME/.tamias/README.md"
+    fi
   else
     echo "WARNING: Dashboard source not found in zip — continuing without it."
   fi

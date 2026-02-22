@@ -70,4 +70,20 @@ describe("Config Utils", () => {
 		expect((loaded as any).defaultModels[0]).toBe("openai/gpt-4o")
 		expect((loaded as any).defaultModel).toBeUndefined()
 	})
+
+	test("loadConfig cleans up dead lc-openai connections", () => {
+		const ghostConfig = {
+			version: "1.0",
+			defaultModels: ["lc-openai/gpt-4o", "other/valid"],
+			connections: {
+				"lc-openai": { nickname: "lc-openai", provider: "openai" },
+				"other": { nickname: "other", provider: "anthropic" }
+			}
+		}
+		writeFileSync(configPath, JSON.stringify(ghostConfig))
+		const config = loadConfig()
+		expect(config.defaultModels).not.toContain("lc-openai/gpt-4o")
+		expect(config.connections["lc-openai"]).toBeUndefined()
+		expect(config.connections["other"]).toBeDefined()
+	})
 })
