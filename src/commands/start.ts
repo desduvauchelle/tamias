@@ -58,7 +58,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					p.note('Stopping current daemon to restart with verbose logging...', 'Verbose')
 					const info = readDaemonInfo()
 					if (info?.pid) {
-						try { process.kill(info.pid, 'SIGTERM') } catch {}
+						try { process.kill(info.pid, 'SIGTERM') } catch { }
 						await new Promise(r => setTimeout(r, 1500))
 					}
 				} else {
@@ -92,6 +92,24 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 
 	const port = await findFreePort(9001)
 	const dashboardPort = await findFreePort(5678)
+
+	// Ensure dashboard port is free before starting
+	try {
+		const { execSync } = await import('child_process')
+		const dashboardResult = execSync(
+			`lsof -i :${dashboardPort} -t || true`,
+			{ encoding: 'utf8' }
+		).trim()
+		if (dashboardResult) {
+			const pids = dashboardResult.split('\n').map(Number).filter(pid => pid && pid !== process.pid)
+			for (const pid of pids) {
+				try { process.kill(pid, 'SIGTERM') } catch { /* already gone */ }
+			}
+			console.log(`[Daemon] Killed zombie dashboard process(es) on port ${dashboardPort}`)
+		}
+	} catch (err) {
+		/* ignore errors if tools aren't available */
+	}
 
 	// Start Next.js dashboard
 	const fs = require('fs')

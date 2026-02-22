@@ -14,23 +14,27 @@ export const runStopCommand = async () => {
 		} catch { /* already dying */ }
 	}
 
-	// Step 2: kill the PID in daemon.json (covers the active instance)
+	// Step 2: kill the processes in daemon.json
 	const info = readDaemonInfo()
-	if (info?.pid) {
-		try { process.kill(info.pid, 'SIGTERM') } catch { /* already gone */ }
+	if (info) {
+		if (info.pid) {
+			try { process.kill(info.pid, 'SIGTERM') } catch { /* already gone */ }
+		}
+		if (info.dashboardPid) {
+			try { process.kill(info.dashboardPid, 'SIGTERM') } catch { /* already gone */ }
+		}
 	}
-	clearDaemonInfo()
 
-	// Step 3: kill ALL other tamias --daemon processes (orphaned instances)
-	// This is the critical step: previous installs/restarts leave ghost processes
-	// that daemon.json no longer tracks.
+	// Step 3: kill ALL other tamias --daemon processes and dashboard processes
+	// This is the critical step: previous installs/restarts leave ghost processes.
 	try {
-		const result = execSync(
+		// Kill daemon processes
+		const daemonResult = execSync(
 			`pgrep -f 'tamias.*--daemon' || true`,
 			{ encoding: 'utf8' }
 		).trim()
-		if (result) {
-			const pids = result.split('\n').map(Number).filter(pid => pid && pid !== process.pid)
+		if (daemonResult) {
+			const pids = daemonResult.split('\n').map(Number).filter(pid => pid && pid !== process.pid)
 			for (const pid of pids) {
 				try { process.kill(pid, 'SIGTERM') } catch { /* already gone */ }
 			}
@@ -38,7 +42,26 @@ export const runStopCommand = async () => {
 				console.log(pc.yellow(`  Killed ${pids.length} orphaned daemon process(es): ${pids.join(', ')}`))
 			}
 		}
-	} catch { /* pgrep not available or no matches */ }
 
-	p.outro(pc.green('✅ All daemon processes stopped.'))
+		// Kill dashboard processes (Next.js/Bun running dashboard)
+		// We look for 'next-router-worker' or 'server.js' or the dashboard port 5678 specifically
+		const dashboardResult = execSync(
+			`lsof -i :5678 -t || true`,
+			{ encoding: 'utf8' }
+		).trim()
+		if (dashboardResult) {
+			const pids = dashboardResult.split('\n').map(Number).filter(pid => pid && pid !== process.pid)
+			for (const pid of pids) {
+				try { process.kill(pid, 'SIGTERM') } catch { /* already gone */ }
+			}
+			if (pids.length > 0) {
+				console.log(pc.yellow(`  Killed ${pids.length} dashboard process(es) on port 5678`))
+			}
+		}
+	} catch (err) {
+		/* ignore errors if tools aren't available */
+	}
+
+	clearDaemonInfo()
+	p.outro(pc.green('✅ All daemon and dashboard processes stopped.'))
 }
