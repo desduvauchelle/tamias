@@ -103,6 +103,8 @@ export const TamiasConfigSchema = z.object({
 	emails: z.record(z.string(), z.object({
 		nickname: z.string(),
 		enabled: z.boolean().default(false),
+		service: z.enum(['gmail', 'outlook', 'icloud', 'other']).default('gmail'),
+		email: z.string().optional(),
 		envKeyName: z.string().optional(),
 		appPassword: z.string().optional(), // legacy/temp
 		accountName: z.string().default('personal'),
@@ -117,11 +119,8 @@ export const TamiasConfigSchema = z.object({
 export type TamiasConfig = z.infer<typeof TamiasConfigSchema>
 
 export const getDefaultWorkspacePath = () => {
-	const home = homedir()
-	const documents = join(home, 'Documents')
-	// On Linux, Documents might be lowercase or localized, but usually it's ~/Documents
-	// We'll stick to a common pattern: Documents/Tamias
-	return join(documents, 'Tamias')
+	// Everything lives in ~/.tamias, including the AI's operating context
+	return TAMIAS_DIR
 }
 
 const getConfigPath = () => {

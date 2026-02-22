@@ -16,6 +16,7 @@ import {
 import { setEnv, generateSecureEnvKey } from '../utils/env.ts'
 import { runConfigCommand } from './config.ts'
 import { runEmailsAddCommand } from './emails.ts'
+import { expandHome } from '../utils/path.ts'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -420,19 +421,55 @@ export const runOnboarding = async (): Promise<void> => {
 		await runEmailsAddCommand()
 	}
 
-	// ── Phase 7: Workspace Path ─────────────────────────────────────────────
-	const defaultWorkspacePath = getDefaultWorkspacePath()
-	const workspacePath = await p.text({
-		message: `${emoji} Where are your projects? (I'll scan here for context)`,
-		placeholder: defaultWorkspacePath,
-		initialValue: defaultWorkspacePath,
-		validate: (v) => {
-			if (!v?.trim()) return 'I need a place to work!'
-		},
-	})
-	if (p.isCancel(workspacePath)) { p.cancel('Maybe next time.'); process.exit(0) }
+	// ── Phase 7: Access Shortcut ───────────────────────────────────────────
+	p.note(`${emoji} I live in a hidden folder (~/.tamias), but I can create a shortcut so you can easily see my files.`, 'Access')
 
-	setWorkspacePath(workspacePath as string)
+	const createShortcut = await p.confirm({
+		message: 'Create an access shortcut in your Documents folder?',
+		initialValue: true,
+	})
+
+	if (p.isCancel(createShortcut)) { p.cancel('Maybe next time.'); process.exit(0) }
+
+	let shortcutPath = join(homedir(), 'Documents', 'Tamias')
+
+	if (createShortcut) {
+		const customPath = await p.text({
+			message: 'Where should I create it?',
+			initialValue: shortcutPath,
+			placeholder: shortcutPath,
+		})
+		if (!p.isCancel(customPath)) {
+			shortcutPath = expandHome(customPath as string)
+		}
+
+		// Create symlink from shortcutPath → TAMIAS_DIR
+		try {
+			const { symlinkSync, existsSync, lstatSync, unlinkSync } = await import('fs')
+			const { dirname } = await import('path')
+
+			if (!existsSync(shortcutPath)) {
+				const parent = dirname(shortcutPath)
+				if (existsSync(parent)) {
+					symlinkSync(TAMIAS_DIR, shortcutPath)
+				}
+			} else {
+				// If it exists and is a symlink, refresh it
+				const stats = lstatSync(shortcutPath)
+				if (stats.isSymbolicLink()) {
+					unlinkSync(shortcutPath)
+					symlinkSync(TAMIAS_DIR, shortcutPath)
+				}
+			}
+		} catch (e) {
+			console.error(pc.dim(`  (Note: Could not create shortcut link: ${e})`))
+		}
+	}
+
+	// The workspacePath in config is ALWAYS TAMIAS_DIR by default now.
+	// We keep it as TAMIAS_DIR even if a shortcut is created, because
+	// the AI should work on the primary data source. The shortcut is for the user.
+	setWorkspacePath(TAMIAS_DIR)
 
 	// Scaffold remaining templates
 	scaffoldFromTemplates()
@@ -456,7 +493,7 @@ export const runOnboarding = async (): Promise<void> => {
 	if (bridgesCfg.telegram?.enabled && bridgesCfg.telegram?.envKeyName) channelList.push('Telegram')
 	const channelLabel = channelList.length > 0 ? channelList.join(', ') : 'None — run `tamias channels add`'
 
-	const displayWorkspace = (workspacePath as string).replace(homedir(), '~')
+	const displayWorkspace = TAMIAS_DIR.replace(homedir(), '~')
 
 	// Auto-start daemon
 	let daemonPort = 9001

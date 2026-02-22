@@ -30,7 +30,8 @@ export const runEmailsListCommand = async () => {
 		for (const email of emailList) {
 			const status = email.enabled ? pc.green('enabled') : pc.dim('disabled')
 			const def = email.isDefault ? pc.yellow(' [default]') : ''
-			console.log(`  ${pc.bold(pc.cyan(email.nickname))}  ${pc.dim(email.accountName)}  (${status})${def}`)
+			const serviceLabel = pc.dim(`(${email.service || 'gmail'})`)
+			console.log(`  ${pc.bold(pc.cyan(email.nickname))}  ${pc.dim(email.email || email.accountName)}  ${serviceLabel}  (${status})${def}`)
 			if (email.permissions?.whitelist?.length > 0) {
 				console.log(`    ${pc.dim('Whitelist:')} ${email.permissions.whitelist.join(', ')}`)
 			}
@@ -48,8 +49,66 @@ export const runEmailsAddCommand = async () => {
 
 	p.intro(pc.bgGreen(pc.white(' Tamias — Add Email Account ')))
 
+	// 1. Service Selection
+	const service = await p.select({
+		message: 'Select your email provider:',
+		options: [
+			{ value: 'gmail', label: 'Gmail (recommmended — uses App Passwords)' },
+			{ value: 'outlook', label: 'Outlook' },
+			{ value: 'icloud', label: 'iCloud' },
+			{ value: 'other', label: 'Other (custom SMTP/IMAP)' },
+		],
+	})
+	if (p.isCancel(service)) { p.cancel('Cancelled.'); process.exit(0) }
+
+	// 2. Email Address
+	const email = await p.text({
+		message: 'Enter your email address:',
+		placeholder: 'you@example.com',
+		validate: (v) => {
+			if (!v) return 'Email is required'
+			if (!v.includes('@')) return 'Invalid email address'
+		},
+	})
+	if (p.isCancel(email)) { p.cancel('Cancelled.'); process.exit(0) }
+
+	// 3. Password / App Password
+	const passMsg = service === 'gmail'
+		? 'Enter your Gmail App Password (will be stored securely in .env):'
+		: 'Enter your email password (will be stored securely in .env):'
+
+	const appPassword = await p.password({
+		message: passMsg,
+		validate: (v) => { if (!v) return 'Password is required' },
+	})
+	if (p.isCancel(appPassword)) { p.cancel('Cancelled.'); process.exit(0) }
+
+	// 4. Himalaya Account ID
+	const accountName = await p.text({
+		message: 'Himalaya Account ID (Internal ID for himalaya CLI):',
+		placeholder: email as string,
+		initialValue: email as string,
+	})
+	if (p.isCancel(accountName)) { p.cancel('Cancelled.'); process.exit(0) }
+
+	// 5. Whitelist / Permissions
+	const whitelistInput = await p.text({
+		message: 'Authorized recipient emails (comma separated, leave empty for no whitelist):',
+	})
+	if (p.isCancel(whitelistInput)) { p.cancel('Cancelled.'); process.exit(0) }
+	const whitelist = (whitelistInput as string).split(',').map(s => s.trim()).filter(Boolean)
+
+	// 6. Default Flag
+	const isDefault = await p.confirm({
+		message: 'Set as default email account?',
+		initialValue: Object.keys(getAllEmailConfigs()).length === 0,
+	})
+	if (p.isCancel(isDefault)) { p.cancel('Cancelled.'); process.exit(0) }
+
+	// 7. Nickname (Last)
 	const nickname = await p.text({
-		message: 'Enter a Display Name for this account (e.g. Personal, Work):',
+		message: 'Give this account a nickname (e.g. Personal, Work, Tech):',
+		placeholder: 'Personal',
 		validate: (v) => {
 			if (!v) return 'Nickname is required'
 			if (/\s/.test(v)) return 'Nickname cannot contain spaces'
@@ -58,37 +117,14 @@ export const runEmailsAddCommand = async () => {
 	})
 	if (p.isCancel(nickname)) { p.cancel('Cancelled.'); process.exit(0) }
 
-	const accountName = await p.text({
-		message: 'Enter the Himalaya Account ID (as defined in your himalaya config.toml):',
-		placeholder: nickname as string,
-		initialValue: nickname as string,
-	})
-	if (p.isCancel(accountName)) { p.cancel('Cancelled.'); process.exit(0) }
-
-	const appPassword = await p.password({
-		message: 'Enter your Gmail App Password (will be stored securely in .env):',
-		validate: (v) => { if (!v) return 'Password is required' },
-	})
-	if (p.isCancel(appPassword)) { p.cancel('Cancelled.'); process.exit(0) }
-
-	const whitelistInput = await p.text({
-		message: 'Enter authorized recipient emails (comma separated, leave empty for no whitelist):',
-	})
-	if (p.isCancel(whitelistInput)) { p.cancel('Cancelled.'); process.exit(0) }
-	const whitelist = (whitelistInput as string).split(',').map(s => s.trim()).filter(Boolean)
-
-	const isDefault = await p.confirm({
-		message: 'Set as default email account?',
-		initialValue: Object.keys(getAllEmailConfigs()).length === 0,
-	})
-	if (p.isCancel(isDefault)) { p.cancel('Cancelled.'); process.exit(0) }
-
 	try {
 		const envKey = generateSecureEnvKey(`EMAIL_${(nickname as string).toUpperCase()}`)
 		setEnv(envKey, appPassword as string)
 
 		setEmailConfig(nickname as string, {
 			nickname: nickname as string,
+			email: email as string,
+			service: service as string,
 			enabled: true,
 			accountName: accountName as string,
 			envKeyName: envKey,
@@ -138,6 +174,8 @@ export const runEmailsEditCommand = async (slug?: string) => {
 		message: `Editing ${pc.bold(chosen)}. What do you want to change?`,
 		options: [
 			{ value: 'nickname', label: '✏️  Rename nickname' },
+			{ value: 'service', label: '🌐  Email service (Gmail, Outlook...)' },
+			{ value: 'email', label: '📧  Email address' },
 			{ value: 'accountName', label: '🏷️  Himalaya account name' },
 			{ value: 'password', label: '🔑 Update App Password' },
 			{ value: 'whitelist', label: '📜 Update Whitelist' },
@@ -163,6 +201,33 @@ export const runEmailsEditCommand = async (slug?: string) => {
 		if (p.isCancel(newNickname)) { p.cancel('Cancelled.'); process.exit(0) }
 		renameEmailConfig(chosen, newNickname as string)
 		chosen = newNickname as string
+	}
+
+	if (selected.includes('service')) {
+		const newVal = await p.select({
+			message: 'Select email provider:',
+			options: [
+				{ value: 'gmail', label: 'Gmail' },
+				{ value: 'outlook', label: 'Outlook' },
+				{ value: 'icloud', label: 'iCloud' },
+				{ value: 'other', label: 'Other' },
+			],
+		})
+		if (p.isCancel(newVal)) { p.cancel('Cancelled.'); process.exit(0) }
+		updates.service = newVal
+	}
+
+	if (selected.includes('email')) {
+		const newVal = await p.text({
+			message: 'New email address:',
+			initialValue: config.email,
+			validate: (v) => {
+				if (!v) return 'Required'
+				if (!v.includes('@')) return 'Invalid email'
+			}
+		})
+		if (p.isCancel(newVal)) { p.cancel('Cancelled.'); process.exit(0) }
+		updates.email = newVal
 	}
 
 	if (selected.includes('accountName')) {
