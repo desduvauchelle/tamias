@@ -354,6 +354,7 @@ export class AIService {
 		}
 
 		let lastError: any = null
+		const failures: Array<{ model: string; error: string }> = []
 
 		for (const currentModelStr of modelsToTry) {
 			const [nickname, ...rest] = currentModelStr.split('/')
@@ -363,11 +364,12 @@ export class AIService {
 			if (!connection) {
 				console.warn(`[AIService] No connection object for "${nickname}" (model="${currentModelStr}") — skipping`)
 				lastError = new Error(`No AI connection configured for "${nickname}"`)
+				failures.push({ model: currentModelStr, error: `No connection config for "${nickname}"` })
 				continue
 			}
 
 			console.log(`[AIService] Attempting session ${session.id} via ${currentModelStr} (provider=${connection.provider})`)
-		debug(`  API key present: ${!!getApiKeyForConnection(connection.nickname)}, modelId=${modelId}`)
+			debug(`  API key present: ${!!getApiKeyForConnection(connection.nickname)}, modelId=${modelId}`)
 			try {
 				await this.refreshTools(session.id)
 				const model = this.buildModel(connection, modelId)
@@ -469,15 +471,18 @@ export class AIService {
 				}
 				return // Success!
 			} catch (err: any) {
-				console.error(`[AIService] Failed with model ${currentModelStr}:`, err)
+				const errStr = err?.message || String(err)
+				console.error(`[AIService] Failed with model ${currentModelStr}: ${errStr}`)
+				failures.push({ model: currentModelStr, error: errStr })
 				lastError = err
 				// Continue to next model
 			}
 		}
 
 		// If we get here, all models failed
-		console.error(`[AIService] All models failed for session ${session.id}:`, lastError)
-		session.emitter.emit('event', { type: 'error', message: `All AI models failed. Last error: ${String(lastError)}` } as DaemonEvent)
+		const failureSummary = failures.map(f => `${f.model}: ${f.error}`).join(' | ')
+		console.error(`[AIService] All models failed for session ${session.id}: ${failureSummary}`)
+		session.emitter.emit('event', { type: 'error', message: `All AI models failed:\n${failures.map(f => `• ${f.model}: ${f.error}`).join('\n')}` } as DaemonEvent)
 		session.processing = false
 		if (session.queue.length > 0) {
 			setImmediate(() => this.processSession(session))
@@ -490,13 +495,19 @@ export class AIService {
 			case 'openai': return createOpenAI({ apiKey })(modelId)
 			case 'anthropic': return createAnthropic({ apiKey })(modelId) as any
 			case 'google': return createGoogleGenerativeAI({ apiKey })(modelId) as any
-			case 'openrouter': return createOpenAI({ baseURL: 'https://openrouter.ai/api/v1', apiKey })(modelId)
-			case 'ollama': {
-				let baseURL = (connection as any).baseUrl || 'http://127.0.0.1:11434'
-				baseURL = baseURL.replace(/\/$/, '')
-				if (!baseURL.endsWith('/v1')) baseURL += '/v1'
-				return createOpenAI({ baseURL, apiKey: apiKey || 'ollama' })(modelId)
-			}
+		case 'openrouter': {
+			// Cast to any: 'compatibility' exists at runtime but is missing from v3 type defs.
+			// It forces /v1/chat/completions — OpenRouter rejects the newer /v1/responses endpoint.
+			const opts: any = { baseURL: 'https://openrouter.ai/api/v1', apiKey, compatibility: 'compatible' }
+			return createOpenAI(opts)(modelId)
+		}
+		case 'ollama': {
+			let baseURL = (connection as any).baseUrl || 'http://127.0.0.1:11434'
+			baseURL = baseURL.replace(/\/$/, '')
+			if (!baseURL.endsWith('/v1')) baseURL += '/v1'
+			const opts: any = { baseURL, apiKey: apiKey || 'ollama', compatibility: 'compatible' }
+			return createOpenAI(opts)(modelId)
+		}
 			default: throw new Error(`Unsupported provider: ${connection.provider}`)
 		}
 	}
