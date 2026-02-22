@@ -310,18 +310,7 @@ export class AIService {
 					console.log(`[AIService] Permanently updating session ${session.id} model from ${session.model} to ${currentModelStr}`)
 					session.model = currentModelStr
 					const { saveSessionToDisk } = await import('../utils/sessions.ts')
-					saveSessionToDisk({
-						id: session.id,
-						name: session.name,
-						createdAt: session.createdAt.toISOString(),
-						updatedAt: new Date().toISOString(),
-						model: session.model,
-						summary: session.summary,
-						channelId: session.channelId,
-						channelUserId: session.channelUserId,
-						channelName: session.channelName,
-						messages: session.messages
-					})
+					saveSessionToDisk(this.toPersist(session))
 				}
 
 				const usage = await Promise.race([
