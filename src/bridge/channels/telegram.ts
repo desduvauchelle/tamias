@@ -1,5 +1,6 @@
 import { Bot, InputFile } from 'grammy'
 import { getBotTokenForBridge, type TamiasConfig } from '../../utils/config.ts'
+import { VERSION } from '../../utils/version.ts'
 import type { BridgeMessage, DaemonEvent, IBridge } from '../types.ts'
 
 interface TelegramContext {
@@ -185,7 +186,7 @@ export class TelegramBridge implements IBridge {
 						await this.bot.api.setMessageReaction(ctx.chatId, ctx.messageId, [])
 					} catch { }
 					try {
-						await this.bot.api.sendMessage(ctx.chatId, `⚠️ Error: ${event.message}`)
+						await this.bot.api.sendMessage(ctx.chatId, `⚠️ Error [v${VERSION}]: ${event.message}`)
 					} catch (err) {
 						console.error(`[Telegram Bridge] Failed to send error notification to chat ${chatKey}:`, err)
 					}

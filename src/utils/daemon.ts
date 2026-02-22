@@ -72,7 +72,7 @@ export async function isDaemonRunning(): Promise<boolean> {
 	}
 }
 
-export async function autoStartDaemon(): Promise<DaemonInfo> {
+export async function autoStartDaemon(opts: { verbose?: boolean } = {}): Promise<DaemonInfo> {
 	// Detection of compiled state
 	const isCompiled = import.meta.dir?.includes('$bunfs') || !existsSync(import.meta.dir || '')
 	const projectRoot = isCompiled ? process.cwd() : join(import.meta.dir, '../..')
@@ -86,12 +86,16 @@ export async function autoStartDaemon(): Promise<DaemonInfo> {
 		spawnArgs = [process.argv[0], join(projectRoot, 'src', 'index.ts'), 'start', '--daemon']
 	}
 
+	const spawnEnv: Record<string, string> = { ...process.env as Record<string, string> }
+	if (opts.verbose) spawnEnv.TAMIAS_DEBUG = '1'
+
 	const proc = Bun.spawn(
 		spawnArgs,
 		{
 			cwd: projectRoot,
 			detached: true,
 			stdio: ['ignore', logFile, logFile],
+			env: spawnEnv,
 		}
 	)
 	proc.unref()

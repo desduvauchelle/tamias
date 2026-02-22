@@ -18,6 +18,7 @@ import { runUninstallCommand, runBackupCommand, runRestoreCommand } from './comm
 import { agentsCommand } from './commands/agents.ts'
 import { runReadmeCommand } from './commands/readme.ts'
 import { runDoctorCommand } from './commands/doctor.ts'
+import { runLogsCommand } from './commands/logs.ts'
 import { isOnboarded } from './utils/memory.ts'
 import { VERSION } from './utils/version.ts'
 
@@ -48,7 +49,17 @@ program
 	.command('start')
 	.description('Start the Tamias daemon (central AI brain)')
 	.option('--daemon', 'Run in background/daemon mode (no interactive output)')
-	.action((opts: { daemon?: boolean }) => runStartCommand(opts))
+	.option('--verbose', 'Enable verbose debug logging (sets TAMIAS_DEBUG=1, restarts daemon if running)')
+	.action((opts: { daemon?: boolean; verbose?: boolean }) => runStartCommand(opts))
+
+// ─── tamias logs ──────────────────────────────────────────────────────────────
+program
+	.command('logs')
+	.description('View and follow the daemon log (~/.tamias/daemon.log)')
+	.option('-n, --lines <n>', 'Number of lines to show from the end', String(80))
+	.option('--no-follow', 'Print tail and exit (do not follow)')
+	.option('--clear', 'Clear the log file')
+	.action((opts: { lines?: string; follow?: boolean; clear?: boolean }) => runLogsCommand(opts))
 
 // ─── tamias stop ──────────────────────────────────────────────────────────────
 program

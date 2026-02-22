@@ -122,7 +122,8 @@ else
   mv "$TMP_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
 fi
 
-# 5. Dashboard setup — use the pre-built standalone tarball from the release
+# 5. Dashboard setup — use the pre-built standalone tarball from the release,
+# fall back to source + bun build if the tarball is not in the release assets.
 DASHBOARD_DIR="$HOME/.tamias/src/dashboard"
 DASHBOARD_TARBALL_URL=$(grep -o '"browser_download_url": *"[^"]*"' "$TMP_DIR/release.json" | grep "tamias-dashboard.tar.gz" | head -n 1 | cut -d '"' -f 4)
 
@@ -133,13 +134,58 @@ if [ -n "$DASHBOARD_TARBALL_URL" ]; then
   echo "=> Downloading pre-built dashboard..."
   curl -fsSL --progress-bar "$DASHBOARD_TARBALL_URL" -o "$TMP_DIR/tamias-dashboard.tar.gz"
 
-  # Ensure target dir exists, then extract the standalone bundle into place
+  # Ensure target dirs exist, then extract the standalone bundle into place
   mkdir -p "$DASHBOARD_DIR/.next"
   tar -xzf "$TMP_DIR/tamias-dashboard.tar.gz" -C "$DASHBOARD_DIR"
   echo "=> Dashboard ready (no build step required)."
 else
-  echo "WARNING: No pre-built dashboard found in the release — dashboard will not be available."
-  echo "         Re-run the installer once a new release has been published."
+  # No prebuilt tarball — fall back to downloading source and building locally
+  echo ""
+  echo "=> No pre-built dashboard in release — downloading source and building..."
+  curl -fsSL "https://github.com/${REPO}/archive/refs/heads/main.zip" -o "$TMP_DIR/src.zip"
+  unzip -q "$TMP_DIR/src.zip" -d "$TMP_DIR/extracted"
+
+  DASH_SRC=""
+  DASH_SRC=$(find "$TMP_DIR/extracted" -mindepth 2 -maxdepth 6 -type d \
+    -path "*/src/dashboard" -print -quit 2>/dev/null || true)
+  if [ -z "$DASH_SRC" ]; then
+    DASH_SRC=$(find "$TMP_DIR/extracted" -mindepth 2 -maxdepth 6 -type d \
+      -name "dashboard" -print -quit 2>/dev/null || true)
+  fi
+
+  if [ -n "$DASH_SRC" ] && [ -d "$DASH_SRC" ]; then
+    rm -rf "$DASHBOARD_DIR"
+    mv "$DASH_SRC" "$DASHBOARD_DIR"
+    if [ -f "$DASHBOARD_DIR/package.json" ]; then
+      echo "=> Installing dashboard dependencies..."
+      "$BUN_BIN" install --cwd "$DASHBOARD_DIR" 2>&1 | tail -3
+      echo "=> Building dashboard..."
+      if "$BUN_BIN" run --cwd "$DASHBOARD_DIR" build 2>&1 | tail -5; then
+        echo "=> Dashboard built and ready."
+      else
+        echo "WARNING: Dashboard build failed — dev mode will still work."
+      fi
+    fi
+  else
+    echo "WARNING: Dashboard source not found — continuing without it."
+  fi
+fi
+
+# 5b. Restart daemon if it was already running (so new binary takes effect)
+DAEMON_JSON="$HOME/.tamias/daemon.json"
+if [ -f "$DAEMON_JSON" ]; then
+  DAEMON_PID=$(grep -o '"pid": *[0-9]*' "$DAEMON_JSON" | grep -o '[0-9]*' | head -1)
+  if [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>/dev/null; then
+    echo ""
+    echo "=> Stopping running daemon (PID $DAEMON_PID) so new binary takes effect..."
+    kill "$DAEMON_PID" 2>/dev/null || true
+    sleep 1
+    echo "=> Restarting daemon..."
+    export PATH="$PATH:$INSTALL_DIR"
+    "$INSTALL_DIR/$BINARY_NAME" start &
+    sleep 2
+    echo "=> Daemon restarted."
+  fi
 fi
 
 # 6. PATH Setup

@@ -1,5 +1,6 @@
 import { Client, GatewayIntentBits, Events, type Message } from 'discord.js'
 import { getBotTokenForBridge, type TamiasConfig } from '../../utils/config.ts'
+import { VERSION } from '../../utils/version.ts'
 import type { BridgeMessage, DaemonEvent, IBridge } from '../types.ts'
 
 interface DiscordContext {
@@ -183,7 +184,7 @@ export class DiscordBridge implements IBridge {
 						if (brain) await brain.users.remove(this.client!.user!.id)
 					} catch { }
 					try {
-						await (ctx.message.channel as any).send?.(`⚠️ Error: ${event.message}`)
+						await (ctx.message.channel as any).send?.(`⚠️ Error [v${VERSION}]: ${event.message}`)
 					} catch (err) {
 						console.error(`[Discord Bridge] Failed to send error notification to channel ${channelId}:`, err)
 					}

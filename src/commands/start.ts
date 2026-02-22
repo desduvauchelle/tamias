@@ -5,6 +5,7 @@ import { homedir } from 'os'
 import { findFreePort, writeDaemonInfo, clearDaemonInfo } from '../utils/daemon.ts'
 import { loadConfig, getDefaultModel, getAllModelOptions } from '../utils/config.ts'
 import { autoUpdateDaemon } from '../utils/update.ts'
+import { VERSION } from '../utils/version.ts'
 import { AIService, type Session } from '../services/aiService.ts'
 import { BridgeManager } from '../bridge/index.ts'
 import { CronManager } from '../bridge/cronManager.ts'
@@ -37,8 +38,9 @@ function json(data: unknown, status = 200): Response {
 	})
 }
 
-export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
+export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolean } = {}) => {
 	const isDaemon = opts.daemon ?? false
+	const isVerbose = opts.verbose ?? false
 
 	if (!isDaemon) {
 		p.intro(pc.bgGreen(pc.black(' Tamias — Starting Daemon ')))
@@ -49,14 +51,27 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 		const defaultModel = getDefaultModel() || 'Not set'
 
 		try {
-			const { isDaemonRunning, autoStartDaemon } = await import('../utils/daemon.ts')
+			const { isDaemonRunning, autoStartDaemon, readDaemonInfo } = await import('../utils/daemon.ts')
 			if (await isDaemonRunning()) {
-				p.outro(pc.green(`✅ Daemon is already running`))
-				process.exit(0)
+				if (isVerbose) {
+					// Restart with verbose flag
+					p.note('Stopping current daemon to restart with verbose logging...', 'Verbose')
+					const info = readDaemonInfo()
+					if (info?.pid) {
+						try { process.kill(info.pid, 'SIGTERM') } catch {}
+						await new Promise(r => setTimeout(r, 1500))
+					}
+				} else {
+					p.outro(pc.green(`✅ Daemon is already running`))
+					process.exit(0)
+				}
 			}
-			p.note('Spawning background process...', 'Status')
-			const info = await autoStartDaemon()
-			p.outro(pc.green(`✅ Daemon started in background (PID: ${info.pid}, Port: ${info.port})`))
+			p.note(isVerbose ? 'Spawning background process with TAMIAS_DEBUG=1...' : 'Spawning background process...', 'Status')
+			const info = await autoStartDaemon({ verbose: isVerbose })
+			p.outro(pc.green(`✅ Daemon started (PID: ${info.pid}, Port: ${info.port})`))
+			if (isVerbose) {
+				p.note(`Verbose logging active — tail with:\n  tamias logs`, 'Debug')
+			}
 			if (info.dashboardPort) {
 				p.outro(pc.green(`✅ Dashboard running at http://localhost:${info.dashboardPort}`))
 			}
@@ -163,6 +178,15 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 		dashboardPid: dashboardProc.pid
 	})
 
+	// Log version and binary path so daemon.log always shows which binary is running
+	console.log(`[Daemon v${VERSION}] Starting from ${process.execPath}`)
+	console.log(`[Daemon] TAMIAS_DEBUG=${process.env.TAMIAS_DEBUG ?? '0'}`)
+	const startupConfig = loadConfig()
+	const startupConns = Object.keys(startupConfig.connections)
+	console.log(`[Daemon] Connections in config: [${startupConns.join(', ') || 'NONE'}]`)
+	const startupDefaults = startupConfig.defaultModels ?? []
+	console.log(`[Daemon] Default models: [${startupDefaults.join(', ') || 'NONE (will auto-select)'}]`)
+
 	// Initialize components
 	const bridgeManager = new BridgeManager()
 	const aiService = new AIService(bridgeManager)
@@ -197,6 +221,23 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 
 	const onBridgeMessage = async (msg: BridgeMessage) => {
 		console.log(`[Bridge] Message from ${msg.channelId}:${msg.channelUserId} (${msg.channelName}) - "${msg.content.slice(0, 80)}"`)
+
+		// Built-in diagnostic command — works regardless of AI config
+		const trimmed = msg.content.trim().toLowerCase()
+		if (trimmed === '!diag' || trimmed === '!version') {
+			const diagConfig = loadConfig()
+			const connNames = Object.keys(diagConfig.connections)
+			const diagMsg = [
+				`🐿️ **Tamias Diagnostics**`,
+				`Version: v${VERSION}`,
+				`Binary: ${process.execPath}`,
+				`Connections: ${connNames.length > 0 ? connNames.join(', ') : 'NONE'}`,
+				`Default models: ${diagConfig.defaultModels?.join(', ') || 'not set'}`,
+			].join('\n')
+			await bridgeManager.broadcastToChannel(msg.channelId, diagMsg).catch(console.error)
+			return
+		}
+
 		let session = aiService.getSessionForBridge(msg.channelId, msg.channelUserId)
 		if (!session) {
 			console.log(`[Bridge] Creating new session for ${msg.channelId}:${msg.channelUserId}`)
@@ -234,6 +275,29 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 			if (method === 'OPTIONS') return new Response(null, { status: 204, headers: cors() })
 			if (method === 'GET' && url.pathname === '/health') {
 				return json({ status: 'ok', port, pid: process.pid, sessions: aiService.getAllSessions().length })
+			}
+
+			if (method === 'GET' && url.pathname === '/debug') {
+				const dbgConfig = loadConfig()
+				const sessions = aiService.getAllSessions().map(s => ({
+					id: s.id,
+					model: s.model,
+					connectionNickname: s.connectionNickname,
+					modelId: s.modelId,
+					channelId: s.channelId,
+					channelUserId: s.channelUserId,
+					connectionExistsInConfig: !!dbgConfig.connections[s.connectionNickname],
+				}))
+				return json({
+					version: VERSION,
+					execPath: process.execPath,
+					pid: process.pid,
+					verboseMode: process.env.TAMIAS_DEBUG === '1',
+					connections: Object.keys(dbgConfig.connections),
+					defaultModels: dbgConfig.defaultModels ?? [],
+					allModelOptions: getAllModelOptions(),
+					sessions,
+				})
 			}
 
 			if (method === 'GET' && url.pathname === '/sessions') {

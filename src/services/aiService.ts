@@ -1,5 +1,11 @@
 import { EventEmitter } from 'events'
 import { streamText, generateText, generateObject, stepCountIs } from 'ai'
+
+// Verbose debug logger — enabled by setting TAMIAS_DEBUG=1 or launching with `tamias start --verbose`
+const DEBUG = process.env.TAMIAS_DEBUG === '1'
+function debug(...args: unknown[]) {
+	if (DEBUG) console.log('[DEBUG]', ...args)
+}
 import { z } from 'zod'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
@@ -65,6 +71,11 @@ export class AIService {
 
 	public async initialize() {
 		scaffoldFromTemplates()
+		const config = loadConfig()
+		debug(`initialize(): connections in config: [${Object.keys(config.connections).join(', ') || 'NONE'}]`)
+		const allOpts = getAllModelOptions()
+		debug(`initialize(): all model options: [${allOpts.join(', ') || 'NONE'}]`)
+		debug(`initialize(): default models: [${getDefaultModels().join(', ') || 'NONE'}]`)
 		this.healStaleSessionModels()
 		this.loadAllSessions()
 		// We can't refresh tools globally anymore since it depends on sessionId
@@ -189,11 +200,14 @@ export class AIService {
 
 	public createSession(options: CreateSessionOptions): Session {
 		const config = loadConfig()
+		debug(`createSession(): options.model=${options.model}, getDefaultModel()=${getDefaultModel()}`)
+		debug(`createSession(): connections in config: [${Object.keys(config.connections).join(', ') || 'NONE'}]`)
 		let modelStr = options.model ?? getDefaultModel()
 		// If the requested model's connection doesn't exist, fall back to any configured one
 		if (modelStr) {
 			const [nick] = modelStr.split('/')
 			if (!config.connections[nick]) {
+				debug(`createSession(): connection "${nick}" not found — attempting fallback`)
 				const fallback = getDefaultModels().find(m => {
 					const [n] = m.split('/')
 					return !!config.connections[n]
@@ -201,6 +215,8 @@ export class AIService {
 				if (fallback) {
 					console.log(`[AIService] createSession: model "${modelStr}" connection not found, using "${fallback}" instead`)
 					modelStr = fallback
+				} else {
+					console.warn(`[AIService] createSession: no fallback found either! connections=[${Object.keys(config.connections).join(', ')}]`)
 				}
 			}
 		}
@@ -305,6 +321,10 @@ export class AIService {
 		// Only include models whose connection actually exists on this machine.
 		const currentDefaults = getDefaultModels()
 		const allConfiguredModels = getAllModelOptions()
+		debug(`processSession(${session.id}): session.model=${session.model} connectionNickname=${session.connectionNickname}`)
+		debug(`processSession(${session.id}): config connections=[${Object.keys(config.connections).join(', ') || 'NONE'}]`)
+		debug(`processSession(${session.id}): currentDefaults=[${currentDefaults.join(', ') || 'NONE'}]`)
+		debug(`processSession(${session.id}): allConfiguredModels=[${allConfiguredModels.join(', ') || 'NONE'}]`)
 		const modelsToTry = [
 			...currentDefaults,
 			session.model,
@@ -314,11 +334,25 @@ export class AIService {
 			if (arr.indexOf(m) !== i) return false // deduplicate
 			const [nick] = m.split('/')
 			if (!config.connections[nick]) {
-				console.log(`[AIService] Skipping model "${m}" — connection "${nick}" not configured on this machine.`)
+				console.log(`[AIService] Skipping model "${m}" — connection "${nick}" not in config [${Object.keys(config.connections).join(', ')}]`)
 				return false
 			}
 			return true
 		})
+		console.log(`[AIService] session=${session.id} modelsToTry=[${modelsToTry.join(', ') || 'NONE'}]`)
+		if (modelsToTry.length === 0) {
+			const configuredConns = Object.keys(config.connections)
+			const diagMsg = configuredConns.length === 0
+				? `No AI connections configured. Run \`tamias models\` on the server to set one up.`
+				: `Session model "${session.model}" uses connection "${session.connectionNickname}" which is not in config. Configured connections: ${configuredConns.join(', ')}. Run \`tamias stop && tamias start\` on the server.`
+			console.error(`[AIService] No valid models to try for session ${session.id}. Config connections: [${configuredConns.join(', ')}]`)
+			session.messages.pop() // remove the user message we pushed since we can't respond
+			session.emitter.emit('event', { type: 'error', message: diagMsg } as DaemonEvent)
+			session.processing = false
+			if (session.queue.length > 0) setImmediate(() => this.processSession(session))
+			return
+		}
+
 		let lastError: any = null
 
 		for (const currentModelStr of modelsToTry) {
@@ -327,12 +361,13 @@ export class AIService {
 			const connection = config.connections[nickname]
 
 			if (!connection) {
+				console.warn(`[AIService] No connection object for "${nickname}" (model="${currentModelStr}") — skipping`)
 				lastError = new Error(`No AI connection configured for "${nickname}"`)
 				continue
 			}
 
-			console.log(`[AIService] Attempting processing for session ${session.id} via ${currentModelStr}`)
-
+			console.log(`[AIService] Attempting session ${session.id} via ${currentModelStr} (provider=${connection.provider})`)
+		debug(`  API key present: ${!!getApiKeyForConnection(connection.nickname)}, modelId=${modelId}`)
 			try {
 				await this.refreshTools(session.id)
 				const model = this.buildModel(connection, modelId)
