@@ -1,7 +1,9 @@
 import { Database } from 'bun:sqlite'
 import { join } from 'path'
+import { mkdirSync } from 'fs'
 import { TAMIAS_DIR } from './config.ts'
 
+mkdirSync(TAMIAS_DIR, { recursive: true })
 export const db = new Database(join(TAMIAS_DIR, 'data.sqlite'))
 
 // Enable Write-Ahead Logging (WAL) for better concurrency
