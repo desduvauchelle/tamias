@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getAllModelOptions } from '../utils/config'
 import { buildActiveTools } from '../utils/toolRegistry'
 import { buildSystemPrompt, updatePersonaFiles, scaffoldFromTemplates, readAllPersonaFiles } from '../utils/memory'
@@ -496,17 +497,13 @@ export class AIService {
 			case 'anthropic': return createAnthropic({ apiKey })(modelId) as any
 			case 'google': return createGoogleGenerativeAI({ apiKey })(modelId) as any
 		case 'openrouter': {
-			// Cast to any: 'compatibility' exists at runtime but is missing from v3 type defs.
-			// It forces /v1/chat/completions — OpenRouter rejects the newer /v1/responses endpoint.
-			const opts: any = { baseURL: 'https://openrouter.ai/api/v1', apiKey, compatibility: 'compatible' }
-			return createOpenAI(opts)(modelId)
+			return createOpenRouter({ apiKey })(modelId)
 		}
 		case 'ollama': {
 			let baseURL = (connection as any).baseUrl || 'http://127.0.0.1:11434'
 			baseURL = baseURL.replace(/\/$/, '')
 			if (!baseURL.endsWith('/v1')) baseURL += '/v1'
-			const opts: any = { baseURL, apiKey: apiKey || 'ollama', compatibility: 'compatible' }
-			return createOpenAI(opts)(modelId)
+			return createOpenAI({ baseURL, apiKey: apiKey || 'ollama' }).chat(modelId)
 		}
 			default: throw new Error(`Unsupported provider: ${connection.provider}`)
 		}
