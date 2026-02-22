@@ -27,12 +27,14 @@ export const emailTools = {
 			}
 
 			try {
+				console.log(`[daemon] Listing emails for account: ${config.nickname || config.accountName} (page ${page})`)
 				const { stdout } = await execAsync(
 					`himalaya --account ${config.accountName} envelope list --page ${page} --page-size ${pageSize} --output json`
 				)
 				const envelopes = JSON.parse(stdout)
 				return { success: true, envelopes }
 			} catch (err: any) {
+				console.error(`[daemon] Failed to list emails: ${err.message}`)
 				return { success: false, error: `Failed to list emails: ${err.message}` }
 			}
 		},
@@ -49,14 +51,19 @@ export const emailTools = {
 				return { success: false, error: 'The "himalaya" CLI is not installed. Please run "tamias doctor --fix" to install it.' }
 			}
 			const config = getEmailConfig(account)
-			if (!config || !config.enabled) {
-				return { success: false, error: 'Email tool is not enabled.' }
+			if (!config) {
+				return { success: false, error: account ? `Email account '${account}' not found.` : 'No email accounts configured.' }
+			}
+			if (!config.enabled) {
+				return { success: false, error: `Email tool is disabled for account '${config.nickname}'.` }
 			}
 
 			try {
+				console.log(`[daemon] Reading email ${id} using account: ${config.nickname}`)
 				const { stdout } = await execAsync(`himalaya --account ${config.accountName} message read ${id}`)
 				return { success: true, id, content: stdout }
 			} catch (err: any) {
+				console.error(`[daemon] Failed to read email ${id}: ${err.message}`)
 				return { success: false, error: `Failed to read email ${id}: ${err.message}` }
 			}
 		},
@@ -75,13 +82,23 @@ export const emailTools = {
 				return { success: false, error: 'The "himalaya" CLI is not installed. Run "tamias doctor --fix" to install it.' }
 			}
 			const config = getEmailConfig(account)
-			if (!config || !config.enabled) {
-				return { success: false, error: 'Email tool is not enabled.' }
+			if (!config) {
+				return { success: false, error: account ? `Email account '${account}' not found.` : 'No email accounts configured.' }
+			}
+			if (!config.enabled) {
+				return { success: false, error: `Email tool is disabled for account '${config.nickname}'.` }
 			}
 
 			// Permission check: Whitelist
 			if (config.permissions.whitelist.length > 0 && !config.permissions.whitelist.includes(to)) {
+				console.warn(`[daemon] Send blocked: Recipient '${to}' not in whitelist for account '${config.nickname}'.`)
 				return { success: false, error: `Recipient '${to}' is not in the authorized whitelist for account '${config.nickname}'.` }
+			}
+
+			// Permission check: canSend
+			if (config.permissions.canSend === false) {
+				console.warn(`[daemon] Send blocked: 'canSend' permission is disabled for account '${config.nickname}'.`)
+				return { success: false, error: `Sending emails is disabled by permissions for account '${config.nickname}'.` }
 			}
 
 			const password = getEmailPassword(account)
@@ -91,6 +108,7 @@ export const emailTools = {
 			}
 
 			try {
+				console.log(`[daemon] Attempting to send email to ${to} (Subject: "${subject}") using account: ${config.nickname}`)
 				const { execSync } = await import('child_process')
 				const template = `To: ${to}\nSubject: ${subject}\n\n${body}`
 
@@ -100,8 +118,10 @@ export const emailTools = {
 					encoding: 'utf-8',
 				})
 
+				console.log(`[daemon] Email successfully sent to ${to}`)
 				return { success: true, message: `Email successfully sent to ${to}` }
 			} catch (err: any) {
+				console.error(`[daemon] Failed to send email to ${to}: ${err.message}`)
 				return { success: false, error: `Failed to send email: ${err.message}` }
 			}
 		},

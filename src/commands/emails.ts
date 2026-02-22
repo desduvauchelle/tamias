@@ -179,7 +179,8 @@ export const runEmailsEditCommand = async (slug?: string) => {
 			{ value: 'accountName', label: '🏷️  Himalaya account name' },
 			{ value: 'password', label: '🔑 Update App Password' },
 			{ value: 'whitelist', label: '📜 Update Whitelist' },
-			{ value: 'toggle', label: config.enabled ? '❌ Disable' : '✅ Enable' },
+			{ value: 'canSend', label: config.permissions?.canSend ? '❌ Disable "Can Send"' : '✅ Enable "Can Send"' },
+			{ value: 'toggle', label: config.enabled ? '❌ Disable Account' : '✅ Enable Account' },
 			{ value: 'default', label: '⭐️ Set as default' },
 		],
 		required: true,
@@ -253,6 +254,13 @@ export const runEmailsEditCommand = async (slug?: string) => {
 		updates.permissions = {
 			...config.permissions,
 			whitelist: (newVal as string).split(',').map(s => s.trim()).filter(Boolean)
+		}
+	}
+
+	if (selected.includes('canSend')) {
+		updates.permissions = {
+			...(updates.permissions || config.permissions),
+			canSend: !config.permissions?.canSend
 		}
 	}
 

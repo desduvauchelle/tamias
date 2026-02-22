@@ -164,7 +164,9 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 
 	// Use standalone server if the dashboard was installed via the prebuilt tarball,
 	// production mode (bun run start) if only .next exists, or dev mode as fallback.
-	const standaloneServer = join(dashboardDir, '.next', 'standalone', 'server.js')
+	// Next.js standalone output mirrors the project directory structure, so server.js
+	// is at .next/standalone/src/dashboard/server.js — not .next/standalone/server.js
+	const standaloneServer = join(dashboardDir, '.next', 'standalone', 'src', 'dashboard', 'server.js')
 	const isStandalone = fs.existsSync(standaloneServer)
 	const isBuilt = isStandalone || fs.existsSync(join(dashboardDir, '.next'))
 	const isDev = process.env.TAMIAS_DEV === 'true' || !isBuilt
@@ -173,7 +175,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	if (isStandalone) {
 		// Standalone server: bun <path/server.js> — no package.json scripts needed
 		dashboardProc = Bun.spawn([bunPath, standaloneServer], {
-			cwd: join(dashboardDir, '.next', 'standalone'),
+			cwd: join(dashboardDir, '.next', 'standalone', 'src', 'dashboard'),
 			stdout: dashboardLogFile,
 			stderr: dashboardLogFile,
 			env: { ...process.env, PORT: dashboardPort.toString(), HOSTNAME: '0.0.0.0' },

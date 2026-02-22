@@ -64,11 +64,12 @@ jobs:
           cd src/dashboard
           bun install
           bun run build
-          # Copy static assets and public into the standalone bundle
-          # (mkdir -p in case Next.js did not create .next/standalone/.next/ yet)
-          mkdir -p .next/standalone/.next
-          cp -r .next/static .next/standalone/.next/static
-          cp -r public .next/standalone/public
+          # Copy static assets and public into the standalone bundle.
+          # Next.js mirrors the project path inside standalone, so server.js lives at
+          # .next/standalone/src/dashboard/server.js and expects assets relative to that dir.
+          mkdir -p .next/standalone/src/dashboard/.next
+          cp -r .next/static .next/standalone/src/dashboard/.next/static
+          cp -r public .next/standalone/src/dashboard/public
           # Tarball the standalone dir so update/install can extract it without bun install or build
           cd ../..
           tar -czf tamias-dashboard.tar.gz -C src/dashboard .next/standalone
