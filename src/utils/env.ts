@@ -1,9 +1,9 @@
 import { join } from 'path'
-import { homedir } from 'os'
 import { existsSync, readFileSync, writeFileSync, chmodSync } from 'fs'
 import { randomBytes } from 'crypto'
+import { TAMIAS_DIR } from './config.ts'
 
-const getEnvFilePath = () => join(homedir(), '.tamias', '.env')
+const getEnvFilePath = () => join(TAMIAS_DIR, '.env')
 
 /** Parse the .env file and return a record of key-value pairs */
 export const readEnvFile = (): Record<string, string> => {

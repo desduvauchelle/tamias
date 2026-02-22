@@ -6,8 +6,7 @@ import { existsSync, rmSync, readdirSync, chmodSync } from 'fs'
 import { execSync } from 'child_process'
 import { isDaemonRunning, readDaemonInfo } from '../utils/daemon.ts'
 import { runStopCommand } from './stop.ts'
-
-const TAMIAS_DIR = join(homedir(), '.tamias')
+import { TAMIAS_DIR } from '../utils/config.ts'
 
 export const runUninstallCommand = async () => {
 	p.intro(pc.bgRed(pc.white(' Tamias CLI — Uninstall ')))

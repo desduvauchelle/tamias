@@ -55,6 +55,16 @@ A central background process that maintains connections, manages message queues,
 
 ---
 
+## 📖 Learn More
+
+Explore our in-depth guides to understand how Tamias works under the hood:
+- **[Introduction to Tamias](./docs/introduction.md)**: Architecture and core concepts.
+- **[Safety & Security](./docs/safety.md)**: How we keep your machine safe.
+- **[Efficient Agency](./docs/efficient-agency.md)**: Optimizing token usage and sub-agents.
+- **[Tool Guides](./docs/tool-guides.md)**: Deep dive into built-in and MCP tools.
+
+---
+
 ## CLI Reference
 
 ### Configuration & Models
@@ -175,3 +185,12 @@ bun run type-check   # Validate TypeScript
 ```
 
 > All configuration is stored in `~/.tamias/config.json`.
+
+## Changelog
+
+See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
+
+### Latest Version (v2026.2.22.1)
+
+### Features
+- Implement AI model fallback and priority selection, alongside a new robust update mechanism.

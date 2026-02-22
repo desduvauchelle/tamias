@@ -1,6 +1,6 @@
 {
 	"name": "tamias",
-	"version": "2026.2.22.1",
+	"version": "2026.2.22.2",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
@@ -21,7 +21,8 @@
 		"install-it": "chmod +x install.sh && ./install.sh",
 		"test": "bun test src/tests",
 		"typecheck": "bunx tsc --noEmit",
-		"prepare": "husky"
+		"prepare": "husky",
+		"changelog": "bun run src/utils/changelog.ts"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",

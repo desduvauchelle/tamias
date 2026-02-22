@@ -1,6 +1,6 @@
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
-import { mkdirSync } from 'fs'
+import { mkdirSync, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { writePersonaFile, scaffoldFromTemplates, readPersonaFile } from '../utils/memory.ts'
@@ -10,6 +10,8 @@ import {
 	getAllModelOptions,
 	getBridgesConfig,
 	setBridgesConfig,
+	TAMIAS_DIR,
+	CONFIG_PATH,
 } from '../utils/config.ts'
 import { setEnv, generateSecureEnvKey } from '../utils/env.ts'
 import { runConfigCommand } from './config.ts'
@@ -111,7 +113,7 @@ export const runOnboarding = async (): Promise<void> => {
 
 	// Fast non-interactive mode for CI: create minimal persona files and exit
 	if (process.env.TAMIAS_CI === '1') {
-		const defaultHome = join(homedir(), '.tamias')
+		const defaultHome = TAMIAS_DIR
 		try { mkdirSync(defaultHome, { recursive: true }) } catch { }
 		const memoryDir = join(defaultHome, 'memory')
 		try { mkdirSync(memoryDir, { recursive: true }) } catch { }
@@ -127,19 +129,16 @@ export const runOnboarding = async (): Promise<void> => {
 	}
 
 	// Config, memory, and code always live in ~/.tamias
-	const dataHome = join(homedir(), '.tamias')
-	mkdirSync(dataHome, { recursive: true })
+	mkdirSync(TAMIAS_DIR, { recursive: true })
 
-	// Create ~/Documents/Tamias as a convenience symlink → ~/.tamias if it doesn't exist
-	// Both locations are identical — editing a file in either place touches the same data.
-	const docsDir = join(homedir(), 'Documents')
-	const docsLink = join(docsDir, 'Tamias')
-	try {
-		const { existsSync, symlinkSync } = await import('fs')
-		if (existsSync(docsDir) && !existsSync(docsLink)) {
-			symlinkSync(dataHome, docsLink)
-		}
-	} catch { /* non-fatal */ }
+	// Cleanup any legacy config in ~/Documents that causes confusion
+	const legacyConfigInDocs = join(homedir(), 'Documents', 'config.json')
+	if (existsSync(legacyConfigInDocs)) {
+		try {
+			const { rmSync } = await import('fs')
+			rmSync(legacyConfigInDocs, { force: true })
+		} catch { /* ignore */ }
+	}
 
 	p.intro(pc.bgMagenta(pc.black(' 🐿️  Tamias — First Run Setup ')))
 

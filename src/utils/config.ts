@@ -4,6 +4,9 @@ import { homedir } from 'os'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { getEnv, setEnv, removeEnv, generateSecureEnvKey } from './env.ts'
 
+export const TAMIAS_DIR = join(homedir(), '.tamias')
+export const CONFIG_PATH = join(TAMIAS_DIR, 'config.json')
+
 export const ProviderEnum = z.enum([
 	'openai',
 	'anthropic',
@@ -122,11 +125,10 @@ export const getDefaultWorkspacePath = () => {
 }
 
 const getConfigPath = () => {
-	const dir = join(homedir(), '.tamias')
-	if (!existsSync(dir)) {
-		mkdirSync(dir, { recursive: true })
+	if (!existsSync(TAMIAS_DIR)) {
+		mkdirSync(TAMIAS_DIR, { recursive: true })
 	}
-	return join(dir, 'config.json')
+	return CONFIG_PATH
 }
 
 export const loadConfig = (): TamiasConfig => {
