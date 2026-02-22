@@ -246,7 +246,7 @@ function ChatTerminal({ sessionId, initialHistory }: { sessionId: string, initia
 
 	const { messages, sendMessage, status } = useChat({
 		transport: new DefaultChatTransport({ api: `/api/chat?sessionId=${sessionId}` }),
-		initialMessages: initialHistory,
+		messages: initialHistory,
 	})
 
 	const isLoading = status === 'submitted' || status === 'streaming'

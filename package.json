@@ -1,6 +1,6 @@
 {
 	"name": "tamias",
-	"version": "1.0.18",
+	"version": "1.0.19",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
@@ -20,7 +20,7 @@
 		"dev": "bun --hot src/index.ts",
 		"install-it": "chmod +x install.sh && ./install.sh",
 		"test": "bun test src/tests",
-		"type-check": "bunx tsc --noEmit",
+		"typecheck": "bunx tsc --noEmit",
 		"prepare": "husky"
 	},
 	"devDependencies": {
