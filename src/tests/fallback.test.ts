@@ -51,7 +51,7 @@ describe("AIService Fallback", () => {
 
 		// Pre-install mocks before creating the session (avoids ASI issues with cast expressions)
 		const mockAny = aiService as any
-		mockAny.refreshTools = async () => {}
+		mockAny.refreshTools = async () => { }
 		mockAny.buildModel = (conn: any) => {
 			if (conn.nickname === 'valid-conn') {
 				return {

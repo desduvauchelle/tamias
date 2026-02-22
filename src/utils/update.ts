@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import { join } from 'node:path'
+import { join, basename } from 'node:path'
 import { homedir } from 'node:os'
 import { execSync } from 'node:child_process'
 import { VERSION } from './version.ts'
@@ -40,6 +40,33 @@ export async function checkForUpdate(): Promise<{ currentVersion: string; latest
 	return { currentVersion, latestVersion, release }
 }
 
+/**
+ * Downloads the pre-built dashboard standalone tarball from a GitHub release and
+ * extracts it into ~/.tamias/src/dashboard/, replacing the .next/standalone dir.
+ * No `bun install` or `bun run build` required on the server.
+ */
+export async function installDashboardTarball(downloadUrl: string, onProgress: ProgressCallback = () => { }): Promise<void> {
+	const dashboardDir = join(homedir(), '.tamias', 'src', 'dashboard')
+	const standaloneDir = join(dashboardDir, '.next', 'standalone')
+	const tmpTar = join(homedir(), '.tamias', 'tamias-dashboard.tmp.tar.gz')
+	try {
+		onProgress({ message: 'Downloading dashboard tarball...', type: 'info' })
+		const res = await fetch(downloadUrl)
+		if (!res.ok) throw new Error(`Download failed: ${res.statusText}`)
+		const buf = Buffer.from(await res.arrayBuffer())
+		fs.writeFileSync(tmpTar, buf)
+
+		onProgress({ message: 'Installing dashboard...', type: 'info' })
+		if (fs.existsSync(standaloneDir)) fs.rmSync(standaloneDir, { recursive: true, force: true })
+		fs.mkdirSync(standaloneDir, { recursive: true })
+		// Tarball contains the standalone dir contents; extract into dashboardDir so .next/standalone is recreated
+		execSync(`tar -xzf "${tmpTar}" -C "${dashboardDir}"`, { stdio: 'ignore' })
+		onProgress({ message: 'Dashboard updated.', type: 'success' })
+	} finally {
+		if (fs.existsSync(tmpTar)) fs.rmSync(tmpTar, { force: true })
+	}
+}
+
 export async function performUpdate(onProgress: ProgressCallback = () => { }): Promise<UpdateResult> {
 	try {
 		const updateInfo = await checkForUpdate()
@@ -74,7 +101,9 @@ export async function performUpdate(onProgress: ProgressCallback = () => { }): P
 
 		// 2. Binary Update
 		const currentExecPath = process.execPath
-		const isCompiled = !currentExecPath.includes('/bun') && !currentExecPath.includes('/node')
+		// A compiled binary's basename is "tamias"; the bun/node runtimes are named "bun" or "node"
+		const execBasename = basename(currentExecPath)
+		const isCompiled = !['bun', 'node', 'bun.exe', 'node.exe'].includes(execBasename)
 
 		if (isCompiled && binaryAsset) {
 			onProgress({ message: `Downloading binary for ${osName}-${archName}...`, type: 'info' })
@@ -92,73 +121,17 @@ export async function performUpdate(onProgress: ProgressCallback = () => { }): P
 			}
 		}
 
-		// 3. Dashboard Update
-		const candidatePaths = [
-			join(homedir(), '.tamias', 'src', 'dashboard'),
-			join(process.cwd(), 'src', 'dashboard'),
-		]
-		const dashboardDir = candidatePaths.find((path) => fs.existsSync(path)) ?? ''
-
-		if (dashboardDir) {
-			onProgress({ message: `Updating dashboard source at ${dashboardDir}...`, type: 'info' })
-			const tmpDir = join(homedir(), '.tamias', 'tmp-update')
-			if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true })
-			fs.mkdirSync(tmpDir, { recursive: true })
-
+		// 3. Dashboard Update — download pre-built standalone tarball (no bun install/build needed)
+		const dashboardAsset = release.assets?.find((a: any) => a.name === 'tamias-dashboard.tar.gz')
+		if (dashboardAsset) {
+			onProgress({ message: 'Downloading pre-built dashboard...', type: 'info' })
 			try {
-				// Download source ZIP
-				const zipUrl = `https://github.com/${REPO}/archive/refs/tags/${latestVersionStr}.zip`
-				execSync(`curl -fsSL "${zipUrl}" -o "${tmpDir}/src.zip"`)
-				execSync(`unzip -q "${tmpDir}/src.zip" -d "${tmpDir}/extracted"`)
-
-				// Find dashboard in ZIP
-				const extractedDirs = fs.readdirSync(join(tmpDir, 'extracted'))
-				let newDashSrc = ''
-
-				for (const dir of extractedDirs) {
-					const candidate = join(tmpDir, 'extracted', dir, 'src', 'dashboard')
-					if (fs.existsSync(candidate)) {
-						newDashSrc = candidate
-						break
-					}
-					const candidate2 = join(tmpDir, 'extracted', dir, 'dashboard')
-					if (fs.existsSync(candidate2)) {
-						newDashSrc = candidate2
-						break
-					}
-				}
-
-				if (fs.existsSync(newDashSrc)) {
-					fs.rmSync(dashboardDir, { recursive: true, force: true })
-					fs.cpSync(newDashSrc, dashboardDir, { recursive: true })
-
-					// Copy README.md for the dashboard docs page
-					const zipRoot = join(newDashSrc, '..', '..')
-					if (fs.existsSync(join(zipRoot, 'README.md'))) {
-						fs.copyFileSync(join(zipRoot, 'README.md'), join(homedir(), '.tamias', 'README.md'))
-					}
-
-					if (fs.existsSync(join(dashboardDir, 'package.json'))) {
-						onProgress({ message: 'Installing dashboard dependencies...', type: 'info' })
-						execSync(`bun install`, { cwd: dashboardDir, stdio: 'ignore' })
-
-						onProgress({ message: 'Building dashboard...', type: 'info' })
-						try {
-							execSync(`bun run build`, { cwd: dashboardDir, stdio: 'ignore' })
-							onProgress({ message: 'Dashboard updated and built.', type: 'info' })
-						} catch (buildError) {
-							onProgress({ message: 'Dashboard build failed. It will run in dev mode.', type: 'warn' })
-							throw buildError // Rethrow to trigger the outer catch
-						}
-					} else {
-						onProgress({ message: `No package.json found in ${dashboardDir}. Skipping install/build.`, type: 'warn' })
-					}
-				}
+				await installDashboardTarball(dashboardAsset.browser_download_url, onProgress)
 			} catch (e) {
 				onProgress({ message: `Dashboard update failed: ${String(e)}`, type: 'error' })
-			} finally {
-				fs.rmSync(tmpDir, { recursive: true, force: true })
 			}
+		} else {
+			onProgress({ message: 'No pre-built dashboard found in release — skipping dashboard update.', type: 'warn' })
 		}
 
 		return { success: true, currentVersion, latestVersion }
@@ -176,7 +149,9 @@ export async function autoUpdateDaemon(bridgeManager: BridgeManager) {
 		const currentVersion = VERSION
 
 		const currentExecPath = process.execPath
-		const isCompiled = !currentExecPath.includes('/bun') && !currentExecPath.includes('/node')
+		// A compiled binary's basename is "tamias"; the bun/node runtimes are named "bun" or "node"
+		const execBasename = basename(currentExecPath)
+		const isCompiled = !['bun', 'node', 'bun.exe', 'node.exe'].includes(execBasename)
 
 		// Only auto-update if running as a compiled binary
 		if (!isCompiled) return
@@ -237,7 +212,18 @@ export async function autoUpdateDaemon(bridgeManager: BridgeManager) {
 
 		console.log(`[AutoUpdate] Updated to v${latestVersion}. Exiting for reboot...`)
 
-		// 4. Give the broadcast a bit of time, then exit
+		// 4. Update dashboard tarball
+		const dashboardAsset = release.assets?.find((a: any) => a.name === 'tamias-dashboard.tar.gz')
+		if (dashboardAsset) {
+			try {
+				await installDashboardTarball(dashboardAsset.browser_download_url)
+				console.log('[AutoUpdate] Dashboard updated.')
+			} catch (e) {
+				console.error('[AutoUpdate] Dashboard update failed:', e)
+			}
+		}
+
+		// 5. Give the broadcast a bit of time, then exit
 		setTimeout(() => {
 			process.exit(0)
 		}, 3000)

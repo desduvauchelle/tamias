@@ -59,6 +59,18 @@ jobs:
           bun build --compile --minify --sourcemap --target=bun-darwin-x64 --outfile ./tamias-darwin-x64 ./src/index.ts
           bun build --compile --minify --sourcemap --target=bun-linux-x64 --outfile ./tamias-linux-x64 ./src/index.ts
 
+      - name: Build Dashboard (standalone)
+        run: |
+          cd src/dashboard
+          bun install
+          bun run build
+          # Copy static assets and public into the standalone bundle
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+          # Tarball the standalone dir so update/install can extract it without bun install or build
+          cd ../..
+          tar -czf tamias-dashboard.tar.gz -C src/dashboard .next/standalone
+
       - name: Get Version
         id: get_version
         run: |
@@ -73,4 +85,5 @@ jobs:
             tamias-darwin-arm64
             tamias-darwin-x64
             tamias-linux-x64
+            tamias-dashboard.tar.gz
           generate_release_notes: true

@@ -1,6 +1,6 @@
 {
 	"name": "tamias",
-	"version": "2026.2.22.11",
+	"version": "2026.2.22.12",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
@@ -16,7 +16,6 @@
 		"model": "bun run src/index.ts model",
 		"chat": "bun run src/index.ts chat",
 		"cron": "bun run src/index.ts cron",
-
 		"build": "bun build --compile --outfile=tamias src/index.ts",
 		"dev": "bun --hot src/index.ts",
 		"install-it": "chmod +x install.sh && ./install.sh",

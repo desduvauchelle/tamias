@@ -129,18 +129,30 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 		console.warn('[start] Bun executable discovery failed, falling back to "bun":', err)
 	}
 
-	// Use production mode if the dashboard has been built (`.next` dir exists)
-	// AND we are not explicitly in dev mode via environment variable.
-	// Otherwise fall back to dev mode (e.g. running from project source).
-	const isBuilt = fs.existsSync(join(dashboardDir, '.next'))
+	// Use standalone server if the dashboard was installed via the prebuilt tarball,
+	// production mode (bun run start) if only .next exists, or dev mode as fallback.
+	const standaloneServer = join(dashboardDir, '.next', 'standalone', 'server.js')
+	const isStandalone = fs.existsSync(standaloneServer)
+	const isBuilt = isStandalone || fs.existsSync(join(dashboardDir, '.next'))
 	const isDev = process.env.TAMIAS_DEV === 'true' || !isBuilt
-	const dashboardScript = isDev ? 'dev' : 'start'
 
-	const dashboardProc = Bun.spawn([bunPath, 'run', dashboardScript, '-p', dashboardPort.toString()], {
-		cwd: dashboardDir,
-		stdout: dashboardLogFile,
-		stderr: dashboardLogFile,
-	})
+	let dashboardProc: ReturnType<typeof Bun.spawn>
+	if (isStandalone) {
+		// Standalone server: bun <path/server.js> — no package.json scripts needed
+		dashboardProc = Bun.spawn([bunPath, standaloneServer], {
+			cwd: join(dashboardDir, '.next', 'standalone'),
+			stdout: dashboardLogFile,
+			stderr: dashboardLogFile,
+			env: { ...process.env, PORT: dashboardPort.toString(), HOSTNAME: '0.0.0.0' },
+		})
+	} else {
+		const dashboardScript = isDev ? 'dev' : 'start'
+		dashboardProc = Bun.spawn([bunPath, 'run', dashboardScript, '-p', dashboardPort.toString()], {
+			cwd: dashboardDir,
+			stdout: dashboardLogFile,
+			stderr: dashboardLogFile,
+		})
+	}
 	dashboardProc.unref()
 
 	writeDaemonInfo({
