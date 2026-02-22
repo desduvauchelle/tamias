@@ -83,14 +83,31 @@ export class AIService {
 
 	private loadAllSessions() {
 		const stored = listAllStoredSessions()
+		const config = loadConfig()
+		const availableModels = getAllModelOptions()
+		const defaultModels = getDefaultModels()
 		for (const s of stored) {
 			const full = loadSessionFromDisk(s.id)
 			if (full) {
-				const [nickname, ...rest] = full.model.split('/')
+				// Heal stale model — if the stored connection no longer exists on this machine,
+				// update to the first available model so the session works immediately.
+				let resolvedModel = full.model
+				const [storedNick] = resolvedModel.split('/')
+				if (!config.connections[storedNick]) {
+					const replacement = defaultModels.find(m => {
+						const [nick] = m.split('/')
+						return !!config.connections[nick]
+					}) ?? availableModels[0]
+					if (replacement) {
+						console.log(`[AIService] Session ${full.id}: healing stale model "${resolvedModel}" → "${replacement}"`)
+						resolvedModel = replacement
+					}
+				}
+				const [nickname, ...rest] = resolvedModel.split('/')
 				const session: Session = {
 					id: full.id,
 					name: full.name,
-					model: full.model,
+					model: resolvedModel,
 					connectionNickname: nickname,
 					modelId: rest.join('/'),
 					createdAt: new Date(full.createdAt),
@@ -130,7 +147,23 @@ export class AIService {
 	}
 
 	public createSession(options: CreateSessionOptions): Session {
-		const modelStr = options.model ?? getDefaultModel() ?? 'openai/gpt-4o'
+		const config = loadConfig()
+		let modelStr = options.model ?? getDefaultModel()
+		// If the requested model's connection doesn't exist, fall back to any configured one
+		if (modelStr) {
+			const [nick] = modelStr.split('/')
+			if (!config.connections[nick]) {
+				const fallback = getDefaultModels().find(m => {
+					const [n] = m.split('/')
+					return !!config.connections[n]
+				}) ?? getAllModelOptions()[0]
+				if (fallback) {
+					console.log(`[AIService] createSession: model "${modelStr}" connection not found, using "${fallback}" instead`)
+					modelStr = fallback
+				}
+			}
+		}
+		modelStr = modelStr ?? getAllModelOptions()[0] ?? 'openai/gpt-4o'
 		const [nickname, ...rest] = modelStr.split('/')
 		const modelId = rest.join('/') || modelStr
 

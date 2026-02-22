@@ -49,31 +49,26 @@ describe("AIService Fallback", () => {
 		const bridgeManager = new BridgeManager()
 		const aiService = new AIService(bridgeManager)
 
-		// Create a session explicitly pointing to the invalid model
-		const session = aiService.createSession({ model: "invalid-conn/old-model" })
-
-		expect(session.model).toBe("invalid-conn/old-model");
-
-		// We'll mock buildModel to track calls or refreshTools
-		// But simpler is to check if it emits a 'start' event with the corrected model eventually
-		// Since processSession is private and async, we'll watch for messages or state changes
-
-		// Mock streamText to avoid real network calls
-		// This is tricky because streamText is imported in aiService.ts
-		// Mock refreshTools and buildModel
-		(aiService as any).refreshTools = async () => { };
-		(aiService as any).buildModel = (conn: any, modelId: string) => {
-			if (conn.nickname === 'valid-conn') return {
-				streamText: async function* () {
-					yield { textDelta: "Hello from fallback!" }
-				},
-				textStream: (async function* () {
-					yield "Hello from fallback!"
-				})()
-			} as any
+		// Pre-install mocks before creating the session (avoids ASI issues with cast expressions)
+		const mockAny = aiService as any
+		mockAny.refreshTools = async () => {}
+		mockAny.buildModel = (conn: any) => {
+			if (conn.nickname === 'valid-conn') {
+				return {
+					textStream: (async function* () { yield "Hello from fallback!" })()
+				} as any
+			}
 			throw new Error("Provider fail")
 		}
 
+		// createSession now heals stale models at creation time
+		const session = aiService.createSession({ model: "invalid-conn/old-model" })
+
+		// The invalid model should already be healed to a valid one
+		expect(session.model).not.toBe("invalid-conn/old-model")
+		expect(session.model).toBe("valid-conn/gpt-4o")
+
+		// Verify the modelsToTry logic also excludes the dead connection
 		const currentDefaults = configUtils.getDefaultModels()
 		const sessionModel = "invalid-conn/old-model"
 		const allConfiguredModels = configUtils.getAllModelOptions()
