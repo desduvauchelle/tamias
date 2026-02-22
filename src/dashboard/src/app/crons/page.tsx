@@ -25,8 +25,12 @@ function CronCard({
 	return (
 		<div className={`card bg-base-200 border ${job.enabled ? 'border-primary' : 'border-base-300 opacity-60 hover:opacity-100'} transition-all group relative`}>
 			<button
-				onClick={() => onRemove(job.id)}
-				className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2 opacity-30 group-hover:opacity-100 transition-opacity text-error"
+				onClick={() => {
+					if (window.confirm(`Are you sure you want to delete the cron job "${job.name}"?`)) {
+						onRemove(job.id)
+					}
+				}}
+				className="btn btn-sm btn-circle btn-error btn-ghost absolute right-2 top-2 opacity-50 hover:opacity-100 transition-opacity"
 				title="Remove cron job"
 			>✕</button>
 			<div className="card-body p-4 space-y-4">

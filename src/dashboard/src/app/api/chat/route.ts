@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+
 import { join } from 'path'
 import { homedir } from 'os'
 import { readFile } from 'fs/promises'
@@ -23,14 +23,14 @@ export async function POST(req: Request) {
 
 		if (!sessionId || !lastMessage) {
 			console.error('Missing sessionId or lastMessage. sessionId:', sessionId, 'lastMessage:', lastMessage)
-			return NextResponse.json({ error: 'Missing sessionId or message content' }, { status: 400 })
+			return new Response(JSON.stringify({ error: 'Missing sessionId or message content' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
 		}
 
 		// Get daemon port
 		const str = await readFile(DAEMON_FILE, 'utf-8')
 		const info = JSON.parse(str)
 		if (!info.port) {
-			return NextResponse.json({ error: 'Daemon not running' }, { status: 503 })
+			return new Response(JSON.stringify({ error: 'Daemon not running' }), { status: 503, headers: { 'Content-Type': 'application/json' } })
 		}
 
 		const daemonUrl = `http://127.0.0.1:${info.port}`
@@ -44,13 +44,13 @@ export async function POST(req: Request) {
 
 		if (!sessionResponse.ok) {
 			const error = await sessionResponse.text()
-			return NextResponse.json({ error: `Failed to ensure session: ${error}` }, { status: sessionResponse.status })
+			return new Response(JSON.stringify({ error: `Failed to ensure session: ${error}` }), { status: sessionResponse.status, headers: { 'Content-Type': 'application/json' } })
 		}
 
 		// 2. Connect to stream FIRST so we don't miss any chunks
 		const streamRes = await fetch(`${daemonUrl}/session/${sessionId}/stream`)
 		if (!streamRes.ok || !streamRes.body) {
-			return NextResponse.json({ error: 'Failed to connect to daemon stream' }, { status: 500 })
+			return new Response(JSON.stringify({ error: 'Failed to connect to daemon stream' }), { status: 500, headers: { 'Content-Type': 'application/json' } })
 		}
 
 		// 3. Send message asynchronously (start it and then consume the stream)
@@ -148,6 +148,6 @@ export async function POST(req: Request) {
 
 	} catch (err: any) {
 		console.error('Chat API Error:', err)
-		return NextResponse.json({ error: err.message }, { status: 500 })
+		return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json' } })
 	}
 }

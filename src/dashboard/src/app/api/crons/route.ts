@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+
 import { getTamiasCrons, saveTamiasCrons } from '../tamias'
 
 export const dynamic = 'force-dynamic'
@@ -6,9 +6,13 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
 	try {
 		const crons = await getTamiasCrons()
-		return NextResponse.json({ crons: Array.isArray(crons) ? crons : [] })
+		return new Response(JSON.stringify({ crons: Array.isArray(crons) ? crons : [] }), {
+			headers: { 'Content-Type': 'application/json' }
+		})
 	} catch (error) {
-		return NextResponse.json({ crons: [] })
+		return new Response(JSON.stringify({ crons: [] }), {
+			headers: { 'Content-Type': 'application/json' }
+		})
 	}
 }
 
@@ -16,9 +20,14 @@ export async function POST(request: Request) {
 	try {
 		const { crons } = await request.json()
 		await saveTamiasCrons(crons || [])
-		return NextResponse.json({ success: true })
+		return new Response(JSON.stringify({ success: true }), {
+			headers: { 'Content-Type': 'application/json' }
+		})
 	} catch (error) {
 		console.error(error)
-		return NextResponse.json({ error: 'Failed to update crons' }, { status: 500 })
+		return new Response(JSON.stringify({ error: 'Failed to update crons' }), {
+			status: 500,
+			headers: { 'Content-Type': 'application/json' }
+		})
 	}
 }
