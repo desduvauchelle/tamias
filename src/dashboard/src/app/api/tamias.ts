@@ -14,7 +14,10 @@ export async function getTamiasConfig() {
 	try {
 		const content = await readFile(CONFIG_PATH, 'utf8')
 		return JSON.parse(content)
-	} catch {
+	} catch (err) {
+		if ((err as any).code !== 'ENOENT') {
+			console.error('[tamias] Failed to read config file, using defaults:', err)
+		}
 		return { version: '1.0', connections: {}, bridges: { terminal: { enabled: true } } }
 	}
 }
@@ -38,7 +41,11 @@ export async function getTamiasEnv() {
 				env[key] = val
 			}
 		}
-	} catch { }
+	} catch (err) {
+		if ((err as any).code !== 'ENOENT') {
+			console.error('[tamias] Failed to read env file:', err)
+		}
+	}
 	return env
 }
 
@@ -59,7 +66,10 @@ export async function getTamiasCrons() {
 	try {
 		const content = await readFile(CRONS_PATH, 'utf8')
 		return JSON.parse(content)
-	} catch {
+	} catch (err) {
+		if ((err as any).code !== 'ENOENT') {
+			console.error('[tamias] Failed to read cron jobs file:', err)
+		}
 		return []
 	}
 }
@@ -95,10 +105,14 @@ export async function getTamiasSkills() {
 							folder: entry.name,
 							filePath: skillFile
 						})
-					} catch (e) { /* skip */ }
+					} catch (e) { console.warn(`[tamias] Failed to load skill file '${skillFile}':`, e) }
 				}
 			}
-		} catch (e) { /* skip */ }
+		} catch (e) {
+			if ((e as any).code !== 'ENOENT') {
+				console.warn(`[tamias] Failed to read skills directory '${dirPath}':`, e)
+			}
+		}
 	}
 
 	await loadFromDir(BUILTIN_SKILLS_DIR, true)
@@ -130,6 +144,6 @@ export async function deleteTamiasSkill(folder: string) {
 		const { rm } = await import('fs/promises')
 		try {
 			await rm(skillDir, { recursive: true, force: true })
-		} catch (e) { /* ignore */ }
+		} catch (e) { console.error(`[tamias] Failed to delete skill directory '${skillDir}':`, e) }
 	}
 }

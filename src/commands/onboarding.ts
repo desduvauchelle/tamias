@@ -503,8 +503,8 @@ export const runOnboarding = async (): Promise<void> => {
 		const info = await autoStartDaemon()
 		daemonPort = info.port
 		dashboardPort = info.dashboardPort ?? 5678
-	} catch {
-		// Daemon start failed — not fatal, user can run `tamias start` manually
+	} catch (err) {
+		console.error('[onboarding] Daemon auto-start failed (run `tamias start` manually):', err)
 	}
 
 	p.note(

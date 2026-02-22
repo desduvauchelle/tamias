@@ -26,7 +26,8 @@ export const fetchModels = async (provider: ProviderType, apiKey: string, baseUr
 			case 'ollama':
 				return await fetchOllamaModels(baseUrl)
 		}
-	} catch {
+	} catch (err) {
+		console.error(`[models] fetchModels failed for provider "${provider}":`, err)
 		return []
 	}
 }

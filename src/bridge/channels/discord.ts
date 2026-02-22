@@ -184,7 +184,9 @@ export class DiscordBridge implements IBridge {
 					} catch { }
 					try {
 						await (ctx.message.channel as any).send?.(`⚠️ Error: ${event.message}`)
-					} catch { }
+					} catch (err) {
+						console.error(`[Discord Bridge] Failed to send error notification to channel ${channelId}:`, err)
+					}
 				}
 				break
 			}

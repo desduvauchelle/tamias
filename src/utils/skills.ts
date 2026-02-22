@@ -103,13 +103,13 @@ export async function watchSkills(): Promise<void> {
 		if (existsSync(BUILTIN_SKILLS_DIR)) {
 			import("fs").then(fs => fs.watch(BUILTIN_SKILLS_DIR, { recursive: true }, handleWatch))
 		}
-	} catch (e) { /* ignore */ }
+	} catch (e) { console.warn(`[skills] Failed to watch built-in skills directory '${BUILTIN_SKILLS_DIR}':`, e) }
 
 	try {
 		if (existsSync(USER_SKILLS_DIR)) {
 			import("fs").then(fs => fs.watch(USER_SKILLS_DIR, { recursive: true }, handleWatch))
 		}
-	} catch (e) { /* ignore */ }
+	} catch (e) { console.warn(`[skills] Failed to watch user skills directory '${USER_SKILLS_DIR}':`, e) }
 }
 
 /** Create or update a user skill */

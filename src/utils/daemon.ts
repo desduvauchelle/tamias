@@ -44,7 +44,8 @@ export function readDaemonInfo(): DaemonInfo | null {
 	if (!existsSync(DAEMON_FILE)) return null
 	try {
 		return JSON.parse(readFileSync(DAEMON_FILE, 'utf-8')) as DaemonInfo
-	} catch {
+	} catch (err) {
+		console.warn('[daemon] Failed to parse daemon info file, ignoring stale entry:', err)
 		return null
 	}
 }

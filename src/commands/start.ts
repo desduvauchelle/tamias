@@ -125,8 +125,8 @@ export const runStartCommand = async (opts: { daemon?: boolean } = {}) => {
 				}
 			}
 		}
-	} catch {
-		// fallback to 'bun'
+	} catch (err) {
+		console.warn('[start] Bun executable discovery failed, falling back to "bun":', err)
 	}
 
 	// Use production mode if the dashboard has been built (`.next` dir exists)

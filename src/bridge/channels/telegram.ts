@@ -186,7 +186,9 @@ export class TelegramBridge implements IBridge {
 					} catch { }
 					try {
 						await this.bot.api.sendMessage(ctx.chatId, `⚠️ Error: ${event.message}`)
-					} catch { }
+					} catch (err) {
+						console.error(`[Telegram Bridge] Failed to send error notification to chat ${chatKey}:`, err)
+					}
 				}
 				break
 			}
