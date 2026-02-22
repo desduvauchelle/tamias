@@ -63,11 +63,13 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 	tools: ToolSet
 	mcpClients: Array<{ close: () => Promise<void> }>
 	toolNames: string[]
+	toolDocs: string
 }> {
 	const config = loadConfig()
 	const mergedTools: ToolSet = {}
 	const mcpClients: Array<{ close: () => Promise<void> }> = []
 	const toolNames: string[] = []
+	let toolDocs = ''
 
 	// ── Internal tools ────────────────────────────────────────────────────────
 	const internalCatalog: Record<string, ToolSet> = {
@@ -86,8 +88,14 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 		if (!toolCfg.enabled) continue
 
 		const guarded = applyFunctionConfig(allFunctions, toolCfg.functions)
-		for (const [fnName, fn] of Object.entries(guarded)) {
-			mergedTools[`${toolName}__${fnName}`] = fn
+		if (Object.keys(guarded).length > 0) {
+			toolDocs += `## ${toolName}\n`
+			for (const [fnName, fn] of Object.entries(guarded)) {
+				const fullName = `${toolName}__${fnName}`
+				mergedTools[fullName] = fn
+				toolDocs += `- \`${fullName}\`: ${fn.description || 'No description available.'}\n`
+			}
+			toolDocs += '\n'
 		}
 		toolNames.push(`internal:${toolName}`)
 	}
@@ -96,10 +104,16 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 	for (const [name, mcpCfg] of Object.entries(config.mcpServers ?? {})) {
 		if (!mcpCfg.enabled) continue
 		try {
-			const { client, tools } = await connectMcpServer(name, mcpCfg)
-			const guarded = applyFunctionConfig(tools, mcpCfg.functions)
-			for (const [fnName, fn] of Object.entries(guarded)) {
-				mergedTools[`${name}__${fnName}`] = fn
+			const { client, tools: mcpTools } = await connectMcpServer(name, mcpCfg)
+			const guarded = applyFunctionConfig(mcpTools, mcpCfg.functions)
+			if (Object.keys(guarded).length > 0) {
+				toolDocs += `## MCP: ${name}\n`
+				for (const [fnName, fn] of Object.entries(guarded)) {
+					const fullName = `${name}__${fnName}`
+					mergedTools[fullName] = fn
+					toolDocs += `- \`${fullName}\`: ${fn.description || 'No description available.'}\n`
+				}
+				toolDocs += '\n'
 			}
 			mcpClients.push(client)
 			toolNames.push(`mcp:${name}`)
@@ -108,7 +122,7 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 		}
 	}
 
-	return { tools: mergedTools, mcpClients, toolNames }
+	return { tools: mergedTools, mcpClients, toolNames, toolDocs: toolDocs.trim() }
 }
 
 async function connectMcpServer(name: string, cfg: McpServerConfig) {

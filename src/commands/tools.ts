@@ -178,14 +178,27 @@ export const runToolsDisableCommand = async (name?: string) => {
 	await toggleTool(name, false)
 }
 
-async function pickToolName(prompt: string): Promise<string | undefined> {
+async function pickToolName(prompt: string, filter?: 'internal' | 'mcp'): Promise<string | undefined> {
 	const internal = Object.keys(INTERNAL_TOOLS)
 	const mcps = getAllMcpServers().map((s) => s.name)
-	const all = [...internal.map((n) => `internal:${n}`), ...mcps.map((n) => `mcp:${n}`)]
-	if (all.length === 0) { p.cancel(pc.yellow('No tools configured.')); process.exit(0) }
+
+	let options: { value: string; label: string }[] = []
+
+	if (!filter || filter === 'internal') {
+		options.push(...internal.map(n => ({ value: `internal:${n}`, label: `(internal) ${n}` })))
+	}
+	if (!filter || filter === 'mcp') {
+		options.push(...mcps.map(n => ({ value: `mcp:${n}`, label: `(mcp) ${n}` })))
+	}
+
+	if (options.length === 0) {
+		p.cancel(pc.yellow('No tools found for selection.'))
+		return undefined
+	}
+
 	const chosen = await p.select({
 		message: prompt,
-		options: all.map((v) => ({ value: v, label: v })),
+		options,
 	})
 	if (p.isCancel(chosen)) { p.cancel('Cancelled.'); process.exit(0) }
 	return chosen as string
@@ -195,7 +208,7 @@ async function toggleTool(name: string | undefined, enabled: boolean) {
 	const qualifier = name ?? await pickToolName(`Which tool to ${enabled ? 'enable' : 'disable'}?`)
 	if (!qualifier) return
 
-	if (qualifier?.startsWith('internal:') || INTERNAL_TOOLS[qualifier ?? '']) {
+	if (qualifier.startsWith('internal:') || INTERNAL_TOOLS[qualifier]) {
 		const toolName = qualifier.replace('internal:', '')
 		const cfg = getInternalToolConfig(toolName)
 		setInternalToolConfig(toolName, { ...cfg, enabled })
@@ -248,14 +261,40 @@ async function editInternalTool(toolName: string) {
 	}
 
 	// Function-level editor
-	const fnName = await p.text({
-		message: 'Function name to configure:',
-		placeholder: 'run_command',
-		validate: (v) => { if (!v) return 'Required' },
-	})
-	if (p.isCancel(fnName)) { p.cancel('Cancelled.'); process.exit(0) }
+	const functions = Object.keys(cfg.functions || {})
+	let fnName: string
 
-	const existingFnCfg = cfg.functions?.[fnName as string] ?? { enabled: true }
+	if (functions.length > 0) {
+		const chosen = await p.select({
+			message: 'Select a function to configure (or add new):',
+			options: [
+				...functions.map(f => ({ value: f, label: f })),
+				{ value: '__new__', label: '+ Add new function config' }
+			]
+		})
+		if (p.isCancel(chosen)) { p.cancel('Cancelled.'); process.exit(0) }
+
+		if (chosen === '__new__') {
+			const typed = await p.text({
+				message: 'Enter function name:',
+				validate: v => !v ? 'Required' : undefined
+			})
+			if (p.isCancel(typed)) { p.cancel('Cancelled.'); process.exit(0) }
+			fnName = typed as string
+		} else {
+			fnName = chosen as string
+		}
+	} else {
+		const typed = await p.text({
+			message: 'Function name to configure (e.g. run_command):',
+			placeholder: 'run_command',
+			validate: (v) => { if (!v) return 'Required' },
+		})
+		if (p.isCancel(typed)) { p.cancel('Cancelled.'); process.exit(0) }
+		fnName = typed as string
+	}
+
+	const existingFnCfg = cfg.functions?.[fnName] ?? { enabled: true }
 
 	const fnAction = await p.select({
 		message: `Configuring '${fnName}':`,
@@ -269,7 +308,7 @@ async function editInternalTool(toolName: string) {
 	if (fnAction === 'toggle') {
 		setInternalToolConfig(toolName, {
 			...cfg,
-			functions: { ...cfg.functions, [fnName as string]: { ...existingFnCfg, enabled: !existingFnCfg.enabled } },
+			functions: { ...cfg.functions, [fnName]: { ...existingFnCfg, enabled: !existingFnCfg.enabled } },
 		})
 		p.outro(pc.green(`✅ ${toolName}.${fnName} is now ${!existingFnCfg.enabled ? 'enabled' : 'disabled'}.`))
 	} else {
@@ -284,7 +323,7 @@ async function editInternalTool(toolName: string) {
 		const allowlist = (raw as string).split(',').map((s) => s.trim()).filter(Boolean)
 		setInternalToolConfig(toolName, {
 			...cfg,
-			functions: { ...cfg.functions, [fnName as string]: { ...existingFnCfg, allowlist: allowlist.length ? allowlist : undefined } },
+			functions: { ...cfg.functions, [fnName]: { ...existingFnCfg, allowlist: allowlist.length ? allowlist : undefined } },
 		})
 		p.outro(pc.green(`✅ Allowlist updated for ${toolName}.${fnName}.`))
 	}
@@ -295,6 +334,7 @@ async function editMcpServer(name: string, mcpCfg: ReturnType<typeof getAllMcpSe
 		message: `Editing MCP: ${pc.bold(name)}`,
 		options: [
 			{ value: 'toggle', label: mcpCfg.enabled ? '🔴 Disable' : '🟢 Enable' },
+			{ value: 'details', label: '📝 Edit transport / config' },
 			{ value: 'remove', label: '🗑️  Remove this MCP server' },
 		],
 	})
@@ -303,6 +343,99 @@ async function editMcpServer(name: string, mcpCfg: ReturnType<typeof getAllMcpSe
 	if (action === 'toggle') {
 		setMcpServerConfig(name, { ...mcpCfg, enabled: !mcpCfg.enabled })
 		p.outro(pc.green(`✅ mcp:${name} is now ${!mcpCfg.enabled ? 'enabled' : 'disabled'}.`))
+	} else if (action === 'details') {
+		// Re-run the add logic but with initial values
+		const label = await p.text({
+			message: 'Human-readable label:',
+			initialValue: mcpCfg.label || '',
+		})
+		if (p.isCancel(label)) { p.cancel('Cancelled.'); process.exit(0) }
+
+		const transport = await p.select({
+			message: 'Transport type:',
+			initialValue: mcpCfg.transport,
+			options: [
+				{ value: 'stdio', label: 'stdio  — spawn a local process' },
+				{ value: 'http', label: 'http   — connect to a remote MCP URL' },
+			],
+		})
+		if (p.isCancel(transport)) { p.cancel('Cancelled.'); process.exit(0) }
+
+		let updatedCfg: McpServerConfig
+
+		if (transport === 'stdio') {
+			const command = await p.text({
+				message: 'Command to run:',
+				initialValue: mcpCfg.command || '',
+				validate: (v) => { if (!v) return 'Required' },
+			})
+			if (p.isCancel(command)) { p.cancel('Cancelled.'); process.exit(0) }
+
+			const argsRaw = await p.text({
+				message: 'Arguments (space-separated):',
+				initialValue: (mcpCfg.args || []).join(' '),
+			})
+			if (p.isCancel(argsRaw)) { p.cancel('Cancelled.'); process.exit(0) }
+
+			const envRaw = await p.text({
+				message: 'Env vars (KEY=VAL comma-separated):',
+				initialValue: Object.entries(mcpCfg.env || {}).map(([k, v]) => `${k}=${v}`).join(','),
+			})
+			if (p.isCancel(envRaw)) { p.cancel('Cancelled.'); process.exit(0) }
+
+			const env: Record<string, string> = {}
+			for (const pair of (envRaw as string).split(',').filter(Boolean)) {
+				const [k, ...rest] = pair.split('=')
+				if (k) env[k.trim()] = rest.join('=').trim()
+			}
+
+			updatedCfg = {
+				...mcpCfg,
+				label: label as string || undefined,
+				transport: 'stdio',
+				command: command as string,
+				args: (argsRaw as string).split(' ').filter(Boolean),
+				env: Object.keys(env).length ? env : undefined,
+				url: undefined,
+				headers: undefined,
+			}
+		} else {
+			const url = await p.text({
+				message: 'MCP server URL:',
+				initialValue: mcpCfg.url || '',
+				validate: (v) => {
+					if (!v) return 'Required'
+					try { new URL(v); return undefined } catch { return 'Must be a valid URL' }
+				},
+			})
+			if (p.isCancel(url)) { p.cancel('Cancelled.'); process.exit(0) }
+
+			const headersRaw = await p.text({
+				message: 'Request headers (KEY:VAL comma-separated):',
+				initialValue: Object.entries(mcpCfg.headers || {}).map(([k, v]) => `${k}:${v}`).join(','),
+			})
+			if (p.isCancel(headersRaw)) { p.cancel('Cancelled.'); process.exit(0) }
+
+			const headers: Record<string, string> = {}
+			for (const pair of (headersRaw as string).split(',').filter(Boolean)) {
+				const [k, ...rest] = pair.split(':')
+				if (k) headers[k.trim()] = rest.join(':').trim()
+			}
+
+			updatedCfg = {
+				...mcpCfg,
+				label: label as string || undefined,
+				transport: 'http',
+				url: url as string,
+				headers: Object.keys(headers).length ? headers : undefined,
+				command: undefined,
+				args: undefined,
+				env: undefined,
+			}
+		}
+
+		setMcpServerConfig(name, updatedCfg)
+		p.outro(pc.green(`✅ MCP server '${name}' updated.`))
 	} else {
 		const confirmed = await p.confirm({ message: `Remove mcp:${pc.red(name)}?`, initialValue: false })
 		if (p.isCancel(confirmed) || !confirmed) { p.cancel('Cancelled.'); process.exit(0) }
@@ -314,7 +447,7 @@ async function editMcpServer(name: string, mcpCfg: ReturnType<typeof getAllMcpSe
 // ─── Remove MCP ───────────────────────────────────────────────────────────────
 
 export const runToolsRemoveMcpCommand = async (name?: string) => {
-	const serverName = name ?? (await pickToolName('Which MCP to remove?'))?.replace('mcp:', '')
+	const serverName = name ?? (await pickToolName('Which MCP to remove?', 'mcp'))?.replace('mcp:', '')
 	if (!serverName) return
 	const confirmed = await p.confirm({ message: `Remove mcp:${pc.red(serverName)}?`, initialValue: false })
 	if (p.isCancel(confirmed) || !confirmed) { p.cancel('Cancelled.'); process.exit(0) }

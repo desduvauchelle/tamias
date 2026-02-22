@@ -1,7 +1,10 @@
-import { Command } from 'commander'
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
 import fs from 'node:fs'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
+import { execSync } from 'node:child_process'
+import pkg from '../../package.json'
 
 const REPO = 'desduvauchelle/tamias'
 
@@ -9,11 +12,7 @@ export const runUpdateCommand = async () => {
 	p.intro(pc.bgBlue(pc.white(' Tamias CLI Update ')))
 
 	try {
-		// Read current version from package.json
-		const pkgJsonStr = fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf-8')
-		const pkg = JSON.parse(pkgJsonStr)
 		const currentVersion = pkg.version
-
 		p.note(`Current version: v${currentVersion}`)
 
 		const s = p.spinner()
@@ -36,72 +35,108 @@ export const runUpdateCommand = async () => {
 			process.exit(1)
 		}
 
-		// naive version check: if v1.0.1 != 1.0.0
 		const latestVersion = latestVersionStr.replace(/^v/, '')
 		if (currentVersion === latestVersion) {
 			s.stop(`Already up to date. (v${currentVersion})`)
-			p.outro(pc.green('No update required.'))
-			process.exit(0)
+			const shouldForce = await p.confirm({
+				message: 'Re-install current version (includes dashboard rebuild)?',
+				initialValue: false
+			})
+			if (!shouldForce || p.isCancel(shouldForce)) {
+				p.outro(pc.green('No update required.'))
+				process.exit(0)
+			}
+			s.start('Re-installing...')
 		}
 
-		s.message(`New version found: v${latestVersion}. Downloading...`)
+		s.message(`New version found: v${latestVersion}.`)
 
-		// Determine OS and Arch
-		const sysOS = process.platform // 'darwin' | 'linux' | 'win32'
-		const sysArch = process.arch // 'arm64' | 'x64'
+		// 1. Determine OS and Arch for binary
+		const sysOS = process.platform
+		const sysArch = process.arch
 
 		let osName = ''
 		if (sysOS === 'darwin') osName = 'darwin'
 		else if (sysOS === 'linux') osName = 'linux'
-		else {
-			s.stop('Unsupported OS.')
-			p.cancel(pc.red(`Auto-update is not supported on ${sysOS}.`))
-			process.exit(1)
-		}
 
 		let archName = ''
 		if (sysArch === 'arm64' || (sysArch as string) === 'aarch64') archName = 'arm64'
 		else if (sysArch === 'x64') archName = 'x64'
-		else {
-			s.stop('Unsupported architecture.')
-			p.cancel(pc.red(`Auto-update is not supported on architecture ${sysArch}.`))
-			process.exit(1)
-		}
 
+		const hasBinary = osName && archName
 		const assetName = `tamias-${osName}-${archName}`
-		const asset = release.assets?.find((a: any) => a.name === assetName)
+		const binaryAsset = release.assets?.find((a: any) => a.name === assetName)
 
-		if (!asset) {
-			s.stop(`Version v${latestVersion} is out, but there's no binary for ${osName}-${archName} yet.`)
-			p.cancel(pc.yellow('Please try again later. Build artifacts might still be generating.'))
-			process.exit(1)
+		// 2. Binary Update
+		const currentExecPath = process.execPath
+		const isCompiled = !currentExecPath.includes('/bun') && !currentExecPath.includes('/node')
+
+		if (isCompiled && binaryAsset) {
+			s.message(`Downloading binary for ${osName}-${archName}...`)
+			const downloadRes = await fetch(binaryAsset.browser_download_url)
+			if (downloadRes.ok) {
+				const arrayBuffer = await downloadRes.arrayBuffer()
+				const buffer = Buffer.from(arrayBuffer)
+				const tmpPath = `${currentExecPath}.tmp.update`
+				fs.writeFileSync(tmpPath, buffer)
+				fs.chmodSync(tmpPath, 0o755)
+				fs.renameSync(tmpPath, currentExecPath)
+				s.message('Binary updated.')
+			} else {
+				p.log.warn('Binary download failed, but continuing with dashboard update...')
+			}
+		} else if (isCompiled && !binaryAsset) {
+			p.log.warn(`No binary asset found for ${osName}-${archName}. Skipping binary update.`)
+		} else {
+			p.log.info('Running in development/uncompiled mode. Skipping binary update.')
 		}
 
-		// Download
-		const downloadRes = await fetch(asset.browser_download_url)
-		if (!downloadRes.ok) {
-			s.stop('Download failed.')
-			p.cancel(pc.red(`Failed to download asset: ${downloadRes.statusText}`))
-			process.exit(1)
+		// 3. Dashboard Update
+		const candidatePaths = [
+			join(homedir(), '.tamias', 'src', 'dashboard'),
+			join(process.cwd(), 'src', 'dashboard'),
+		]
+		const dashboardDir = candidatePaths.find((path) => fs.existsSync(path)) ?? ''
+
+		if (dashboardDir) {
+			s.message(`Updating dashboard source at ${dashboardDir}...`)
+			const tmpDir = join(homedir(), '.tamias', 'tmp-update')
+			if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true })
+			fs.mkdirSync(tmpDir, { recursive: true })
+
+			try {
+				// Download source ZIP
+				const zipUrl = `https://github.com/${REPO}/archive/refs/tags/${latestVersionStr}.zip`
+				execSync(`curl -fsSL "${zipUrl}" -o "${tmpDir}/src.zip"`)
+				execSync(`unzip -q "${tmpDir}/src.zip" -d "${tmpDir}/extracted"`)
+
+				// Find dashboard in ZIP
+				const extractedRoot = fs.readdirSync(join(tmpDir, 'extracted'))[0]
+				const newDashSrc = join(tmpDir, 'extracted', extractedRoot, 'src', 'dashboard')
+
+				if (fs.existsSync(newDashSrc)) {
+					// Backup current dashboard just in case? Or just replace.
+					// Let's replace.
+					fs.rmSync(dashboardDir, { recursive: true, force: true })
+					fs.cpSync(newDashSrc, dashboardDir, { recursive: true })
+
+					s.message('Installing dashboard dependencies...')
+					execSync(`bun install`, { cwd: dashboardDir, stdio: 'ignore' })
+
+					s.message('Building dashboard...')
+					execSync(`bun run build`, { cwd: dashboardDir, stdio: 'ignore' })
+
+					s.message('Dashboard updated and built.')
+				}
+			} catch (e) {
+				p.log.error(`Dashboard update failed: ${String(e)}`)
+			} finally {
+				fs.rmSync(tmpDir, { recursive: true, force: true })
+			}
 		}
-
-		const arrayBuffer = await downloadRes.arrayBuffer()
-		const buffer = Buffer.from(arrayBuffer)
-
-		// Write to temporary location, then move it
-		const currentExecPath = process.execPath // Typically /User/x/.bun/bin/tamias or /usr/local/bin/tamias
-
-		// Let's rely on the location currently actually being executed from
-		const tmpPath = `${currentExecPath}.tmp.update`
-
-		fs.writeFileSync(tmpPath, buffer)
-		fs.chmodSync(tmpPath, 0o755)
-
-		// overwrite existing
-		fs.renameSync(tmpPath, currentExecPath)
 
 		s.stop(`Successfully updated to v${latestVersion}!`)
-		p.outro(pc.green('Run `tamias` to use the new version.'))
+		p.outro(pc.green('Update complete.'))
 
 	} catch (err) {
 		p.cancel(pc.red(`Update failed: ${String(err)}`))

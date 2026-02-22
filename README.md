@@ -29,10 +29,6 @@ cd tamias
 ./install.sh
 ```
 
-This builds the binary and symlinks `tamias` to your `~/.bun/bin` — so it's available globally.
-
-> All configuration is stored securely in `~/.tamias/config.json`.
-
 ---
 
 ## Quick Start
@@ -55,377 +51,123 @@ tamias chat
 Tamias uses a **Client-Daemon** architecture to manage multiple concurrent chats and persistent tool state.
 
 ### The Daemon (`tamias start`)
-A central background process that:
-- Maintains a **persistent connection** to all active session models.
-- Manages an **async message queue** per session (no race conditions).
-- Orchestrates **tool execution** (internal and MCP).
-- Serves an **HTTP + SSE (Server-Sent Events)** API on a local port (usually `9001+`).
-
-### Sessions
-Every time you run `tamias chat`, a unique **Session ID** is created on the daemon. Each session has its own message history and isolated tool environment. You can have multiple terminal windows chatting with different models simultaneously via the same daemon.
-
-### Communication
-1. **Client -> Daemon**: The CLI sends your input via HTTP POST.
-2. **Daemon -> Client**: The daemon streams tokens and tool calls back to your terminal in real-time via a persistent SSE stream.
-
-> [!NOTE]
-> The `tamias chat` command automatically starts the daemon in the background if it's not already running.
+A central background process that maintains connections, manages message queues, and orchestrates tool execution. It also serves a **Dashboard** (usually on port 5678) and an **API** (port 9001).
 
 ---
 
 ## CLI Reference
 
-### `tamias config`
-Add a new AI provider connection. Walk through:
-1. Pick a provider (OpenAI, Anthropic, Google Gemini, OpenRouter, Antigravity)
-2. Enter your API key
-3. Give the connection a short nickname (e.g. `lc-openai`)
-4. Select which models you want to use from a live-fetched list
+### Configuration & Models
+- `tamias config`: Add a new AI provider connection (OpenAI, Anthropic, etc.).
+- `tamias models list`: See all configured connections.
+- `tamias models edit [nickname]`: Update a connection.
+- `tamias models delete [nickname]`: Remove a connection.
+- `tamias model`: View or interactively set the global default model.
 
----
+### Chat & Lifecycle
+- `tamias chat`: Launch an interactive CLI chat session.
+- `tamias onboarding`: Re-run the first-run setup wizard.
+- `tamias update`: Check for and install updates (Binary + Dashboard).
 
-### `tamias models`
-Manage your saved model configurations.
+### Daemon Management
+- `tamias start`: Start the background process (use `--daemon` for quiet mode).
+- `tamias stop`: Shut down the running daemon.
+- `tamias status`: Show PID, uptime, active sessions, and URLs.
+- `tamias usage`: Display token usage and estimated cost stats.
 
-```bash
-tamias models list              # See all configs and their selected models
-tamias models add               # Same as `tamias config`
-tamias models edit [nickname]   # Rename or update selected models
-tamias models delete [nickname] # Remove a config
-```
+### Channels (Gateways)
+- `tamias channels list`: See Discord/Telegram status.
+- `tamias channels add`: Connect a new platform bot.
+- `tamias channels edit`: Update tokens or allowed IDs.
+- `tamias channels remove [platform]`: Delete a gateway config.
 
-**Example output of `tamias models list`:**
-```
-lc-openai/gpt-4o
-lc-openai/gpt-5.2-chat-latest
-lc2-openai  (no models selected)
-```
+### Agent Management (Personas)
+- `tamias agents list`: See all registered reusable personas.
+- `tamias agents add`: Register a new persona with custom instructions.
+- `tamias agents edit [id]`: Update an agent's name, model, or prompt.
+- `tamias agents rm [id]`: Delete a persona from the gallery.
 
----
-
-### `tamias chat`
-Start an interactive chat session.
-
-1. Pick a model from your configured list (`nickname/model`)
-2. Tamias ensures the background daemon is running (auto-starts if needed)
-3. A new session is created and streamed in real-time via SSE
-4. The AI can autonomously call tools across up to **20 steps** per message
-5. Type `exit` or `quit` to end the session
-
----
-
-### `tamias model`
-Manage the global default model.
-
-```bash
-tamias model        # Show current default model
-tamias model set    # Interactively pick a default from your connections
-```
-
----
-
-### `tamias daemon`
-Control the central Tamias background process.
-
-```bash
-tamias start           # Start the daemon (interactive)
-tamias start --daemon  # Start in background mode
-tamias stop            # Gracefully shut down the daemon
-tamias status          # Show port, PID, uptime, and active sessions
-```
-
----
-
-### `tamias tools`
-Manage tools available to the AI. Both internal tools and external MCP servers live here.
-
-```bash
-tamias tools list               # Show all tools and MCPs with their status
-tamias tools add-mcp            # Connect an external MCP server
-tamias tools enable [name]      # Enable a tool or MCP
-tamias tools disable [name]     # Disable it
-tamias tools edit [name]        # Toggle functions, set regex allowlists
-tamias tools remove-mcp [name]  # Remove an external MCP server
-```
-
----
-
-### `tamias cron`
-Manage recurring background tasks and heartbeats.
-
-```bash
-tamias cron list               # See all configured cron jobs
-tamias cron add                # Create a new recurring task (interactive if flags missing)
-# Options: --name, --schedule, --prompt, --target
-
-tamias cron edit [id]          # Update an existing job
-# Options: --name, --schedule, --prompt, --target, --enable, --disable
-
-tamias cron rm [id]            # Remove a job
-```
-
-**Common Flags**:
-- `--name <string>`: A descriptive name for the job.
-- `--schedule <string>`: The interval (e.g., `30m`) or 5-field cron.
-- `--prompt <string>`: The instructions for the agent.
-- `--target <string>`: Output destination (`last`, `discord:ID`, etc.).
-- `--heartbeat`: Pre-fill everything with the default 30m heartbeat config.
-- `--enable` / `--disable`: Toggle the job status.
-
-**Schedule formats**:
-- Internal strings: `30s`, `1m`, `1h`, `1d`
-- Standard 5-field cron: `* * * * *` (minutes, hours, day of month, month, day of week)
-
-**Target formats**:
-- `last`: (Default) Sends output to the last active session.
-- `discord:<channelId>`: Sends output to a specific Discord channel.
-- `telegram:<chatId>`: Sends output to a specific Telegram chat.
-
----
-
-### `tamias agents`
-Manage reusable agent templates (personas). These can be used by the AI to spawn specialized sub-agents.
-
-```bash
-tamias agents list               # See all registered agents
-tamias agents add                # Register a new reusable agent
-# Options: --name, --model, --instructions
-
-tamias agents edit [id]          # Update an existing agent
-# Options: --name, --model, --instructions
-
-tamias agents rm [id]            # Remove an agent definition
-```
-
-**Common Flags**:
-- `--name <string>`: A descriptive name for the agent (e.g. "Researcher").
-- `--model <string>`: Optional model override for this agent.
-- `--instructions <string>`: The system prompt/instructions for this agent.
+### Maintenance & Data
+- `tamias workspace [path]`: Set a restricted directory for AI file operations.
+- `tamias backup`: Archive your config, logs, and database.
+- `tamias restore <file>`: Restore from a backup archive.
+- `tamias uninstall`: Completely wipe Tamias and its data.
 
 ---
 
 ## Tools
 
-Tools make the AI **agentic** — it can call them autonomously and chain multiple calls to complete complex tasks.
+Tools make the AI **agentic**. Tamias includes several powerful built-in tools.
 
-There are two kinds:
-
-### Internal Tools (`src/tools/`)
-
-Built-in tools shipped with Tamias. Each file in `src/tools/` is a separate tool.
-
-#### `terminal` tool (built-in)
-
-Gives the AI full filesystem and shell access. Functions:
-
+### `terminal`
+Full shell and filesystem access (can be restricted via allowlists).
 | Function | Description |
 |---|---|
-| `run_command` | Execute any shell command (with stdout/stderr) |
-| `read_file` | Read a file's contents |
-| `write_file` | Create or overwrite a file |
-| `edit_file` | Replace an exact string in a file |
-| `delete_file` | Delete a file |
-| `move_file` | Move or rename a file |
-| `copy_file` | Copy a file |
-| `list_dir` | List files and directories |
-| `find_files` | Find files matching a pattern |
+| `run_command` | Execute any shell command |
+| `read_file` | Read file contents |
+| `write_file` | Create or overwrite files |
+| `edit_file` | Precise string replacement |
+| `delete_file` | Remove a file |
+| `list_dir` | Browser directories |
 
-#### `tamias` tool (built-in)
-
-Allows the AI to **self-manage** its own configuration and the daemon. Functions:
-
+### `workspace`
+A **restricted** version of the terminal that only allows operations within a specific directory.
 | Function | Description |
 |---|---|
-| `get_default_model` | Get the current default model |
-| `set_default_model` | Update the global default model |
-| `list_model_configs`| List all connections and their models |
-| `list_sessions` | List active chat sessions on the daemon |
-| `list_tools` | List all internal tools and external MCPs |
-| `enable_tool` | Enable an internal tool |
-| `disable_tool` | Disable an internal tool |
-| `add_mcp_server` | Register a new external MCP server |
-| `remove_mcp_server`| Remove an MCP server |
-| `daemon_status` | Get uptime, port, and PID |
-| `stop_daemon` | Shut down the Tamias daemon |
-| `list_channels` | List Discord/Telegram channel configs |
-| `configure_channel`| Enable/disable channels and set tokens |
+| `run_command` | Execute shell commands (blocked keywords) |
+| `read_file` / `write_file` | File access (path validated) |
+| `list_dir` | Scope-limited directory listing |
 
-#### `cron` tool (built-in)
-
-Allows the AI to **manage its own schedule** and reminders. Functions:
-
+### `github`
+Integrated Git workflow for the AI.
 | Function | Description |
 |---|---|
-| `cron_list` | List all active cron jobs |
-| `cron_add` | Add a new recurring task or reminder |
-| `cron_edit` | Update an existing job |
-| `cron_remove` | Delete a job by ID |
+| `git_status` | Check repository status |
+| `git_add` / `git_commit` | Stage and commit changes |
+| `git_push` / `git_pull` | Sync with remote |
+| `git_clone` | Clone repositories |
+| `git_diff` / `git_log` | Inspect history |
 
-#### `subagent` tool (built-in)
-
-Allows the AI to **delegate tasks** to specialized worker sessions.
-
+### `email`
+AI-driven email management via the `himalaya` CLI.
 | Function | Description |
 |---|---|
-| `spawn` | Create a new sub-agent session for a task. Supports `agentId` (reusable persona), `model`, and `instructions`. |
-
-**The terminal, cron, and subagent tools are enabled by default.** The AI can use them without any extra setup.
+| `list_emails` | Fetch recent envelopes |
+| `read_email` | Get full message content |
+| `send_email` | Send to whitelisted recipients |
 
 ---
 
-### External MCPs
+## Multi-Agent System
 
-Connect any standard [MCP](https://modelcontextprotocol.io) server — no code required.
+Tamias allows your primary AI to delegate complex or long-running tasks to specialized **sub-agents**. Each sub-agent runs in its own isolated session and reports back to the main chat automatically.
 
-```bash
-tamias tools add-mcp
-```
+### Why use Sub-agents?
+- **Isolation**: Prevent a complex task from bloating the main conversation history.
+- **Specialization**: Use pre-defined **Agents (Personas)** for specific tasks (e.g., a "Researcher" or "Code Auditor").
+- **Concurrency**: Let a worker handle a sub-task while you continue the main conversation.
 
-You'll be prompted for:
-- A short name (e.g. `gdrive`)
-- Transport type: `stdio` (local process) or `http` (remote URL)
-- For stdio: the command and args (e.g. `npx -y @some/gdrive-mcp`)
-- For http: the URL and any auth headers
+### Agent Personas
+You can define reusable "identities" via `tamias agents add`. These contain fixed instructions and model preferences.
+- **Example**: A "Researcher" agent always uses a large-context model and has specific instructions to provide citations.
 
-**Example MCP servers**:
-- [Google Drive](https://github.com/felixbranscombe/gdrive-mcp) — list, read, write Drive files
-- [GitHub](https://github.com/github/github-mcp-server) — repos, issues, PRs
-- [Filesystem](https://github.com/modelcontextprotocol/servers) — enhanced file access
+### Using Sub-agents in Chat
+The AI can spawn a sub-agent using the `subagent__spawn` tool. You can also prompt it to do so:
+> "Spawn a **Researcher** agent to read the documentation in `~/docs` and summarize the security section."
 
----
-
-### Configuring Tool Safety
-
-Each tool and function has independent controls:
-
-#### Enable / disable an entire tool
-```bash
-tamias tools disable terminal
-tamias tools enable terminal
-```
-
-#### Enable / disable individual functions
-```bash
-tamias tools edit terminal
-# → select a function (e.g. run_command)
-# → toggle on/off
-```
-
-#### Allowlists (regex)
-Restrict what a function can be called with. For example, only allow `ls` and `cat` commands:
-
-```bash
-tamias tools edit terminal
-# → run_command → Edit allowlist
-# → Enter: ^ls ,^cat
-```
-
-If an allowlist is set, at least one pattern must match the call arguments — otherwise the call is blocked and an error is returned to the AI.
-
----
-
-### Adding a New Internal Tool
-
-1. Create a new file in `src/tools/`, e.g. `src/tools/browser.ts`
-2. Export a `browserTools` object using the Vercel AI SDK `tool()` helper with `inputSchema` (Zod)
-3. Export a `BROWSER_TOOL_NAME` and `BROWSER_TOOL_LABEL` constant
-4. Register it in `src/utils/toolRegistry.ts` in the `internalCatalog` map
-
-```ts
-// src/tools/browser.ts
-import { tool } from 'ai'
-import { z } from 'zod'
-
-export const BROWSER_TOOL_NAME = 'browser'
-export const BROWSER_TOOL_LABEL = '🌐 Browser (fetch URLs)'
-
-export const browserTools = {
-  fetch_url: tool({
-    description: 'Fetch the content of a URL',
-    inputSchema: z.object({ url: z.string().url() }),
-    execute: async ({ url }: { url: string }) => {
-      const res = await fetch(url)
-      return { content: await res.text() }
-    },
-  }),
-}
-```
-
-Then in `toolRegistry.ts`:
-```ts
-import { browserTools, BROWSER_TOOL_NAME } from '../tools/browser.ts'
-
-const internalCatalog = {
-  [TERMINAL_TOOL_NAME]: terminalTools,
-  [BROWSER_TOOL_NAME]: browserTools, // ← add here
-}
-```
-
----
-
-## Configuration File
-
-All settings live in `~/.tamias/config.json`. You can inspect it directly, but it's best managed via the CLI commands.
-
-```json
-{
-  "version": "1.0",
-  "connections": {
-    "lc-openai": {
-      "nickname": "lc-openai",
-      "provider": "openai",
-      "apiKey": "sk-...",
-      "selectedModels": ["gpt-4o", "gpt-5.2-chat-latest"]
-    }
-  },
-  "internalTools": {
-    "terminal": {
-      "enabled": true,
-      "functions": {
-        "delete_file": { "enabled": false },
-        "run_command": { "enabled": true, "allowlist": ["^ls", "^cat"] }
-      }
-    }
-  },
-  "mcpServers": {
-    "gdrive": {
-      "enabled": true,
-      "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "@felixbranscombe/gdrive-mcp"]
-    }
-  }
-}
-```
+1. The main AI calls `subagent__spawn` with the task.
+2. A sub-session is created (inheriting the "Researcher" persona if specified).
+3. The sub-agent performs the task and produces a result.
+4. Tamias **automatically injects** the sub-agent's final report back into your main conversation.
 
 ---
 
 ## Development
 
 ```bash
-bun run type-check   # Run TypeScript compiler (zero errors enforced)
-bun run start        # Start the daemon
-bun run stop         # Stop the daemon
-bun run chat         # Run chat client
-bun run models list  # Run models list command
-bun run tools        # Run tools manager
-bun run build        # Build standalone binary
-./install.sh         # Build + install globally
+bun install          # Install dependencies
+bun run build        # Compile standalone binary
+bun run type-check   # Validate TypeScript
 ```
 
-
-# TODO
-
-- [x] Command line setup
-- [x] Provider config and management
-- [x] MCP setup - Terminal access
-- [x] Daemon start / stop
-- [x] Terminal chat with sessions and queuing
-- [x] Added basic memory for personality
-- [x] Add memory logic (update user/robot/memories), chat session length management (auto-summarize after 20 chats, and include summary in conversation memory instead of all the history, this should auto update memory files and conversation files)
-- [x] Bridge: We have terminal chats, but we want to connect to other chat interfaces, such as Discoard, Telegram for now. This bridge takes care of the connection and routing of messages between the daemon and the chat interface. The AI should be able to self add, remove, update this from a conversation. The messages from the various platforms need to be standardized to a single format before being sent to the daemon, and the response from the daemon needs to be converted to the appropriate format for the platform it's being sent to. The bridge should also handle the authentication with the various platforms, and the AI should be able to manage these connections from a conversation. The bridge should be able to handle multiple conversations at once, and route messages to the correct conversation through sessions.
-- [x] Add notion of heartbeat, which is a cron job that runs every 30minutes by default but can be changed in the configuration file.
-- [x] Add cron job management.
-- [x] Add multi-agent (sub-agent) support with result auto-reporting.
-- [x] Add persistent agent definition management (personas).
-- [ ] Add the notion of skills (directory of skills, and ability to load them on the fly...) (In Progress)
+> All configuration is stored in `~/.tamias/config.json`.

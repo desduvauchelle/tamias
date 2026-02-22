@@ -87,7 +87,7 @@ export function readAllPersonaFiles(): Record<string, string> {
 // ─── System prompt builder ────────────────────────────────────────────────────
 
 /** Build a full system prompt from persona files + tool list */
-export function buildSystemPrompt(toolNames: string[], summary?: string, channel?: { id: string, userId?: string, name?: string, authorName?: string, isSubagent?: boolean }): string {
+export function buildSystemPrompt(toolNames: string[], toolDocs: string, summary?: string, channel?: { id: string, userId?: string, name?: string, authorName?: string, isSubagent?: boolean }): string {
 	const files = readAllPersonaFiles()
 	const sections: string[] = []
 
@@ -140,6 +140,11 @@ When reading or updating your memory, you can use either the absolute path or th
 		sections.push(files['AGENTS.md'])
 	}
 
+	// User-provided tool notes & specifics
+	if (files['TOOLS.md']) {
+		sections.push(files['TOOLS.md'])
+	}
+
 	// Heartbeat agenda — periodic tasks
 	if (files['HEARTBEAT.md'] && files['HEARTBEAT.md'].trim()) {
 		sections.push(`# Periodic Tasks (HEARTBEAT.md)\n\n${files['HEARTBEAT.md']}`)
@@ -162,7 +167,13 @@ When reading or updating your memory, you can use either the absolute path or th
 
 	// Tools
 	if (toolNames.length > 0) {
-		sections.push(`# Available Tools\n\nYou have access to: ${toolNames.map((t) => `\`${t}\``).join(', ')}.\nTool names use the format \`toolName__functionName\`.\n`)
+		let toolSection = `# Available Tools\n\nYou have access to the following tools. Tool names use the format \`toolName__functionName\`.\n\n`
+		if (toolDocs) {
+			toolSection += toolDocs
+		} else {
+			toolSection += `List of enabled tools: ${toolNames.map((t) => `\`${t}\``).join(', ')}.`
+		}
+		sections.push(toolSection)
 	}
 
 	// Skills

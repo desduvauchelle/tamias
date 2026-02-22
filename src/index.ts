@@ -16,14 +16,16 @@ import { runEmailsCommand, runEmailsListCommand, runEmailsAddCommand, runEmailsE
 import { runWorkspaceCommand } from './commands/workspace.ts'
 import { runUninstallCommand, runBackupCommand, runRestoreCommand } from './commands/maintenance.ts'
 import { agentsCommand } from './commands/agents.ts'
+import { runReadmeCommand } from './commands/readme.ts'
 import { isOnboarded } from './utils/memory.ts'
+import pkg from '../package.json'
 
 const program = new Command()
 
 program
 	.name('tamias')
 	.description('A secure, agentic AI chat interface powered by the Vercel AI SDK')
-	.version('1.0.0')
+	.version(pkg.version)
 
 program.addCommand(cronCommand)
 program.addCommand(agentsCommand)
@@ -161,28 +163,28 @@ toolsCmd
 // ─── tamias channels ────────────────────────────────────────────────────────
 const channelsCmd = program
 	.command('channels')
-	.description('Manage translator gateway channels (Discord, Telegram, etc.)')
+	.description('Manage gateway channels (Discord, Telegram, etc.)')
 	.action(runChannelsCommand)
 
 channelsCmd
 	.command('list')
-	.description('List configured channels')
+	.description('List configured communication channels')
 	.action(runChannelsListCommand)
 
 channelsCmd
 	.command('add')
-	.description('Configure a new channel')
+	.description('Connect a new communication channel')
 	.action(runChannelsAddCommand)
 
 channelsCmd
 	.command('edit')
-	.description('Edit an existing channel configuration')
+	.description('Edit an existing channel (tokens, allowed IDs)')
 	.action(runChannelsEditCommand)
 
 channelsCmd
 	.command('remove')
 	.alias('delete')
-	.argument('[platform]', 'The channel platform to remove (e.g. discord or telegram)')
+	.argument('[platform]', 'Platform to remove (discord|telegram)')
 	.description('Remove a channel configuration')
 	.action(runChannelsRemoveCommand)
 
@@ -239,6 +241,12 @@ program
 	.argument('<file>', 'The backup file to restore from')
 	.description('Restore Tamias configuration and logs from a backup')
 	.action(runRestoreCommand)
+
+// ─── tamias readme ────────────────────────────────────────────────────────────
+program
+	.command('readme')
+	.description('View the Tamias README.md with terminal formatting')
+	.action(runReadmeCommand)
 
 // First-run detection: if no subcommand given and not yet onboarded, launch chat (which triggers onboarding)
 if (process.argv.length <= 2 && !isOnboarded()) {

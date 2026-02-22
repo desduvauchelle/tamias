@@ -7,9 +7,19 @@ export async function GET() {
 		return NextResponse.json({
 			internalTools: config.internalTools || {},
 			mcpServers: config.mcpServers || {},
+			availableInternalTools: {
+				terminal: 'Terminal / Shell Access',
+				tamias: 'Tamias Core System',
+				cron: 'Task Scheduling (Cron)',
+				email: 'Email (Himalaya)',
+				github: 'GitHub Integration',
+				workspace: 'Workspace Management',
+				gemini: 'Gemini AI Tool',
+				subagent: 'Sub-agent Spawner',
+			}
 		})
 	} catch (error) {
-		return NextResponse.json({ internalTools: {}, mcpServers: {} })
+		return NextResponse.json({ internalTools: {}, mcpServers: {}, availableInternalTools: {} })
 	}
 }
 

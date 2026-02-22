@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import type { BridgeManager } from '../bridge/index.ts'
+import pkg from '../../package.json'
 
 const REPO = 'desduvauchelle/tamias'
 
@@ -9,10 +10,13 @@ const REPO = 'desduvauchelle/tamias'
  */
 export async function autoUpdateDaemon(bridgeManager: BridgeManager) {
 	try {
-		// 1. Read current version
-		const pkgJsonStr = fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf-8')
-		const pkg = JSON.parse(pkgJsonStr)
 		const currentVersion = pkg.version as string
+
+		const currentExecPath = process.execPath
+		const isCompiled = !currentExecPath.includes('/bun') && !currentExecPath.includes('/node')
+
+		// Only auto-update if running as a compiled binary
+		if (!isCompiled) return
 
 		const sysOS = process.platform
 		const sysArch = process.arch
@@ -60,7 +64,6 @@ export async function autoUpdateDaemon(bridgeManager: BridgeManager) {
 		const arrayBuffer = await downloadRes.arrayBuffer()
 		const buffer = Buffer.from(arrayBuffer)
 
-		const currentExecPath = process.execPath
 		const tmpPath = `${currentExecPath}.tmp.update`
 
 		fs.writeFileSync(tmpPath, buffer)

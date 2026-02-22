@@ -53,6 +53,7 @@ export class AIService {
 	private bridgeSessionMap = new Map<string, string>()
 	private activeTools: Record<string, unknown> = {}
 	private mcpClients: Array<{ close: () => Promise<void> }> = []
+	private toolDocs = ''
 	private bridgeManager: BridgeManager
 
 	constructor(bridgeManager: BridgeManager) {
@@ -67,8 +68,9 @@ export class AIService {
 
 	public async refreshTools(sessionId: string) {
 		try {
-			const { tools, mcpClients } = await buildActiveTools(this, sessionId)
+			const { tools, mcpClients, toolDocs } = await buildActiveTools(this, sessionId)
 			this.activeTools = tools
+			this.toolDocs = toolDocs
 			// Close old clients before replacing
 			for (const c of this.mcpClients) await c.close().catch(() => { })
 			this.mcpClients = mcpClients
@@ -221,7 +223,7 @@ export class AIService {
 			await this.refreshTools(session.id)
 			const model = this.buildModel(connection, session.modelId)
 			const toolNamesList = Object.keys(this.activeTools)
-			const systemPrompt = buildSystemPrompt(toolNamesList, session.summary, {
+			const systemPrompt = buildSystemPrompt(toolNamesList, this.toolDocs, session.summary, {
 				id: session.channelId,
 				userId: session.channelUserId,
 				name: session.channelName,
