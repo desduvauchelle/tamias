@@ -215,6 +215,16 @@ export const loadConfig = (): TamiasConfig => {
 			needsMigration = true
 		}
 
+		// Proactive cleanup of dead connections/models from other computers
+		if (data.defaultModels?.some(m => m.startsWith('lc-openai'))) {
+			data.defaultModels = data.defaultModels.filter(m => !m.startsWith('lc-openai'))
+			needsMigration = true
+		}
+		if (data.connections['lc-openai']) {
+			delete data.connections['lc-openai']
+			needsMigration = true
+		}
+
 		if (needsMigration) {
 			saveConfig(data) // Remove plaintext secrets from the config file immediately
 		}

@@ -227,7 +227,25 @@ export class AIService {
 		session.messages.push({ role: 'user', content: messageContent })
 
 		const config = loadConfig()
-		const modelsToTry = [session.model, ...getDefaultModels()].filter((m, i, arr) => arr.indexOf(m) === i)
+		// Priority: Current default models -> session's persisted model -> hardcoded safety fallbacks
+		// We avoid anything starting with 'lc-openai' if it's not actually configured, as it's from another machine.
+		const currentDefaults = getDefaultModels()
+		const fallbacks = ['openai/gpt-4o', 'anthropic/claude-3-5-sonnet', 'google/gemini-pro']
+		const modelsToTry = [
+			...currentDefaults,
+			session.model,
+			...fallbacks
+		].filter((m, i, arr) => {
+			if (!m) return false
+			if (arr.indexOf(m) !== i) return false
+			const [nick] = m.split('/')
+			// If it's the dead lc-openai connection and we don't have it configured, skip it early
+			if (nick === 'lc-openai' && !config.connections[nick]) {
+				console.log(`[AIService] Skipping dead connection "${nick}" from another computer.`)
+				return false
+			}
+			return true
+		})
 		let lastError: any = null
 
 		for (const currentModelStr of modelsToTry) {
