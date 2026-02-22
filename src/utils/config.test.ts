@@ -1,12 +1,12 @@
 import { expect, test, describe, beforeEach, afterEach } from "bun:test"
-import { getDefaultWorkspacePath, loadConfig, saveConfig } from "./config"
+import { getDefaultWorkspacePath, loadConfig, saveConfig, TAMIAS_DIR } from "./config"
 import type { TamiasConfig } from "./config"
 import { join } from "path"
 import { homedir } from "os"
 import { existsSync, unlinkSync, writeFileSync, mkdirSync, rmSync } from "fs"
 
 describe("Config Utils", () => {
-	const configDir = join(homedir(), '.tamias')
+	const configDir = TAMIAS_DIR
 	const configPath = join(configDir, "config.json")
 	let backupConfig: string | null = null
 
@@ -26,9 +26,8 @@ describe("Config Utils", () => {
 		}
 	})
 
-	test("getDefaultWorkspacePath returns ~/Documents/Tamias", () => {
-		const expected = join(homedir(), "Documents", "Tamias")
-		expect(getDefaultWorkspacePath()).toBe(expected)
+	test("getDefaultWorkspacePath returns ~/.tamias", () => {
+		expect(getDefaultWorkspacePath()).toBe(TAMIAS_DIR)
 	})
 
 	test("loadConfig migrates missing workspacePath to default", () => {
