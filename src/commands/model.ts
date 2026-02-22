@@ -1,22 +1,25 @@
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
-import { getDefaultModel, setDefaultModel, getAllModelOptions } from '../utils/config.ts'
+import { getDefaultModels, setDefaultModels, getAllModelOptions } from '../utils/config.ts'
 
-// ─── tamias model — show current default ─────────────────────────────────────
+// ─── tamias model — show current default(s) ──────────────────────────────────
 
 export const runModelCommand = async () => {
-	const current = getDefaultModel()
-	if (!current) {
-		console.log(pc.yellow('No default model set. Run `tamias model set` to configure one.'))
+	const current = getDefaultModels()
+	if (current.length === 0) {
+		console.log(pc.yellow('No default models set. Run `tamias model set` to configure.'))
 	} else {
-		console.log(`Default model: ${pc.bold(pc.green(current))}`)
+		console.log(pc.cyan('Default model priority:'))
+		current.forEach((m, i) => {
+			console.log(`${i + 1}. ${pc.bold(pc.green(m))}${i === 0 ? pc.dim(' (primary)') : ''}`)
+		})
 	}
 }
 
 // ─── tamias model set — interactive picker ────────────────────────────────────
 
 export const runModelSetCommand = async () => {
-	p.intro(pc.bgCyan(pc.black(' Tamias — Set Default Model ')))
+	p.intro(pc.bgCyan(pc.black(' Tamias — Set Model Priority ')))
 
 	const options = getAllModelOptions()
 	if (options.length === 0) {
@@ -24,27 +27,48 @@ export const runModelSetCommand = async () => {
 		process.exit(0)
 	}
 
-	const current = getDefaultModel()
-	const currentIndex = current ? options.indexOf(current) : -1
+	const selectedModels: string[] = []
+	let remainingOptions = [...options]
 
-	const selected = await p.select({
-		message: 'Select default model:',
-		options: options.map((o, i) => ({
-			value: o,
-			label: i === currentIndex ? `${o} ${pc.dim('(current)')}` : o,
-		})),
-		initialValue: current && options.includes(current) ? current : options[0],
-	})
+	while (remainingOptions.length > 0) {
+		const label = selectedModels.length === 0 ? 'Select primary model:' : `Select fallback #${selectedModels.length} (optional):`
 
-	if (p.isCancel(selected)) { p.cancel('Cancelled.'); process.exit(0) }
+		const opts = remainingOptions.map(o => ({ value: o, label: o }))
+		if (selectedModels.length > 0) {
+			opts.unshift({ value: '__done__', label: pc.dim('Done (no more fallbacks)') } as any)
+		}
+
+		const selected = await p.select({
+			message: label,
+			options: opts,
+		})
+
+		if (p.isCancel(selected)) {
+			if (selectedModels.length > 0) break
+			p.cancel('Cancelled.')
+			process.exit(0)
+		}
+
+		if (selected === '__done__') break
+
+		selectedModels.push(selected as string)
+		remainingOptions = remainingOptions.filter(o => o !== selected)
+
+		if (selectedModels.length >= 5) break // Limit to 5 models
+	}
+
+	if (selectedModels.length === 0) {
+		p.cancel('No models selected.')
+		process.exit(0)
+	}
 
 	const confirmed = await p.confirm({
-		message: `Set ${pc.bold(pc.green(selected as string))} as the default model?`,
+		message: `Set priority to: ${pc.bold(pc.green(selectedModels.join(' → ')))}?`,
 		initialValue: true,
 	})
 
 	if (p.isCancel(confirmed) || !confirmed) { p.cancel('Cancelled.'); process.exit(0) }
 
-	setDefaultModel(selected as string)
-	p.outro(pc.green(`✅ Default model set to ${pc.bold(selected as string)}`))
+	setDefaultModels(selectedModels)
+	p.outro(pc.green(`✅ Model priority updated`))
 }

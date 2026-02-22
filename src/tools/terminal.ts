@@ -4,17 +4,7 @@ import { execSync } from 'child_process'
 import { readFileSync, writeFileSync, unlinkSync, cpSync, mkdirSync, readdirSync, statSync } from 'fs'
 import { rename } from 'fs/promises'
 import { join, dirname } from 'path'
-import { homedir } from 'os'
-
-function expandHome(path: string): string {
-	if (path.startsWith('~/')) {
-		return join(homedir(), path.slice(2))
-	}
-	if (path === '~') {
-		return homedir()
-	}
-	return path
-}
+import { validatePath, expandHome } from '../utils/path.ts'
 
 /** All tools exported from this file become the "terminal" internal tool */
 
@@ -28,8 +18,9 @@ export const terminalTools = {
 		}),
 		execute: async ({ command, cwd }: { command: string; cwd?: string }) => {
 			try {
+				const targetCwd = cwd ? validatePath(cwd) : process.cwd()
 				const output = execSync(command, {
-					cwd: cwd ?? process.cwd(),
+					cwd: targetCwd,
 					encoding: 'utf-8',
 					timeout: 30_000,
 					maxBuffer: 1024 * 1024 * 10, // 10 MB
@@ -49,7 +40,7 @@ export const terminalTools = {
 		}),
 		execute: async ({ path }: { path: string }) => {
 			try {
-				const content = readFileSync(expandHome(path), 'utf-8')
+				const content = readFileSync(validatePath(path), 'utf-8')
 				return { success: true, content }
 			} catch (err) {
 				return { success: false, error: String(err) }
@@ -65,7 +56,7 @@ export const terminalTools = {
 		}),
 		execute: async ({ path, content }: { path: string; content: string }) => {
 			try {
-				const fullPath = expandHome(path)
+				const fullPath = validatePath(path)
 				mkdirSync(dirname(fullPath), { recursive: true })
 				writeFileSync(fullPath, content, 'utf-8')
 				return { success: true }
@@ -84,12 +75,12 @@ export const terminalTools = {
 		}),
 		execute: async ({ path, target, replacement }: { path: string; target: string; replacement: string }) => {
 			try {
-				const fullPath = expandHome(path)
+				const fullPath = validatePath(path)
 				const original = readFileSync(fullPath, 'utf-8')
 				if (!original.includes(target)) {
 					return { success: false, error: 'Target string not found in file.' }
 				}
-				writeFileSync(path, original.replace(target, replacement), 'utf-8')
+				writeFileSync(fullPath, original.replace(target, replacement), 'utf-8')
 				return { success: true }
 			} catch (err) {
 				return { success: false, error: String(err) }
@@ -104,7 +95,7 @@ export const terminalTools = {
 		}),
 		execute: async ({ path }: { path: string }) => {
 			try {
-				unlinkSync(expandHome(path))
+				unlinkSync(validatePath(path))
 				return { success: true }
 			} catch (err) {
 				return { success: false, error: String(err) }
@@ -120,8 +111,8 @@ export const terminalTools = {
 		}),
 		execute: async ({ from, to }: { from: string; to: string }) => {
 			try {
-				const fullTo = expandHome(to)
-				const fullFrom = expandHome(from)
+				const fullTo = validatePath(to)
+				const fullFrom = validatePath(from)
 				mkdirSync(dirname(fullTo), { recursive: true })
 				await rename(fullFrom, fullTo)
 				return { success: true }
@@ -139,8 +130,8 @@ export const terminalTools = {
 		}),
 		execute: async ({ from, to }: { from: string; to: string }) => {
 			try {
-				const fullTo = expandHome(to)
-				const fullFrom = expandHome(from)
+				const fullTo = validatePath(to)
+				const fullFrom = validatePath(from)
 				mkdirSync(dirname(fullTo), { recursive: true })
 				cpSync(fullFrom, fullTo)
 				return { success: true }
@@ -157,7 +148,7 @@ export const terminalTools = {
 		}),
 		execute: async ({ path }: { path: string }) => {
 			try {
-				const fullPath = expandHome(path)
+				const fullPath = validatePath(path)
 				const entries = readdirSync(fullPath, { withFileTypes: true }).map((e) => ({
 					name: e.name,
 					type: e.isDirectory() ? 'directory' : 'file',
@@ -178,9 +169,10 @@ export const terminalTools = {
 		}),
 		execute: async ({ pattern, cwd }: { pattern: string; cwd?: string }) => {
 			try {
+				const targetCwd = cwd ? validatePath(cwd) : process.cwd()
 				// Use `find` for actual filesystem searching
 				const output = execSync(`find . -name "${pattern}" -type f 2>/dev/null || true`, {
-					cwd: cwd ?? process.cwd(),
+					cwd: targetCwd,
 					encoding: 'utf-8',
 				})
 				const matches = output.split('\n').filter(Boolean)

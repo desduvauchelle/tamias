@@ -156,7 +156,7 @@ export default function UsagePage() {
 					</div>
 					<div className="p-4 h-[350px]">
 						<ResponsiveContainer width="100%" height="100%">
-							<AreaChart data={data.dailySpend}>
+							<AreaChart data={data.dailySpend || []}>
 								<defs>
 									<linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">
 										<stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
@@ -212,7 +212,7 @@ export default function UsagePage() {
 						<ResponsiveContainer width="100%" height="100%">
 							<PieChart>
 								<Pie
-									data={data.modelDistribution}
+									data={data.modelDistribution || []}
 									cx="50%"
 									cy="50%"
 									innerRadius={60}
@@ -220,7 +220,7 @@ export default function UsagePage() {
 									paddingAngle={5}
 									dataKey="value"
 								>
-									{data.modelDistribution.map((_entry, index) => (
+									{(data.modelDistribution || []).map((_entry, index) => (
 										<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
 									))}
 								</Pie>
@@ -254,7 +254,7 @@ export default function UsagePage() {
 					</div>
 					<div className="p-4 h-[250px]">
 						<ResponsiveContainer width="100%" height="100%">
-							<BarChart data={data.initiatorDistribution} layout="vertical">
+							<BarChart data={data.initiatorDistribution || []} layout="vertical">
 								<CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#333" />
 								<XAxis type="number" hide />
 								<YAxis
@@ -270,7 +270,7 @@ export default function UsagePage() {
 									formatter={(value: any) => [`$${parseFloat(value || 0).toFixed(4)}`, 'Cost']}
 								/>
 								<Bar dataKey="value" fill="#8884d8" radius={[0, 4, 4, 0]} barSize={20}>
-									{data.initiatorDistribution.map((_entry, index) => (
+									{(data.initiatorDistribution || []).map((_entry, index) => (
 										<Cell key={`cell-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />
 									))}
 								</Bar>
@@ -288,7 +288,7 @@ export default function UsagePage() {
 						<div>
 							<h4 className="text-xl font-bold">Smart Optimization</h4>
 							<p className="text-sm text-base-content/70 mt-1">
-								Your most used model is <span className="text-primary font-bold">{data.modelDistribution[0]?.name || 'N/A'}</span>.
+								Your most used model is <span className="text-primary font-bold">{data.modelDistribution?.[0]?.name || 'N/A'}</span>.
 								Consider switching to a 'mini' variant for repetitive tasks to save up to 80%.
 							</p>
 						</div>

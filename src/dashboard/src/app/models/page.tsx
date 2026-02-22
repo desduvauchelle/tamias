@@ -103,7 +103,7 @@ function ConnectionCard({
 
 export default function ModelsPage() {
 	const [connections, setConnections] = useState<ConnectionConfig[]>([])
-	const [defaultModel, setDefaultModel] = useState<string>('')
+	const [defaultModels, setDefaultModels] = useState<string[]>([])
 	const [defaultConnection, setDefaultConnection] = useState<string>('')
 	const [saving, setSaving] = useState(false)
 	const [saved, setSaved] = useState(false)
@@ -113,7 +113,7 @@ export default function ModelsPage() {
 			.then(r => r.json())
 			.then(d => {
 				setConnections(d.connections || [])
-				setDefaultModel(d.defaultModel || '')
+				setDefaultModels(d.defaultModels || [])
 				setDefaultConnection(d.defaultConnection || '')
 			})
 	}, [])
@@ -123,7 +123,7 @@ export default function ModelsPage() {
 		await fetch('/api/models', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ connections, defaultModel, defaultConnection }),
+			body: JSON.stringify({ connections, defaultModels, defaultConnection }),
 		})
 		setSaving(false)
 		setSaved(true)
@@ -172,17 +172,38 @@ export default function ModelsPage() {
 			<section className="space-y-6">
 				<div className="p-6 bg-base-200 border border-base-300 rounded-2xl flex flex-col md:flex-row items-center gap-6 justify-between">
 					<div>
-						<h2 className="text-lg font-black uppercase">Default Routing</h2>
-						<p className="text-xs opacity-60">The model to use when not explicitly specified.</p>
+						<h2 className="text-lg font-black uppercase">Default Routing (Priority Order)</h2>
+						<p className="text-xs opacity-60">The primary model and its fallbacks in order of preference.</p>
 					</div>
-					<select
-						className="select select-bordered font-mono w-full md:w-64"
-						value={defaultModel || ''}
-						onChange={e => setDefaultModel(e.target.value)}
-					>
-						<option value="" disabled>Select a default model...</option>
-						{allModelOptions.map(m => <option key={m} value={m}>{m}</option>)}
-					</select>
+					<div className="flex flex-col gap-2 w-full md:w-80">
+						{defaultModels.map((m, i) => (
+							<div key={i} className="flex items-center gap-2">
+								<span className="text-xs font-bold opacity-30 w-4">{i + 1}.</span>
+								<select
+									className="select select-bordered select-sm font-mono flex-1"
+									value={m}
+									onChange={e => {
+										const newModels = [...defaultModels]
+										newModels[i] = e.target.value
+										setDefaultModels(newModels)
+									}}
+								>
+									{allModelOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+								</select>
+								<button
+									onClick={() => setDefaultModels(defaultModels.filter((_, idx) => idx !== i))}
+									className="btn btn-ghost btn-xs text-error"
+								>✕</button>
+							</div>
+						))}
+						<button
+							className="btn btn-ghost btn-xs btn-outline border-dashed uppercase text-[10px]"
+							onClick={() => {
+								const unused = allModelOptions.find(o => !defaultModels.includes(o)) || allModelOptions[0]
+								if (unused) setDefaultModels([...defaultModels, unused])
+							}}
+						>+ Add Fallback Model</button>
+					</div>
 				</div>
 
 				<div className="border-b-2 border-primary/20 pb-4 flex justify-between items-end">

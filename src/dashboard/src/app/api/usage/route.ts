@@ -20,6 +20,15 @@ export async function GET() {
 		return NextResponse.json(data)
 	} catch (error) {
 		console.error('API /costs proxy error:', error)
-		return NextResponse.json({ today: 0, yesterday: 0, thisWeek: 0, thisMonth: 0, total: 0 })
+		return NextResponse.json({
+			today: 0,
+			yesterday: 0,
+			thisWeek: 0,
+			thisMonth: 0,
+			total: 0,
+			dailySpend: [],
+			modelDistribution: [],
+			initiatorDistribution: []
+		})
 	}
 }

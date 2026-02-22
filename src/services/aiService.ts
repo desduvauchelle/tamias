@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel } from '../utils/config'
+import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels } from '../utils/config'
 import { buildActiveTools } from '../utils/toolRegistry'
 import { buildSystemPrompt, updatePersonaFiles, scaffoldFromTemplates, readAllPersonaFiles } from '../utils/memory'
 import { saveSessionToDisk, type SessionPersist, listAllStoredSessions, loadSessionFromDisk } from '../utils/sessions'
@@ -227,115 +227,133 @@ export class AIService {
 		session.messages.push({ role: 'user', content: messageContent })
 
 		const config = loadConfig()
-		const connection = config.connections[session.connectionNickname]
-		if (!connection) {
-			console.error(`[AIService] No connection found for "${session.connectionNickname}" (session ${session.id}, model "${session.model}"). Available: ${Object.keys(config.connections).join(', ')}`)
-			session.emitter.emit('event', { type: 'error', message: `No AI connection configured for "${session.connectionNickname}". Run 'tamias setup' to configure.` } as DaemonEvent)
-			session.processing = false
-			return
+		const modelsToTry = [session.model, ...getDefaultModels()].filter((m, i, arr) => arr.indexOf(m) === i)
+		let lastError: any = null
+
+		for (const currentModelStr of modelsToTry) {
+			const [nickname, ...rest] = currentModelStr.split('/')
+			const modelId = rest.join('/') || currentModelStr
+			const connection = config.connections[nickname]
+
+			if (!connection) {
+				lastError = new Error(`No AI connection configured for "${nickname}"`)
+				continue
+			}
+
+			console.log(`[AIService] Attempting processing for session ${session.id} via ${currentModelStr}`)
+
+			try {
+				await this.refreshTools(session.id)
+				const model = this.buildModel(connection, modelId)
+				const toolNamesList = Object.keys(this.activeTools)
+				const systemPrompt = buildSystemPrompt(toolNamesList, this.toolDocs, session.summary, {
+					id: session.channelId,
+					userId: session.channelUserId,
+					name: session.channelName,
+					authorName: job.authorName,
+					isSubagent: session.isSubagent
+				})
+
+				session.emitter.emit('event', { type: 'start', sessionId: session.id } as DaemonEvent)
+
+				const startTime = Date.now()
+				const result = streamText({
+					model,
+					system: systemPrompt,
+					messages: session.messages,
+					tools: toolNamesList.length > 0 ? (this.activeTools as any) : undefined,
+					stopWhen: stepCountIs(20),
+					onStepFinish: async ({ toolCalls }) => {
+						if (toolCalls?.length) {
+							for (const tc of toolCalls) {
+								session.emitter.emit('event', { type: 'tool_call', name: tc.toolName, input: (tc as any).input ?? {} } as DaemonEvent)
+							}
+						}
+					},
+				})
+
+				let fullResponse = ''
+				let suppressed = false
+
+				for await (const chunk of result.textStream) {
+					fullResponse += chunk
+					session.emitter.emit('event', { type: 'chunk', text: chunk } as DaemonEvent)
+				}
+
+				if (fullResponse.trim() === 'HEARTBEAT_OK') {
+					suppressed = true
+				}
+
+				const usage = await Promise.race([
+					result.usage,
+					new Promise(resolve => setTimeout(() => resolve({}), 2000))
+				]).catch(() => ({})) as any
+
+				logAiRequest({
+					timestamp: new Date().toISOString(),
+					sessionId: session.id,
+					model: currentModelStr,
+					provider: nickname,
+					action: 'chat',
+					durationMs: Date.now() - startTime,
+					tokens: {
+						prompt: usage?.inputTokens,
+						completion: usage?.outputTokens,
+						total: usage?.totalTokens,
+					},
+					messages: [
+						{ role: 'system', content: systemPrompt },
+						...session.messages,
+					],
+					response: fullResponse,
+				})
+
+				session.messages.push({ role: 'assistant', content: fullResponse })
+				session.updatedAt = new Date()
+
+				// Update session model if it was a fallback
+				if (currentModelStr !== session.model) {
+					session.model = currentModelStr
+					session.modelId = modelId
+					session.connectionNickname = nickname
+				}
+
+				saveSessionToDisk(this.toPersist(session))
+				session.emitter.emit('event', { type: 'done', sessionId: session.id, suppressed } as DaemonEvent)
+
+				// If this is a subagent, report back to parent session if it exists
+				if (session.isSubagent && session.parentSessionId) {
+					const parentSession = this.sessions.get(session.parentSessionId)
+					if (parentSession) {
+						const report = `[Subagent Report from ${session.id}]:\n${fullResponse}`
+						this.enqueueMessage(parentSession.id, report).catch(console.error)
+					}
+				}
+
+				if (session.messages.length >= 20) {
+					this.compactSession(session, model).then(() => {
+						saveSessionToDisk(this.toPersist(session))
+					}).catch(() => { })
+				}
+
+				session.processing = false
+				if (session.queue.length > 0) {
+					setImmediate(() => this.processSession(session))
+				}
+				return // Success!
+			} catch (err: any) {
+				console.error(`[AIService] Failed with model ${currentModelStr}:`, err)
+				lastError = err
+				// Continue to next model
+			}
 		}
 
-		console.log(`[AIService] Processing message for session ${session.id} (${session.channelId}:${session.channelUserId ?? 'terminal'}) via ${session.model}`)
-
-		try {
-			await this.refreshTools(session.id)
-			const model = this.buildModel(connection, session.modelId)
-			const toolNamesList = Object.keys(this.activeTools)
-			const systemPrompt = buildSystemPrompt(toolNamesList, this.toolDocs, session.summary, {
-				id: session.channelId,
-				userId: session.channelUserId,
-				name: session.channelName,
-				authorName: job.authorName,
-				isSubagent: session.isSubagent
-			})
-
-			session.emitter.emit('event', { type: 'start', sessionId: session.id } as DaemonEvent)
-
-			const startTime = Date.now()
-			const result = streamText({
-				model,
-				system: systemPrompt,
-				messages: session.messages,
-				tools: toolNamesList.length > 0 ? (this.activeTools as any) : undefined,
-				stopWhen: stepCountIs(20),
-				onStepFinish: async ({ toolCalls }) => {
-					if (toolCalls?.length) {
-						for (const tc of toolCalls) {
-							session.emitter.emit('event', { type: 'tool_call', name: tc.toolName, input: (tc as any).input ?? {} } as DaemonEvent)
-						}
-					}
-				},
-			})
-
-			let fullResponse = ''
-			let suppressed = false
-
-			for await (const chunk of result.textStream) {
-				fullResponse += chunk
-				// If the very first chunk (or accumulation) starts with HEARTBEAT_OK, we might consider suppressing.
-				// But let's check the full response for simplicity first, or just start streaming.
-				session.emitter.emit('event', { type: 'chunk', text: chunk } as DaemonEvent)
-			}
-
-			// Heartbeat suppression logic
-			if (fullResponse.trim() === 'HEARTBEAT_OK') {
-				suppressed = true
-				// We already sent the chunks via SSE, but for Bridges we might want to handle it differently.
-				// Actually, HEARTBEAT_OK is intended to be internal.
-			}
-
-			const usage = await Promise.race([
-				result.usage,
-				new Promise(resolve => setTimeout(() => resolve({}), 2000))
-			]).catch(() => ({})) as any
-
-			logAiRequest({
-				timestamp: new Date().toISOString(),
-				sessionId: session.id,
-				model: session.model,
-				provider: session.connectionNickname,
-				action: 'chat',
-				durationMs: Date.now() - startTime,
-				tokens: {
-					prompt: usage?.inputTokens,
-					completion: usage?.outputTokens,
-					total: usage?.totalTokens,
-				},
-				messages: [
-					{ role: 'system', content: systemPrompt },
-					...session.messages,
-				],
-				response: fullResponse,
-			})
-
-			session.messages.push({ role: 'assistant', content: fullResponse })
-			session.updatedAt = new Date()
-			saveSessionToDisk(this.toPersist(session))
-
-			session.emitter.emit('event', { type: 'done', sessionId: session.id, suppressed } as DaemonEvent)
-
-			// If this is a subagent, report back to parent session if it exists
-			if (session.isSubagent && session.parentSessionId) {
-				const parentSession = this.sessions.get(session.parentSessionId)
-				if (parentSession) {
-					const report = `[Subagent Report from ${session.id}]:\n${fullResponse}`
-					this.enqueueMessage(parentSession.id, report).catch(console.error)
-				}
-			}
-
-			if (session.messages.length >= 20) {
-				this.compactSession(session, model).then(() => {
-					saveSessionToDisk(this.toPersist(session))
-				}).catch(() => { })
-			}
-		} catch (err) {
-			console.error(`[AIService] Error processing session ${session.id}:`, err)
-			session.emitter.emit('event', { type: 'error', message: String(err) } as DaemonEvent)
-		} finally {
-			session.processing = false
-			if (session.queue.length > 0) {
-				setImmediate(() => this.processSession(session))
-			}
+		// If we get here, all models failed
+		console.error(`[AIService] All models failed for session ${session.id}:`, lastError)
+		session.emitter.emit('event', { type: 'error', message: `All AI models failed. Last error: ${String(lastError)}` } as DaemonEvent)
+		session.processing = false
+		if (session.queue.length > 0) {
+			setImmediate(() => this.processSession(session))
 		}
 	}
 

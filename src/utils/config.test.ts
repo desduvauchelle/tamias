@@ -56,4 +56,19 @@ describe("Config Utils", () => {
 		const loaded = loadConfig()
 		expect(loaded.workspacePath).toBe(legacyPath)
 	})
+
+	test("loadConfig migrates defaultModel to defaultModels array", () => {
+		const legacyConfig = {
+			version: "1.0",
+			connections: {},
+			bridges: { terminal: { enabled: true } },
+			defaultModel: "openai/gpt-4o"
+		}
+		writeFileSync(configPath, JSON.stringify(legacyConfig))
+
+		const loaded = loadConfig()
+		expect(Array.isArray((loaded as any).defaultModels)).toBe(true)
+		expect((loaded as any).defaultModels[0]).toBe("openai/gpt-4o")
+		expect((loaded as any).defaultModel).toBeUndefined()
+	})
 })

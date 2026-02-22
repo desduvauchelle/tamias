@@ -91,8 +91,8 @@ export const TamiasConfigSchema = z.object({
 	version: z.literal('1.0'),
 	connections: z.record(z.string(), ConnectionConfigSchema),
 	defaultConnection: z.string().optional(),
-	/** The default model in "nickname/modelId" format, e.g. "lc-openai/gpt-4o" */
-	defaultModel: z.string().optional(),
+	/** The priority list of models in "nickname/modelId" format, e.g. ["lc-openai/gpt-4o", "anthropic/claude-3-5-sonnet"] */
+	defaultModels: z.array(z.string()).optional(),
 	internalTools: z.record(z.string(), InternalToolConfigSchema).optional(),
 	mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
 	bridges: BridgesConfigSchema.default({ terminal: { enabled: true } }),
@@ -204,6 +204,13 @@ export const loadConfig = (): TamiasConfig => {
 			if (!existsSync(data.workspacePath)) {
 				mkdirSync(data.workspacePath, { recursive: true })
 			}
+			needsMigration = true
+		}
+
+		// Migrate defaultModel to defaultModels
+		const legacyConfig = rawData as any
+		if (legacyConfig.defaultModel && !data.defaultModels) {
+			data.defaultModels = [legacyConfig.defaultModel]
 			needsMigration = true
 		}
 
@@ -334,13 +341,22 @@ export const deleteMcpServer = (name: string): void => {
 // ─── Default Model Helpers ─────────────────────────────────────────────────────
 
 export const getDefaultModel = (): string | undefined => {
-	return loadConfig().defaultModel
+	const models = loadConfig().defaultModels
+	return models?.[0]
+}
+
+export const getDefaultModels = (): string[] => {
+	return loadConfig().defaultModels || []
+}
+
+export const setDefaultModels = (models: string[]): void => {
+	const c = loadConfig()
+	c.defaultModels = models
+	saveConfig(c)
 }
 
 export const setDefaultModel = (model: string): void => {
-	const c = loadConfig()
-	c.defaultModel = model
-	saveConfig(c)
+	setDefaultModels([model])
 }
 
 /** Return all "nickname/modelId" pairs from all connections */

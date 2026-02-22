@@ -1,44 +1,16 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { execSync } from 'child_process'
-import { readFileSync, writeFileSync, unlinkSync, cpSync, mkdirSync, readdirSync, statSync, realpathSync } from 'fs'
+import { readFileSync, writeFileSync, unlinkSync, cpSync, mkdirSync, readdirSync, statSync } from 'fs'
 import { rename } from 'fs/promises'
-import { join, dirname, resolve, isAbsolute } from 'path'
+import { join, dirname } from 'path'
 import { getWorkspacePath } from '../utils/config.ts'
+import { validatePath } from '../utils/path.ts'
 
 /**
  * Restricted Terminal Tools
  * Every tool validates that the target path is within the configured workspace.
  */
-
-const validatePath = (path: string, workspaceRoot: string): string => {
-	// 1. Resolve to absolute path
-	let absolutePath = isAbsolute(path) ? path : resolve(workspaceRoot, path)
-
-	// 2. Resolve symlinks and .. to get final disk path
-	try {
-		// If it exists, get the real path
-		absolutePath = realpathSync(absolutePath)
-	} catch {
-		// If it doesn't exist, we resolve its parent to be safe
-		const parent = dirname(absolutePath)
-		try {
-			const realParent = realpathSync(parent)
-			absolutePath = join(realParent, absolutePath.split('/').pop() || '')
-		} catch {
-			// If even parent doesn't exist (deep write), resolve it manually
-			absolutePath = resolve(absolutePath)
-		}
-	}
-
-	// 3. Ensure it starts with workspaceRoot
-	const realWorkspace = realpathSync(workspaceRoot)
-	if (!absolutePath.startsWith(realWorkspace)) {
-		throw new Error(`Access denied: Path '${path}' is outside the authorized workspace '${realWorkspace}'.`)
-	}
-
-	return absolutePath
-}
 
 export const workspaceTools = {
 
@@ -50,7 +22,7 @@ export const workspaceTools = {
 		}),
 		execute: async ({ command, cwd }) => {
 			const root = getWorkspacePath()
-			const targetCwd = cwd ? validatePath(cwd, root) : root
+			const targetCwd = cwd ? validatePath(cwd) : root
 
 			// Block some obviously dangerous commands even if they stay in CWD
 			const blocked = ['rm -rf /', 'sudo', 'chmod', 'chown', 'export', 'unset', 'env']
@@ -80,8 +52,7 @@ export const workspaceTools = {
 		}),
 		execute: async ({ path }) => {
 			try {
-				const root = getWorkspacePath()
-				const absolutePath = validatePath(path, root)
+				const absolutePath = validatePath(path)
 				const content = readFileSync(absolutePath, 'utf-8')
 				return { success: true, content }
 			} catch (err) {
@@ -98,8 +69,7 @@ export const workspaceTools = {
 		}),
 		execute: async ({ path, content }) => {
 			try {
-				const root = getWorkspacePath()
-				const absolutePath = validatePath(path, root)
+				const absolutePath = validatePath(path)
 				mkdirSync(dirname(absolutePath), { recursive: true })
 				writeFileSync(absolutePath, content, 'utf-8')
 				return { success: true }
@@ -118,8 +88,7 @@ export const workspaceTools = {
 		}),
 		execute: async ({ path, target, replacement }) => {
 			try {
-				const root = getWorkspacePath()
-				const absolutePath = validatePath(path, root)
+				const absolutePath = validatePath(path)
 				const original = readFileSync(absolutePath, 'utf-8')
 				if (!original.includes(target)) {
 					return { success: false, error: 'Target string not found in file.' }
@@ -139,8 +108,7 @@ export const workspaceTools = {
 		}),
 		execute: async ({ path }) => {
 			try {
-				const root = getWorkspacePath()
-				const absolutePath = validatePath(path, root)
+				const absolutePath = validatePath(path)
 				unlinkSync(absolutePath)
 				return { success: true }
 			} catch (err) {
@@ -157,9 +125,8 @@ export const workspaceTools = {
 		}),
 		execute: async ({ from, to }) => {
 			try {
-				const root = getWorkspacePath()
-				const source = validatePath(from, root)
-				const dest = validatePath(to, root)
+				const source = validatePath(from)
+				const dest = validatePath(to)
 				mkdirSync(dirname(dest), { recursive: true })
 				await rename(source, dest)
 				return { success: true }
@@ -177,9 +144,8 @@ export const workspaceTools = {
 		}),
 		execute: async ({ from, to }) => {
 			try {
-				const root = getWorkspacePath()
-				const source = validatePath(from, root)
-				const dest = validatePath(to, root)
+				const source = validatePath(from)
+				const dest = validatePath(to)
 				mkdirSync(dirname(dest), { recursive: true })
 				cpSync(source, dest)
 				return { success: true }
@@ -196,8 +162,7 @@ export const workspaceTools = {
 		}),
 		execute: async ({ path }) => {
 			try {
-				const root = getWorkspacePath()
-				const absolutePath = validatePath(path, root)
+				const absolutePath = validatePath(path)
 				const entries = readdirSync(absolutePath, { withFileTypes: true }).map((e) => ({
 					name: e.name,
 					type: e.isDirectory() ? 'directory' : 'file',

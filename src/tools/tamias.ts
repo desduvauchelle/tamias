@@ -427,5 +427,23 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 				}
 			},
 		}),
+
+		update_tamias: tool({
+			description: 'Check for and install updates for Tamias CLI and dashboard.',
+			inputSchema: z.object({}),
+			execute: async () => {
+				const { performUpdate } = await import('../utils/update.ts')
+				const result = await performUpdate()
+				if (result.success) {
+					if (result.latestVersion && result.currentVersion !== result.latestVersion) {
+						return { success: true, message: `Update complete to v${result.latestVersion}`, version: result.latestVersion }
+					} else {
+						return { success: true, message: `Already up to date (v${result.currentVersion})`, version: result.currentVersion }
+					}
+				} else {
+					return { success: false, error: result.error || 'Update failed' }
+				}
+			},
+		}),
 	}
 }

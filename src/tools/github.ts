@@ -1,19 +1,8 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { execSync } from 'child_process'
-import { join } from 'path'
-import { homedir } from 'os'
 import { existsSync, mkdirSync } from 'fs'
-
-function expandHome(path: string): string {
-	if (path.startsWith('~/')) {
-		return join(homedir(), path.slice(2))
-	}
-	if (path === '~') {
-		return homedir()
-	}
-	return path
-}
+import { validatePath } from '../utils/path.ts'
 
 export const githubTools = {
 	git_status: tool({
@@ -23,8 +12,9 @@ export const githubTools = {
 		}),
 		execute: async ({ cwd }: { cwd?: string }) => {
 			try {
+				const targetCwd = cwd ? validatePath(cwd) : process.cwd()
 				const output = execSync('git status', {
-					cwd: cwd ? expandHome(cwd) : process.cwd(),
+					cwd: targetCwd,
 					encoding: 'utf-8',
 				})
 				return { success: true, stdout: output }
@@ -42,8 +32,9 @@ export const githubTools = {
 		}),
 		execute: async ({ files, cwd }: { files: string[]; cwd?: string }) => {
 			try {
+				const targetCwd = cwd ? validatePath(cwd) : process.cwd()
 				execSync(`git add ${files.join(' ')}`, {
-					cwd: cwd ? expandHome(cwd) : process.cwd(),
+					cwd: targetCwd,
 					encoding: 'utf-8',
 				})
 				return { success: true, message: `Added ${files.join(', ')} to index.` }
@@ -61,8 +52,9 @@ export const githubTools = {
 		}),
 		execute: async ({ message, cwd }: { message: string; cwd?: string }) => {
 			try {
+				const targetCwd = cwd ? validatePath(cwd) : process.cwd()
 				const output = execSync(`git commit -m ${JSON.stringify(message)}`, {
-					cwd: cwd ? expandHome(cwd) : process.cwd(),
+					cwd: targetCwd,
 					encoding: 'utf-8',
 				})
 				return { success: true, stdout: output }
@@ -81,9 +73,10 @@ export const githubTools = {
 		}),
 		execute: async ({ remote, branch, cwd }: { remote: string; branch?: string; cwd?: string }) => {
 			try {
+				const targetCwd = cwd ? validatePath(cwd) : process.cwd()
 				const cmd = `git push ${remote} ${branch ?? ''}`
 				const output = execSync(cmd, {
-					cwd: cwd ? expandHome(cwd) : process.cwd(),
+					cwd: targetCwd,
 					encoding: 'utf-8',
 				})
 				return { success: true, stdout: output }
@@ -102,9 +95,10 @@ export const githubTools = {
 		}),
 		execute: async ({ remote, branch, cwd }: { remote: string; branch?: string; cwd?: string }) => {
 			try {
+				const targetCwd = cwd ? validatePath(cwd) : process.cwd()
 				const cmd = `git pull ${remote} ${branch ?? ''}`
 				const output = execSync(cmd, {
-					cwd: cwd ? expandHome(cwd) : process.cwd(),
+					cwd: targetCwd,
 					encoding: 'utf-8',
 				})
 				return { success: true, stdout: output }
@@ -123,7 +117,7 @@ export const githubTools = {
 		}),
 		execute: async ({ repository, directory, cwd }: { repository: string; directory?: string; cwd?: string }) => {
 			try {
-				const targetCwd = cwd ? expandHome(cwd) : process.cwd()
+				const targetCwd = cwd ? validatePath(cwd) : process.cwd()
 				if (!existsSync(targetCwd)) {
 					mkdirSync(targetCwd, { recursive: true })
 				}
@@ -147,8 +141,9 @@ export const githubTools = {
 		}),
 		execute: async ({ args, cwd }: { args?: string; cwd?: string }) => {
 			try {
+				const targetCwd = cwd ? validatePath(cwd) : process.cwd()
 				const output = execSync(`git diff ${args ?? ''}`, {
-					cwd: cwd ? expandHome(cwd) : process.cwd(),
+					cwd: targetCwd,
 					encoding: 'utf-8',
 				})
 				return { success: true, stdout: output }
@@ -166,8 +161,9 @@ export const githubTools = {
 		}),
 		execute: async ({ n, cwd }: { n: number; cwd?: string }) => {
 			try {
+				const targetCwd = cwd ? validatePath(cwd) : process.cwd()
 				const output = execSync(`git log -n ${n} --oneline`, {
-					cwd: cwd ? expandHome(cwd) : process.cwd(),
+					cwd: targetCwd,
 					encoding: 'utf-8',
 				})
 				return { success: true, stdout: output }
