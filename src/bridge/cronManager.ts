@@ -2,29 +2,44 @@ import type { CronJob } from '../utils/cronStore'
 import { loadCronJobs } from '../utils/cronStore'
 import { Cron } from 'croner'
 
+type SetIntervalFn = (callback: () => void, ms: number) => ReturnType<typeof setInterval>
+type ClearIntervalFn = (id: ReturnType<typeof setInterval>) => void
+
 export class CronManager {
 	private timers: Map<string, ReturnType<typeof setInterval>> = new Map()
 	private cronJobs: Map<string, Cron> = new Map()
+	private refreshTimer: ReturnType<typeof setInterval> | undefined
 	private onTrigger: (job: CronJob) => Promise<void>
+	private loadJobs: () => CronJob[]
+	private _setInterval: SetIntervalFn
+	private _clearInterval: ClearIntervalFn
 
-	constructor(onTrigger: (job: CronJob) => Promise<void>) {
+	constructor(
+		onTrigger: (job: CronJob) => Promise<void>,
+		loadJobs: () => CronJob[] = loadCronJobs,
+		setIntervalFn: SetIntervalFn = setInterval,
+		clearIntervalFn: ClearIntervalFn = clearInterval,
+	) {
 		this.onTrigger = onTrigger
+		this.loadJobs = loadJobs
+		this._setInterval = setIntervalFn
+		this._clearInterval = clearIntervalFn
 	}
 
 	public start() {
 		this.refresh()
 		// Also poll for file changes every minute in case of manual edits or tool updates
-		setInterval(() => this.refresh(), 60000)
+		this.refreshTimer = this._setInterval(() => this.refresh(), 60000)
 	}
 
 	public refresh() {
-		const jobs = loadCronJobs().filter(j => j.enabled)
+		const jobs = this.loadJobs().filter(j => j.enabled)
 
 		// Remove timers/crons for jobs no longer present or disabled
 		const currentIds = new Array(...jobs.map(j => j.id))
 		for (const id of this.timers.keys()) {
 			if (!currentIds.includes(id)) {
-				clearInterval(this.timers.get(id))
+				this._clearInterval(this.timers.get(id)!)
 				this.timers.delete(id)
 			}
 		}
@@ -41,7 +56,7 @@ export class CronManager {
 			if (this.isInterval(job.schedule)) {
 				const ms = this.parseInterval(job.schedule)
 				if (ms > 0) {
-					const timer = setInterval(() => this.onTrigger(job), ms)
+					const timer = this._setInterval(() => this.onTrigger(job), ms)
 					this.timers.set(job.id, timer)
 					console.log(`[CronManager] Scheduled interval job: ${job.name} (${job.schedule})`)
 				}
@@ -76,7 +91,11 @@ export class CronManager {
 	}
 
 	public stop() {
-		for (const timer of this.timers.values()) clearInterval(timer)
+		if (this.refreshTimer !== undefined) {
+			this._clearInterval(this.refreshTimer)
+			this.refreshTimer = undefined
+		}
+		for (const timer of this.timers.values()) this._clearInterval(timer)
 		for (const cron of this.cronJobs.values()) cron.stop()
 		this.timers.clear()
 		this.cronJobs.clear()

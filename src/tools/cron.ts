@@ -20,7 +20,8 @@ export const cronTools = {
 		inputSchema: z.object({
 			name: z.string().describe('Descriptive name for the job'),
 			schedule: z.string().describe('Schedule: e.g., "5m", "1h", or "* * * * *"'),
-			prompt: z.string().describe('Instructions for the agent to follow when triggered'),
+			type: z.enum(['ai', 'message']).optional().default('ai').describe('"ai" = send prompt to AI and deliver response to channel; "message" = send text directly to channel without AI'),
+			prompt: z.string().describe('Instructions for the agent (type=ai) or message text to send (type=message)'),
 			target: z.string().optional().describe('Output target (e.g., "discord:channel-id" or "last")'),
 		}),
 		execute: async (input) => {
@@ -28,6 +29,7 @@ export const cronTools = {
 				const job = addCronJob({
 					name: input.name,
 					schedule: input.schedule,
+					type: input.type ?? 'ai',
 					prompt: input.prompt,
 					target: input.target || 'last',
 				})

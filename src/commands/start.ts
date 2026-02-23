@@ -10,7 +10,8 @@ import { AIService, type Session } from '../services/aiService.ts'
 import { BridgeManager } from '../bridge/index.ts'
 import { CronManager } from '../bridge/cronManager.ts'
 import { watchSkills } from '../utils/skills.ts'
-import { ensureDefaultHeartbeat, type CronJob } from '../utils/cronStore.ts'
+import type { CronJob } from '../utils/cronStore.ts'
+import { scaffoldFromTemplates } from '../utils/memory.ts'
 import { db } from '../utils/db.ts'
 import { getEstimatedCost } from '../utils/pricing.ts'
 import { runDatabaseMaintenance } from '../utils/maintenance.ts'
@@ -213,10 +214,12 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	await aiService.initialize()
 	await watchSkills()
 
+	// Ensure memory files (HEARTBEAT.md, AGENTS.md, etc.) exist before cron starts
+	scaffoldFromTemplates()
+
 	// Cron setup
-	ensureDefaultHeartbeat()
 	const onCronTrigger = async (job: CronJob) => {
-		console.log(`[Cron] Triggering job: ${job.name}`)
+		console.log(`[Cron] Triggering job: ${job.name} (type=${job.type ?? 'ai'})`)
 		let session: Session | undefined
 
 		if (job.target === 'last') {
@@ -234,7 +237,15 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			session = aiService.createSession({})
 		}
 
-		await aiService.enqueueMessage(session.id, job.prompt)
+		if (job.type === 'message') {
+			// Send the prompt text directly to the channel — no AI involved
+			session.emitter.emit('event', { type: 'start', sessionId: session.id })
+			session.emitter.emit('event', { type: 'chunk', text: job.prompt })
+			session.emitter.emit('event', { type: 'done', sessionId: session.id })
+		} else {
+			// AI path — send prompt to AI, deliver generated response to channel
+			await aiService.enqueueMessage(session.id, job.prompt)
+		}
 	}
 	const cronManager = new CronManager(onCronTrigger)
 	cronManager.start()

@@ -8,6 +8,11 @@ export const CronJobSchema = z.object({
 	id: z.string(),
 	name: z.string(),
 	schedule: z.string(), // "30m", "1h", or cron expression
+	/**
+	 * 'ai'      – send prompt to AI, deliver generated response to target channel
+	 * 'message' – send the prompt text directly to the target channel, no AI involved
+	 */
+	type: z.enum(['ai', 'message']).default('ai'),
 	prompt: z.string(),
 	target: z.string().optional().default('last'),
 	enabled: z.boolean().default(true),
@@ -86,14 +91,4 @@ export const DEFAULT_HEARTBEAT_CONFIG = {
 	schedule: '30m',
 	prompt: 'Check your periodic tasks and instructions in ~/.tamias/memory/HEARTBEAT.md. If there are pending items or checks requested there, perform them now. If nothing needs your attention, reply with HEARTBEAT_OK.',
 	target: 'last'
-}
-
-/**
- * Ensures a default heartbeat job exists if no jobs are present
- */
-export const ensureDefaultHeartbeat = () => {
-	const jobs = loadCronJobs()
-	if (jobs.length === 0) {
-		addCronJob(DEFAULT_HEARTBEAT_CONFIG)
-	}
 }

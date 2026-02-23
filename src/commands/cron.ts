@@ -80,6 +80,7 @@ cronCommand
 			const job = addCronJob({
 				name,
 				schedule,
+				type: 'ai',
 				prompt,
 				target: target || 'last',
 			})

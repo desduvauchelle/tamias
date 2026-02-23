@@ -18,10 +18,12 @@ export class DiscordBridge implements IBridge {
 	name = 'discord'
 	private client?: Client
 	private onMessage?: (msg: BridgeMessage, sessionId: string) => void
-	/** Map of channelId → channel orchestration state */
+	/** Map of channelId → channel orchestration state (set when a Discord message arrives) */
 	private channelStates = new Map<string, DiscordChannelState>()
 	/** Map of channelId → sessionId */
 	private channelSessions = new Map<string, string>()
+	/** Text buffer for cron/stateless sessions that have no incoming Discord message */
+	private cronBuffers = new Map<string, string>()
 
 	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => void): Promise<void> {
 		this.onMessage = onMessage
@@ -118,13 +120,14 @@ export class DiscordBridge implements IBridge {
 		}
 
 		const state = this.channelStates.get(channelId)
-		if (!state && event.type !== 'chunk') {
-			console.warn(`[Discord Bridge] handleDaemonEvent: no state found for channel ${channelId}, event=${event.type} (states: [${[...this.channelStates.keys()].join(', ')}])`)
-		}
 
 		switch (event.type) {
 			case 'start': {
 				console.log(`[Discord Bridge] Processing started for channel ${channelId}, state found: ${!!state}`)
+				if (!state) {
+					// Cron/stateless session — initialise fresh buffer
+					this.cronBuffers.set(channelId, '')
+				}
 				if (state) {
 					// Pop the next message from the queue
 					const message = state.queue.shift()
@@ -152,10 +155,36 @@ export class DiscordBridge implements IBridge {
 				break
 			}
 			case 'chunk': {
-				if (state) state.buffer += event.text
+				if (state) {
+					state.buffer += event.text
+				} else {
+					// Cron/stateless — accumulate in separate buffer
+					this.cronBuffers.set(channelId, (this.cronBuffers.get(channelId) ?? '') + event.text)
+				}
 				break
 			}
 			case 'done': {
+				// ── Cron / stateless path (no incoming Discord message) ─────────────
+				if (!state && this.cronBuffers.has(channelId)) {
+					const text = this.cronBuffers.get(channelId) ?? ''
+					this.cronBuffers.delete(channelId)
+					if (text.trim() && this.client) {
+						try {
+							const channel = await this.client.channels.fetch(channelId)
+							if (channel && 'send' in channel) {
+								const chunks = splitText(text, 1900)
+								for (const chunk of chunks) {
+									await (channel as any).send(chunk)
+								}
+								console.log(`[Discord Bridge] Sent cron response to channel ${channelId} (${text.length} chars)`)
+							}
+						} catch (err) {
+							console.error(`[Discord Bridge] Failed to send cron message to ${channelId}:`, err)
+						}
+					}
+					break
+				}
+				// ── Reply-to-message path (normal Discord conversation) ──────────
 				if (state && state.currentMessage) {
 					if (state.typingInterval) {
 						clearInterval(state.typingInterval)
