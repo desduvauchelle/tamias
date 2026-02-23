@@ -5,6 +5,9 @@ import { promisify } from 'util'
 import { getEmailConfig, getEmailPassword } from '../utils/config.ts'
 import { hasDependency } from '../utils/dependencies.ts'
 import { ensureHimalayaAccount } from '../utils/himalaya.ts'
+import { writeFileSync, unlinkSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 
 const execAsync = promisify(exec)
 
@@ -44,6 +47,14 @@ export const emailTools = {
 				const envelopes = JSON.parse(stdout)
 				return { success: true, envelopes }
 			} catch (err: any) {
+				const stderr = err.stderr?.toString() || ''
+				const message = err.message || ''
+
+				if (stderr.includes('index out of bounds') || message.includes('index out of bounds')) {
+					console.error(`[daemon] Listing emails failed with Himalaya CLI panic: ${stderr || message}`)
+					return { success: false, error: 'The email CLI crashed while listing emails. This is an upstream issue in himalaya.' }
+				}
+
 				console.error(`[daemon] Failed to list emails: ${err.message}`)
 				return { success: false, error: `Failed to list emails: ${err.message}` }
 			}
@@ -82,6 +93,14 @@ export const emailTools = {
 				const { stdout } = await execAsync(`himalaya message read --account ${config.accountName} ${id}`)
 				return { success: true, id, content: stdout }
 			} catch (err: any) {
+				const stderr = err.stderr?.toString() || ''
+				const message = err.message || ''
+
+				if (stderr.includes('index out of bounds') || message.includes('index out of bounds')) {
+					console.error(`[daemon] Reading email ${id} failed with Himalaya CLI panic: ${stderr || message}`)
+					return { success: false, error: `The email CLI crashed while reading message ${id}. This is an upstream issue in himalaya.` }
+				}
+
 				console.error(`[daemon] Failed to read email ${id}: ${err.message}`)
 				return { success: false, error: `Failed to read email ${id}: ${err.message}` }
 			}
@@ -140,14 +159,38 @@ export const emailTools = {
 				const { execSync } = await import('child_process')
 				const template = `To: ${to}\nSubject: ${subject}\n\n${body}`
 
-				execSync(`himalaya template send --account ${config.accountName}`, {
-					env,
-					input: template,
-					encoding: 'utf-8',
-				})
+				// Create a temporary file for the template to avoid shell escaping issues
+				// and "cannot parse template" errors from himalaya.
+				const tmpFile = join(tmpdir(), `tamias-email-${Date.now()}.eml`)
+				writeFileSync(tmpFile, template)
 
-				console.log(`[daemon] Email successfully sent to ${to}`)
-				return { success: true, message: `Email successfully sent to ${to}` }
+				try {
+					execSync(`himalaya message send --account ${config.accountName} < ${tmpFile}`, {
+						env,
+						encoding: 'utf-8',
+						shell: '/bin/sh'
+					})
+					console.log(`[daemon] Email successfully sent to ${to}`)
+					return { success: true, message: `Email successfully sent to ${to}` }
+				} catch (err: any) {
+					const stderr = err.stderr?.toString() || ''
+					const message = err.message || ''
+
+					// Identify specific himalaya/mail-parser failures
+					if (stderr.includes('index out of bounds') || message.includes('index out of bounds')) {
+						console.error(`[daemon] Himalaya CLI panic (mail-parser): ${stderr || message}`)
+						return { success: false, error: 'The email CLI crashed while parsing the message. This is an upstream issue in himalaya.' }
+					}
+
+					if (stderr.includes('cannot parse template') || message.includes('cannot parse template')) {
+						console.error(`[daemon] Himalaya template error: ${stderr || message}`)
+						return { success: false, error: 'Failed to parse email template. Please check the email body for illegal characters.' }
+					}
+
+					throw err
+				} finally {
+					try { unlinkSync(tmpFile) } catch { }
+				}
 			} catch (err: any) {
 				console.error(`[daemon] Failed to send email to ${to}: ${err.message}`)
 				return { success: false, error: `Failed to send email: ${err.message}` }

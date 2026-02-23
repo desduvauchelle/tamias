@@ -545,7 +545,10 @@ Return a structured object.`
 				schema: z.object({
 					summary: z.string().describe('A concise summary of the conversation history.'),
 					sessionName: z.string().describe('A short, descriptive name for the session.'),
-					insights: z.record(z.string(), z.string()).describe('New insights to append to persona files (e.g., {"USER.md": "Prefers functional programming"}).')
+					insights: z.array(z.object({
+						filename: z.string().describe('The filename, e.g., "USER.md"'),
+						content: z.string().describe('The content or insights to append.')
+					})).describe('New insights to append to persona files.')
 				}),
 				system: compactionPrompt,
 				prompt: `Current history to compact:\n${JSON.stringify(session.messages)}`,
@@ -572,8 +575,12 @@ Return a structured object.`
 			if (object.sessionName && (!session.name || session.name.startsWith('sess_'))) {
 				session.name = object.sessionName
 			}
-			if (object.insights && Object.keys(object.insights).length > 0) {
-				updatePersonaFiles(object.insights as Record<string, string>)
+			if (object.insights && object.insights.length > 0) {
+				const insightsRecord: Record<string, string> = {}
+				for (const item of object.insights) {
+					insightsRecord[item.filename] = item.content
+				}
+				updatePersonaFiles(insightsRecord)
 			}
 			session.messages = session.messages.slice(-10)
 		} catch (err) {

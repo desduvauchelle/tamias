@@ -19,7 +19,7 @@
 		"build": "bun build --compile --outfile=tamias src/index.ts",
 		"dev": "bun --hot src/index.ts",
 		"install-it": "chmod +x install.sh && ./install.sh",
-		"test": "bun test src/tests/*.test.ts src/utils/*.test.ts",
+		"test": "bun test --preload ./src/tests/setup.ts src/tests/*.test.ts src/utils/*.test.ts",
 		"typecheck": "bunx tsc --noEmit",
 		"typecheck:all": "bunx tsc --noEmit && bunx tsc --noEmit -p src/dashboard/tsconfig.json",
 		"prepare": "husky",

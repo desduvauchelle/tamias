@@ -250,7 +250,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	const cronManager = new CronManager(onCronTrigger)
 	cronManager.start()
 
-	const onBridgeMessage = async (msg: BridgeMessage) => {
+	const onBridgeMessage = async (msg: BridgeMessage): Promise<boolean> => {
 		console.log(`[Bridge] Message from ${msg.channelId}:${msg.channelUserId} (${msg.channelName}) - "${msg.content.slice(0, 80)}"`)
 
 		// Built-in diagnostic command — works regardless of AI config
@@ -266,7 +266,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				`Default models: ${diagConfig.defaultModels?.join(', ') || 'not set'}`,
 			].join('\n')
 			await bridgeManager.broadcastToChannel(msg.channelId, diagMsg).catch(console.error)
-			return
+			return false // Returning false tells the bridge NOT to queue this message for AI (avoids desync)
 		}
 
 		let session = aiService.getSessionForBridge(msg.channelId, msg.channelUserId)
@@ -285,6 +285,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			}
 		}
 		await aiService.enqueueMessage(session.id, msg.content, msg.authorName, msg.attachments)
+		return true // Message accepted for AI processing
 	}
 	await bridgeManager.initializeAll(config, onBridgeMessage).catch(console.error)
 

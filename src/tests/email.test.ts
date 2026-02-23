@@ -170,8 +170,6 @@ describe("Email Tool", () => {
 		expect(result.success).toBe(true)
 		expect(mockExecSync).toHaveBeenCalled()
 		const callArgs = mockExecSync.mock.calls[0]
-		expect(expect.stringContaining("himalaya template send --account denis-growth")).toEqual(callArgs[0])
-		expect(callArgs[1].input).toContain("To: friend@example.com")
-		expect(callArgs[1].input).toContain("Subject: hello")
+		expect(callArgs[0]).toMatch(/himalaya message send --account denis-growth < .*/)
 	})
 })

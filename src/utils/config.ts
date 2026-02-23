@@ -1,11 +1,12 @@
 import { z } from 'zod'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { homedir } from 'os'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { getEnv, setEnv, removeEnv, generateSecureEnvKey } from './env.ts'
 
 export const TAMIAS_DIR = join(homedir(), '.tamias')
-export const CONFIG_PATH = join(TAMIAS_DIR, 'config.json')
+export const getConfigFilePath = () => process.env.TAMIAS_CONFIG_PATH || join(TAMIAS_DIR, 'config.json')
+export const CONFIG_PATH = getConfigFilePath() // For legacy/external export
 
 export const ProviderEnum = z.enum([
 	'openai',
@@ -124,10 +125,12 @@ export const getDefaultWorkspacePath = () => {
 }
 
 const getConfigPath = () => {
-	if (!existsSync(TAMIAS_DIR)) {
-		mkdirSync(TAMIAS_DIR, { recursive: true })
+	const path = getConfigFilePath()
+	const dir = dirname(path)
+	if (!existsSync(dir)) {
+		mkdirSync(dir, { recursive: true })
 	}
-	return CONFIG_PATH
+	return path
 }
 
 export const loadConfig = (): TamiasConfig => {

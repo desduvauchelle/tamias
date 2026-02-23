@@ -3,27 +3,14 @@ import { getDefaultWorkspacePath, loadConfig, saveConfig, TAMIAS_DIR } from "./c
 import type { TamiasConfig } from "./config"
 import { join } from "path"
 import { homedir } from "os"
-import { existsSync, unlinkSync, writeFileSync, mkdirSync, rmSync } from "fs"
+import { existsSync, unlinkSync, writeFileSync, mkdirSync, rmSync, readFileSync } from "fs"
 
 describe("Config Utils", () => {
 	const configDir = TAMIAS_DIR
 	const configPath = join(configDir, "config.json")
-	let backupConfig: string | null = null
-
 	beforeEach(() => {
-		if (existsSync(configPath)) {
-			backupConfig = Bun.file(configPath).toString()
-		}
 		// Ensure dir exists
 		if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true })
-	})
-
-	afterEach(() => {
-		if (backupConfig) {
-			writeFileSync(configPath, backupConfig)
-		} else if (existsSync(configPath)) {
-			unlinkSync(configPath)
-		}
 	})
 
 	test("getDefaultWorkspacePath returns ~/.tamias", () => {
@@ -36,7 +23,7 @@ describe("Config Utils", () => {
 			connections: {},
 			bridges: { terminal: { enabled: true } }
 		}
-		writeFileSync(configPath, JSON.stringify(minimalConfig))
+		writeFileSync(process.env.TAMIAS_CONFIG_PATH!, JSON.stringify(minimalConfig))
 
 		const loaded = loadConfig()
 		expect(loaded.workspacePath).toBe(getDefaultWorkspacePath())
@@ -50,7 +37,7 @@ describe("Config Utils", () => {
 			bridges: { terminal: { enabled: true } },
 			workspacePath: legacyPath
 		}
-		writeFileSync(configPath, JSON.stringify(legacyConfig))
+		writeFileSync(process.env.TAMIAS_CONFIG_PATH!, JSON.stringify(legacyConfig))
 
 		const loaded = loadConfig()
 		expect(loaded.workspacePath).toBe(legacyPath)
@@ -63,7 +50,7 @@ describe("Config Utils", () => {
 			bridges: { terminal: { enabled: true } },
 			defaultModel: "openai/gpt-4o"
 		}
-		writeFileSync(configPath, JSON.stringify(legacyConfig))
+		writeFileSync(process.env.TAMIAS_CONFIG_PATH!, JSON.stringify(legacyConfig))
 
 		const loaded = loadConfig()
 		expect(Array.isArray((loaded as any).defaultModels)).toBe(true)
@@ -80,7 +67,7 @@ describe("Config Utils", () => {
 				"other": { nickname: "other", provider: "anthropic", selectedModels: ["claude-3-5-sonnet"] }
 			}
 		}
-		writeFileSync(configPath, JSON.stringify(ghostConfig))
+		writeFileSync(process.env.TAMIAS_CONFIG_PATH!, JSON.stringify(ghostConfig))
 		const config = loadConfig()
 		// defaultModels entry for the missing connection should be pruned
 		expect(config.defaultModels).not.toContain("lc-openai/gpt-4o")

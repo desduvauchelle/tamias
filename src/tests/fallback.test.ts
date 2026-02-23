@@ -7,23 +7,13 @@ import { join } from "path"
 import { homedir } from "os"
 
 describe("AIService Fallback", () => {
-	const configDir = join(homedir(), '.tamias')
-	const configPath = join(configDir, "config.json")
-	let backupConfig: string | null = null
-
 	beforeEach(() => {
-		if (existsSync(configPath)) {
-			backupConfig = Bun.file(configPath).toString()
-		}
-		if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true })
+		// No need to backup real config, setup.ts already isolated us.
+		// But ensure our test-specific file is clean if we want a specific mock.
 	})
 
 	afterEach(() => {
-		if (backupConfig) {
-			writeFileSync(configPath, backupConfig)
-		} else if (existsSync(configPath)) {
-			unlinkSync(configPath)
-		}
+		// setup.ts handles cleanup of the temp directory.
 	})
 
 	test("should fallback to next model if first connection is missing", async () => {
@@ -41,7 +31,7 @@ describe("AIService Fallback", () => {
 			defaultModels: ["invalid-conn/old-model", "valid-conn/gpt-4o"],
 			bridges: { terminal: { enabled: true } }
 		}
-		writeFileSync(configPath, JSON.stringify(mockConfig))
+		writeFileSync(process.env.TAMIAS_CONFIG_PATH!, JSON.stringify(mockConfig))
 
 		// Mock env for valid-conn
 		process.env.OPENAI_API_KEY = "sk-test"

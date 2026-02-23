@@ -12,7 +12,7 @@ export class BridgeManager {
 	 */
 	async initializeAll(
 		config: TamiasConfig,
-		onMessage: (msg: BridgeMessage, sessionId: string) => void
+		onMessage: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean
 	) {
 		const bridgesDef = config.bridges
 
@@ -35,7 +35,7 @@ export class BridgeManager {
 	private async startBridge(
 		bridge: IBridge,
 		config: TamiasConfig,
-		onMessage: (msg: BridgeMessage, sessionId: string) => void
+		onMessage: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean
 	) {
 		try {
 			await bridge.initialize(config, onMessage)

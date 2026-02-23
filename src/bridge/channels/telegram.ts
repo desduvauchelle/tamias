@@ -15,13 +15,13 @@ interface TelegramContext {
 export class TelegramBridge implements IBridge {
 	name = 'telegram'
 	private bot?: Bot
-	private onMessage?: (msg: BridgeMessage, sessionId: string) => void
+	private onMessage?: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean
 	/** Map of chatId → in-flight context */
 	private contexts = new Map<string, TelegramContext>()
 	/** Map of chatId → sessionId */
 	private chatSessions = new Map<string, string>()
 
-	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => void): Promise<void> {
+	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean): Promise<void> {
 		this.onMessage = onMessage
 		const token = getBotTokenForBridge('telegram')
 		if (!token) {
@@ -78,7 +78,7 @@ export class TelegramBridge implements IBridge {
 				}
 
 				this.contexts.set(chatKey, { chatId, messageId, buffer: '' })
-				this.onMessage?.(bridgeMsg, sessionKey)
+				await this.onMessage?.(bridgeMsg, sessionKey)
 			} catch (err: any) {
 				console.error('[Telegram Bridge] Audio transcription error:', err)
 				try {
@@ -109,10 +109,8 @@ export class TelegramBridge implements IBridge {
 				content: ctx.message.text,
 			}
 
-			// Store context (buffer will fill once 'start' event arrives)
 			this.contexts.set(chatKey, { chatId, messageId, buffer: '' })
-
-			this.onMessage?.(bridgeMsg, sessionKey)
+			await this.onMessage?.(bridgeMsg, sessionKey)
 		})
 
 		this.bot.catch((err) => {

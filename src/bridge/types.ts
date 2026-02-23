@@ -32,7 +32,7 @@ export interface IBridge {
 	 */
 	initialize(
 		config: any,
-		onMessage: (msg: BridgeMessage, sessionId: string) => void
+		onMessage: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean
 	): Promise<void>
 
 	/**

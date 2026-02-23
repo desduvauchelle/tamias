@@ -17,7 +17,7 @@ interface DiscordChannelState {
 export class DiscordBridge implements IBridge {
 	name = 'discord'
 	private client?: Client
-	private onMessage?: (msg: BridgeMessage, sessionId: string) => void
+	private onMessage?: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean
 	/** Map of channelId → channel orchestration state (set when a Discord message arrives) */
 	private channelStates = new Map<string, DiscordChannelState>()
 	/** Map of channelId → sessionId */
@@ -27,7 +27,7 @@ export class DiscordBridge implements IBridge {
 	/** Deduplication guard: set of Discord message IDs already dispatched for processing */
 	private seenMessageIds = new Set<string>()
 
-	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => void): Promise<void> {
+	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean): Promise<void> {
 		this.onMessage = onMessage
 		const token = getBotTokenForBridge('discord')
 		if (!token) {
@@ -115,7 +115,15 @@ export class DiscordBridge implements IBridge {
 			}
 
 			console.log(`[Discord Bridge] Dispatching to onMessage with channelUserId=${channelId}${attachments.length ? ` and ${attachments.length} attachments` : ''}`)
-			this.onMessage?.(bridgeMsg, sessionKey)
+			const handled = await this.onMessage?.(bridgeMsg, sessionKey)
+			if (handled === false && state.queue.includes(message)) {
+				state.queue = state.queue.filter(m => m !== message)
+				console.log(`[Discord Bridge] Message rejected by onMessage, removed from queue: "${message.content.slice(0, 40)}"`)
+				// Remove reaction if it was handled but rejected (e.g. system command)
+				try {
+					await message.reactions.cache.get('👀')?.users.remove(this.client!.user!.id)
+				} catch { }
+			}
 		})
 
 		this.client.once(Events.ClientReady, (c) => {
@@ -152,24 +160,31 @@ export class DiscordBridge implements IBridge {
 					state.currentMessage = message
 					state.buffer = ''
 
-					// Start typing indicator synchronously before any awaits to avoid a race
-					// condition where 'done' fires during an await and clears currentMessage
-					// before the interval is even created (leaving it orphaned forever).
+					// Start typing indicator synchronously
 					if (state.typingInterval) clearInterval(state.typingInterval)
-					state.typingInterval = undefined
 
 					const channel = message.channel
 					if ('sendTyping' in channel) {
 						channel.sendTyping().catch(() => { })
-						state.typingInterval = setInterval(() => {
-							// Self-cancel if no longer processing (safety net)
-							if (!state!.currentMessage) {
-								clearInterval(state!.typingInterval)
-								state!.typingInterval = undefined
+						const intervalId = setInterval(() => {
+							// Self-cancel if no longer processing or if interval was replaced
+							if (!state || state.currentMessage === undefined || state.typingInterval !== intervalId) {
+								clearInterval(intervalId)
+								if (state && state.typingInterval === intervalId) state.typingInterval = undefined
 								return
 							}
 							channel.sendTyping().catch(() => { })
 						}, 7000)
+						state.typingInterval = intervalId
+
+						// 🛡️ Safety timeout: clear typing after 60s no matter what
+						setTimeout(() => {
+							if (state && state.typingInterval === intervalId) {
+								console.log(`[Discord Bridge] Typing safety timeout triggered for channel ${channelId}`)
+								clearInterval(intervalId)
+								state.typingInterval = undefined
+							}
+						}, 60000)
 					}
 
 					// 🧠 Add thinking reaction (fire-and-forget, after typing is set up)
@@ -208,11 +223,13 @@ export class DiscordBridge implements IBridge {
 					break
 				}
 				// ── Reply-to-message path (normal Discord conversation) ──────────
-				if (state && state.currentMessage) {
+				if (state) {
 					if (state.typingInterval) {
 						clearInterval(state.typingInterval)
 						state.typingInterval = undefined
 					}
+
+					if (!state.currentMessage) break
 
 					const fullText = state.buffer
 					const ctxMessage = state.currentMessage
@@ -253,11 +270,12 @@ export class DiscordBridge implements IBridge {
 				break
 			}
 			case 'error': {
-				if (state && state.currentMessage) {
+				if (state) {
 					if (state.typingInterval) {
 						clearInterval(state.typingInterval)
 						state.typingInterval = undefined
 					}
+					if (!state.currentMessage) break
 					const ctxMessage = state.currentMessage
 					try {
 						const eye = ctxMessage.reactions.cache.get('👀')
