@@ -35,7 +35,7 @@ jobs:
         run: bunx tsc --noEmit
 
       - name: Run unit tests
-        run: bun test
+        run: bun run test
 
   build-and-release:
     needs: ci
