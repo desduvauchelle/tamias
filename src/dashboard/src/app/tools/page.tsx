@@ -138,7 +138,7 @@ function EmailAccountCard({
 							/>
 						</div>
 						<div className="flex items-center justify-between">
-							<span className="text-[10px] uppercase font-bold text-base-content/40">Can Send Emails</span>
+							<span className="text-[10px] uppercase font-bold text-base-content/40">Authorize anyone to receive emails</span>
 							<input
 								type="checkbox"
 								className="checkbox checkbox-xs checkbox-info"
@@ -146,19 +146,21 @@ function EmailAccountCard({
 								onChange={e => onChange({ ...config, permissions: { ...config.permissions, canSend: e.target.checked } })}
 							/>
 						</div>
-						<div className="space-y-1">
-							<label className="text-[10px] uppercase font-bold text-base-content/40 ml-1">Destination Whitelist</label>
-							<input
-								type="text"
-								placeholder="Limit to: boss@company.com (comma separated)"
-								className="input input-xs input-bordered w-full font-mono text-[10px]"
-								value={config.permissions.whitelist.join(', ')}
-								onChange={e => {
-									const val = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-									onChange({ ...config, permissions: { ...config.permissions, whitelist: val } })
-								}}
-							/>
-						</div>
+						{!config.permissions.canSend && (
+							<div className="space-y-1">
+								<label className="text-[10px] uppercase font-bold text-base-content/40 ml-1">Destination Whitelist</label>
+								<input
+									type="text"
+									placeholder="Limit to: boss@company.com (comma separated)"
+									className="input input-xs input-bordered w-full font-mono text-[10px]"
+									value={config.permissions.whitelist.join(', ')}
+									onChange={e => {
+										const val = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+										onChange({ ...config, permissions: { ...config.permissions, whitelist: val } })
+									}}
+								/>
+							</div>
+						)}
 					</div>
 				)}
 			</div>

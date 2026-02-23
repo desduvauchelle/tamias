@@ -172,19 +172,27 @@ else
 fi
 
 # 5b. Restart daemon if it was already running (so new binary takes effect)
-DAEMON_JSON="$HOME/.tamias/daemon.json"
-if [ -f "$DAEMON_JSON" ]; then
-  DAEMON_PID=$(grep -o '"pid": *[0-9]*' "$DAEMON_JSON" | grep -o '[0-9]*' | head -1)
-  if [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>/dev/null; then
-    echo ""
-    echo "=> Stopping running daemon (PID $DAEMON_PID) so new binary takes effect..."
-    kill "$DAEMON_PID" 2>/dev/null || true
-    sleep 1
-    echo "=> Restarting daemon..."
-    export PATH="$PATH:$INSTALL_DIR"
-    "$INSTALL_DIR/$BINARY_NAME" start &
-    sleep 2
-    echo "=> Daemon restarted."
+# If tamias is in PATH, we use the new 'tamias restart' command
+if command -v tamias &> /dev/null; then
+  echo ""
+  echo "=> Restarting Tamias daemon..."
+  tamias restart --daemon || true
+else
+  # Fallback for old versions or fresh installs where it's not yet in PATH
+  DAEMON_JSON="$HOME/.tamias/daemon.json"
+  if [ -f "$DAEMON_JSON" ]; then
+    DAEMON_PID=$(grep -o '"pid": *[0-9]*' "$DAEMON_JSON" | grep -o '[0-9]*' | head -1)
+    if [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>/dev/null; then
+      echo ""
+      echo "=> Stopping running daemon (PID $DAEMON_PID) so new binary takes effect..."
+      kill "$DAEMON_PID" 2>/dev/null || true
+      sleep 1
+      echo "=> Restarting daemon..."
+      export PATH="$PATH:$INSTALL_DIR"
+      "$INSTALL_DIR/$BINARY_NAME" start --daemon &
+      sleep 2
+      echo "=> Daemon restarted."
+    fi
   fi
 fi
 
@@ -205,14 +213,27 @@ case "$SHELL_NAME" in
     ;;
 esac
 
+ALREADY_IN_PATH=false
+if command -v tamias &> /dev/null; then
+  ALREADY_IN_PATH=true
+fi
+
 NEEDS_RESTART=false
-if [ -n "$PROFILE_FILE" ] && [ -f "$PROFILE_FILE" ]; then
-  if ! grep -q "$INSTALL_DIR" "$PROFILE_FILE"; then
-    echo ""                                       >> "$PROFILE_FILE"
-    echo "# Tamias"                               >> "$PROFILE_FILE"
-    echo "export PATH=\"\$PATH:$INSTALL_DIR\""   >> "$PROFILE_FILE"
-    NEEDS_RESTART=true
+if [ "$ALREADY_IN_PATH" = "false" ]; then
+  if [ -n "$PROFILE_FILE" ] && [ -f "$PROFILE_FILE" ]; then
+    if ! grep -q "$INSTALL_DIR" "$PROFILE_FILE"; then
+      echo ""                                       >> "$PROFILE_FILE"
+      echo "# Tamias"                               >> "$PROFILE_FILE"
+      echo "export PATH=\"\$PATH:$INSTALL_DIR\""   >> "$PROFILE_FILE"
+      NEEDS_RESTART=true
+    fi
   fi
+fi
+
+# Verification
+if [ ! -f "$INSTALL_DIR/$BINARY_NAME" ]; then
+  echo "Error: Binary not found at $INSTALL_DIR/$BINARY_NAME after installation."
+  exit 1
 fi
 
 # Make tamias available in the current shell immediately (no restart needed)
@@ -227,11 +248,17 @@ echo "  ╠═══════════════════════
 printf "  ║  Data dir  : %s\n"   "$DISPLAY_DATA_HOME"
 printf "  ║  Binary    : %s/%s\n" "$INSTALL_DIR" "$BINARY_NAME"
 echo "  ╠══════════════════════════════════════════════════════╣"
-if [ "$NEEDS_RESTART" = "true" ]; then
-  echo "  ║  PATH updated — open a new terminal, or run:"
-  printf "  ║    source %s\n" "$PROFILE_FILE"
-  echo "  ╠══════════════════════════════════════════════════════╣"
+if [ "$ALREADY_IN_PATH" = "true" ]; then
+  echo "  ║  Update successful!                                   "
+elif [ "$NEEDS_RESTART" = "true" ]; then
+  echo "  ║  To finish installation, please:                      "
+  echo "  ║    1. CLOSE this terminal                             "
+  echo "  ║    2. OPEN a new terminal                             "
+  echo "  ║    3. Run: tamias                                     "
+else
+  echo "  ║  Tamias is ready.                                     "
 fi
+echo "  ╠══════════════════════════════════════════════════════╣"
 echo "  ║"
 echo "  ║  Run:  tamias"
 echo "  ║        (runs the setup wizard on first launch)"

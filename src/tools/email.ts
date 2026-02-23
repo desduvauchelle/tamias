@@ -89,16 +89,17 @@ export const emailTools = {
 				return { success: false, error: `Email tool is disabled for account '${config.nickname}'.` }
 			}
 
-			// Permission check: Whitelist
-			if (config.permissions.whitelist.length > 0 && !config.permissions.whitelist.includes(to)) {
-				console.warn(`[daemon] Send blocked: Recipient '${to}' not in whitelist for account '${config.nickname}'.`)
-				return { success: false, error: `Recipient '${to}' is not in the authorized whitelist for account '${config.nickname}'.` }
-			}
+			// Permission check: If canSend is true, anyone is authorized.
+			// If canSend is false, ONLY the whitelist is authorized.
+			const isUnrestricted = config.permissions.canSend === true
+			const isInWhitelist = config.permissions.whitelist.includes(to)
 
-			// Permission check: canSend
-			if (config.permissions.canSend === false) {
-				console.warn(`[daemon] Send blocked: 'canSend' permission is disabled for account '${config.nickname}'.`)
-				return { success: false, error: `Sending emails is disabled by permissions for account '${config.nickname}'.` }
+			if (!isUnrestricted && !isInWhitelist) {
+				const errorMsg = config.permissions.whitelist.length > 0
+					? `Recipient '${to}' is not in the authorized whitelist for account '${config.nickname}'.`
+					: `Sending emails is disabled for account '${config.nickname}' (no whitelist configured).`
+				console.warn(`[daemon] Send blocked: ${errorMsg}`)
+				return { success: false, error: errorMsg }
 			}
 
 			const password = getEmailPassword(account)

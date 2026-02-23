@@ -19,6 +19,7 @@ import { agentsCommand } from './commands/agents.ts'
 import { runReadmeCommand } from './commands/readme.ts'
 import { runDoctorCommand } from './commands/doctor.ts'
 import { runLogsCommand } from './commands/logs.ts'
+import { runRestartCommand } from './commands/restart.ts'
 import { isOnboarded } from './utils/memory.ts'
 import { VERSION } from './utils/version.ts'
 
@@ -61,11 +62,17 @@ program
 	.option('--clear', 'Clear the log file')
 	.action((opts: { lines?: string; follow?: boolean; clear?: boolean }) => runLogsCommand(opts))
 
-// ─── tamias stop ──────────────────────────────────────────────────────────────
-program
+	// ─── tamias stop ──────────────────────────────────────────────────────────────
 	.command('stop')
 	.description('Stop the running Tamias daemon')
 	.action(runStopCommand)
+
+// ─── tamias restart ───────────────────────────────────────────────────────────
+program
+	.command('restart')
+	.description('Restart the running Tamias daemon')
+	.option('--verbose', 'Enable verbose debug logging')
+	.action((opts: { verbose?: boolean }) => runRestartCommand(opts))
 
 // ─── tamias status ────────────────────────────────────────────────────────────
 program

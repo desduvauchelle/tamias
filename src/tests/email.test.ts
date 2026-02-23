@@ -98,40 +98,49 @@ describe("Email Tool", () => {
 		expect(result.error).toContain("disabled")
 	})
 
-	test("send_email should fail if canSend permission is false", async () => {
+	test("send_email should fail if canSend is false and recipient not in whitelist", async () => {
 		mockGetEmailConfig.mockImplementation(() => ({
 			nickname: "Personal",
 			enabled: true,
 			permissions: {
-				whitelist: [],
+				whitelist: ["friend@example.com"],
 				canSend: false
 			}
 		}) as any)
-		const result = await (emailTools.send_email as any).execute({
-			to: "test@example.com",
+
+		// Blocked
+		const result1 = await (emailTools.send_email as any).execute({
+			to: "stranger@example.com",
 			subject: "hi",
 			body: "hello"
 		}, {} as any)
-		expect(result.success).toBe(false)
-		expect(result.error).toContain("disabled by permissions")
+		expect(result1.success).toBe(false)
+		expect(result1.error).toContain("authorized whitelist")
+
+		// Allowed
+		const result2 = await (emailTools.send_email as any).execute({
+			to: "friend@example.com",
+			subject: "hi",
+			body: "hello"
+		}, {} as any)
+		expect(result2.success).toBe(true)
 	})
 
-	test("send_email should fail if recipient not in whitelist", async () => {
+	test("send_email should succeed even if not in whitelist if canSend is true", async () => {
 		mockGetEmailConfig.mockImplementation(() => ({
 			nickname: "Personal",
 			enabled: true,
 			permissions: {
-				whitelist: ["allowed@example.com"],
+				whitelist: ["friend@example.com"],
 				canSend: true
 			}
 		}) as any)
 		const result = await (emailTools.send_email as any).execute({
-			to: "blocked@example.com",
+			to: "anybody@example.com",
 			subject: "hi",
 			body: "hello"
 		}, {} as any)
-		expect(result.success).toBe(false)
-		expect(result.error).toContain("not in the authorized whitelist")
+		expect(result.success).toBe(true)
 	})
 
 	test("send_email should call himalaya CLI if all checks pass", async () => {

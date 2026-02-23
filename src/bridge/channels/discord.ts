@@ -3,20 +3,23 @@ import { getBotTokenForBridge, type TamiasConfig } from '../../utils/config.ts'
 import { VERSION } from '../../utils/version.ts'
 import type { BridgeMessage, DaemonEvent, IBridge } from '../types.ts'
 
-interface DiscordContext {
-	message: Message
-	channelId: string
-	buffer: string
+interface DiscordChannelState {
+	/** Queue of messages awaiting processing for this channel */
+	queue: Message[]
+	/** The message currently being responded to */
+	currentMessage?: Message
 	/** typing keepalive interval */
 	typingInterval?: ReturnType<typeof setInterval>
+	/** Text buffer for the CURRENT response */
+	buffer: string
 }
 
 export class DiscordBridge implements IBridge {
 	name = 'discord'
 	private client?: Client
 	private onMessage?: (msg: BridgeMessage, sessionId: string) => void
-	/** Map of channelId → in-flight context */
-	private contexts = new Map<string, DiscordContext>()
+	/** Map of channelId → channel orchestration state */
+	private channelStates = new Map<string, DiscordChannelState>()
 	/** Map of channelId → sessionId */
 	private channelSessions = new Map<string, string>()
 
@@ -53,8 +56,13 @@ export class DiscordBridge implements IBridge {
 				await message.react('👀')
 			} catch { }
 
-			// Store context for this channel
-			this.contexts.set(channelId, { message, channelId, buffer: '' })
+			// Add to queue for this channel
+			let state = this.channelStates.get(channelId)
+			if (!state) {
+				state = { queue: [], buffer: '' }
+				this.channelStates.set(channelId, state)
+			}
+			state.queue.push(message)
 
 			const channelRef = message.channel
 			const channelName = 'name' in channelRef ? `#${(channelRef as any).name}` : 'DM'
@@ -109,54 +117,68 @@ export class DiscordBridge implements IBridge {
 			return
 		}
 
-		const ctx = this.contexts.get(channelId)
-		if (!ctx && event.type !== 'chunk') {
-			console.warn(`[Discord Bridge] handleDaemonEvent: no context found for channel ${channelId}, event=${event.type} (contexts: [${[...this.contexts.keys()].join(', ')}])`)
+		const state = this.channelStates.get(channelId)
+		if (!state && event.type !== 'chunk') {
+			console.warn(`[Discord Bridge] handleDaemonEvent: no state found for channel ${channelId}, event=${event.type} (states: [${[...this.channelStates.keys()].join(', ')}])`)
 		}
 
 		switch (event.type) {
 			case 'start': {
-				console.log(`[Discord Bridge] Processing started for channel ${channelId}, ctx found: ${!!ctx}`)
-				if (ctx) {
+				console.log(`[Discord Bridge] Processing started for channel ${channelId}, state found: ${!!state}`)
+				if (state) {
+					// Pop the next message from the queue
+					const message = state.queue.shift()
+					if (!message) {
+						console.error(`[Discord Bridge] 'start' event received but no message in queue for channel ${channelId}`)
+						return
+					}
+					state.currentMessage = message
+					state.buffer = ''
+
 					// 🧠 Add thinking reaction
-					try { await ctx.message.react('🧠') } catch { }
+					try { await message.react('🧠') } catch { }
 
 					// Start typing indicator (Discord clears after ~9s so refresh every 7s)
-					const channel = ctx.message.channel
+					if (state.typingInterval) clearInterval(state.typingInterval)
+
+					const channel = message.channel
 					if ('sendTyping' in channel) {
 						await channel.sendTyping().catch(() => { })
-						ctx.typingInterval = setInterval(async () => {
+						state.typingInterval = setInterval(async () => {
 							await channel.sendTyping().catch(() => { })
 						}, 7000)
 					}
-					ctx.buffer = ''
 				}
 				break
 			}
 			case 'chunk': {
-				if (ctx) ctx.buffer += event.text
+				if (state) state.buffer += event.text
 				break
 			}
 			case 'done': {
-				if (ctx) {
-					clearInterval(ctx.typingInterval)
-					const fullText = ctx.buffer
+				if (state && state.currentMessage) {
+					if (state.typingInterval) {
+						clearInterval(state.typingInterval)
+						state.typingInterval = undefined
+					}
+
+					const fullText = state.buffer
+					const ctxMessage = state.currentMessage
 					console.log(`[Discord Bridge] Sending response to ${channelId} (${fullText.length} chars)`)
-					this.contexts.delete(channelId)
 
 					// Remove 👀 and 🧠 reactions
 					try {
-						const eye = ctx.message.reactions.cache.get('👀')
+						const eye = ctxMessage.reactions.cache.get('👀')
 						if (eye) await eye.users.remove(this.client!.user!.id)
 					} catch { }
 					try {
-						const brain = ctx.message.reactions.cache.get('🧠')
+						const brain = ctxMessage.reactions.cache.get('🧠')
 						if (brain) await brain.users.remove(this.client!.user!.id)
 					} catch { }
 
 					if (fullText.trim()) {
 						try {
-							const channel = ctx.message.channel
+							const channel = ctxMessage.channel
 							const anyChannel = channel as any
 							if (typeof anyChannel.send === 'function') {
 								const chunks = splitText(fullText, 1900)
@@ -168,33 +190,45 @@ export class DiscordBridge implements IBridge {
 							console.error(`[Discord Bridge] Failed to send to ${channelId}:`, err)
 						}
 					}
+
+					// Clean up current message
+					state.currentMessage = undefined
+					state.buffer = ''
+
+					// If queue is empty, we can potentially remove the state, but better to keep it for future messages
+					// until destroy() is called or it times out (optional)
 				}
 				break
 			}
 			case 'error': {
-				if (ctx) {
-					clearInterval(ctx.typingInterval)
-					this.contexts.delete(channelId)
+				if (state && state.currentMessage) {
+					if (state.typingInterval) {
+						clearInterval(state.typingInterval)
+						state.typingInterval = undefined
+					}
+					const ctxMessage = state.currentMessage
 					try {
-						const eye = ctx.message.reactions.cache.get('👀')
+						const eye = ctxMessage.reactions.cache.get('👀')
 						if (eye) await eye.users.remove(this.client!.user!.id)
 					} catch { }
 					try {
-						const brain = ctx.message.reactions.cache.get('🧠')
+						const brain = ctxMessage.reactions.cache.get('🧠')
 						if (brain) await brain.users.remove(this.client!.user!.id)
 					} catch { }
 					try {
-						await (ctx.message.channel as any).send?.(`⚠️ Error [v${VERSION}]: ${event.message}`)
+						await (ctxMessage.channel as any).send?.(`⚠️ Error [v${VERSION}]: ${event.message}`)
 					} catch (err) {
 						console.error(`[Discord Bridge] Failed to send error notification to channel ${channelId}:`, err)
 					}
+					state.currentMessage = undefined
+					state.buffer = ''
 				}
 				break
 			}
 			case 'file': {
-				if (ctx) {
+				if (state && state.currentMessage) {
 					try {
-						const channel = ctx.message.channel
+						const channel = state.currentMessage.channel
 						const anyChannel = channel as any
 						if (typeof anyChannel.send === 'function') {
 							await anyChannel.send({ files: [{ attachment: event.buffer, name: event.name }] })
@@ -210,6 +244,10 @@ export class DiscordBridge implements IBridge {
 
 	async destroy(): Promise<void> {
 		if (this.client) {
+			// Clear all typing intervals
+			for (const state of this.channelStates.values()) {
+				if (state.typingInterval) clearInterval(state.typingInterval)
+			}
 			this.client.destroy()
 			console.log('[Discord Bridge] Stopped.')
 		}
