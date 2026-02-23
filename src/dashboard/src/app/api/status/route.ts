@@ -6,13 +6,35 @@ import { readFile, unlink } from 'fs/promises'
 const DAEMON_FILE = join(homedir(), '.tamias', 'daemon.json')
 export const dynamic = 'force-dynamic'
 
+async function getVersions() {
+	try {
+		const rootPkgPath = join(process.cwd(), '..', '..', 'package.json')
+		const dashboardPkgPath = join(process.cwd(), 'package.json')
+
+		const [rootPkgStr, dashboardPkgStr] = await Promise.all([
+			readFile(rootPkgPath, 'utf-8'),
+			readFile(dashboardPkgPath, 'utf-8')
+		])
+
+		return {
+			tamiasVersion: JSON.parse(rootPkgStr).version,
+			dashboardVersion: JSON.parse(dashboardPkgStr).version
+		}
+	} catch (e) {
+		console.error('Failed to read version numbers:', e)
+		return { tamiasVersion: 'unknown', dashboardVersion: 'unknown' }
+	}
+}
+
 export async function GET() {
+	const versions = await getVersions()
+
 	try {
 		const str = await readFile(DAEMON_FILE, 'utf-8')
 		const info = JSON.parse(str)
 
 		if (!info.port) {
-			return NextResponse.json({ running: false, pid: null, uptimeSec: null })
+			return NextResponse.json({ running: false, pid: null, uptimeSec: null, ...versions })
 		}
 
 		// Ping the daemon to be absolutely sure it's responsive
@@ -22,14 +44,14 @@ export async function GET() {
 			})
 			if (res.ok) {
 				const uptimeSec = Math.floor((Date.now() - new Date(info.startedAt).getTime()) / 1000)
-				return NextResponse.json({ running: true, pid: info.pid, uptimeSec })
+				return NextResponse.json({ running: true, pid: info.pid, uptimeSec, ...versions })
 			}
 		} catch { }
 
 		// If ping failed, clean up stale file
 		await unlink(DAEMON_FILE).catch(() => { })
-		return NextResponse.json({ running: false, pid: null, uptimeSec: null })
+		return NextResponse.json({ running: false, pid: null, uptimeSec: null, ...versions })
 	} catch {
-		return NextResponse.json({ running: false, pid: null, uptimeSec: null })
+		return NextResponse.json({ running: false, pid: null, uptimeSec: null, ...versions })
 	}
 }

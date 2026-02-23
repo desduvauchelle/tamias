@@ -1,6 +1,8 @@
 # Tamias 🐿️
 
-![Tamias Mascot](src/assets/mascot.png)
+<p align="center">
+  <img src="src/assets/mascot.png" alt="Tamias Mascot" width="200" />
+</p>
 
 > A secure, agentic AI chat interface for the terminal — powered by the Vercel AI SDK and Bun.
 

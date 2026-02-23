@@ -333,7 +333,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				return json(list)
 			}
 
-			if (method === 'GET' && url.pathname === '/logs') {
+			if (method === 'GET' && url.pathname === '/history') {
 				const rawLogs = db.query<{ timestamp: string, sessionId: string, model: string, provider: string, action: string, durationMs: number, promptTokens: number | null, completionTokens: number | null, totalTokens: number | null, requestMessagesJson: string, response: string }, []>(`
                     SELECT timestamp, sessionId, model, provider, action, durationMs,
                         promptTokens, completionTokens, totalTokens, requestMessagesJson, response

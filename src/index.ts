@@ -18,7 +18,7 @@ import { runUninstallCommand, runBackupCommand, runRestoreCommand } from './comm
 import { agentsCommand } from './commands/agents.ts'
 import { runReadmeCommand } from './commands/readme.ts'
 import { runDoctorCommand } from './commands/doctor.ts'
-import { runLogsCommand } from './commands/logs.ts'
+import { runHistoryCommand } from './commands/history.ts'
 import { runRestartCommand } from './commands/restart.ts'
 import { isOnboarded } from './utils/memory.ts'
 import { VERSION } from './utils/version.ts'
@@ -55,12 +55,12 @@ program
 
 // ─── tamias logs ──────────────────────────────────────────────────────────────
 program
-	.command('logs')
+	.command('history')
 	.description('View and follow the daemon log (~/.tamias/daemon.log)')
 	.option('-n, --lines <n>', 'Number of lines to show from the end', String(80))
 	.option('--no-follow', 'Print tail and exit (do not follow)')
 	.option('--clear', 'Clear the log file')
-	.action((opts: { lines?: string; follow?: boolean; clear?: boolean }) => runLogsCommand(opts))
+	.action((opts: { lines?: string; follow?: boolean; clear?: boolean }) => runHistoryCommand(opts))
 
 	// ─── tamias stop ──────────────────────────────────────────────────────────────
 	.command('stop')

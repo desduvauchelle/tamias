@@ -38,7 +38,7 @@ export default function DocsPage() {
 		<div className="p-8 max-w-4xl mx-auto">
 			<div className="card bg-base-100 shadow-xl border border-base-300">
 				<div className="card-body">
-					<article className="prose prose-slate max-w-none dark:prose-invert prose-headings:text-primary prose-a:text-primary prose-img:rounded-xl">
+					<article className="prose prose-slate max-w-none dark:prose-invert prose-headings:text-primary prose-a:text-primary prose-img:rounded-xl prose-img:mx-auto prose-img:max-w-[200px]">
 						<div
 							dangerouslySetInnerHTML={{ __html: content }}
 						/>

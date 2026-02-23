@@ -148,11 +148,13 @@ function EmailAccountCard({
 						</div>
 						{!config.permissions.canSend && (
 							<div className="space-y-1">
-								<label className="text-[10px] uppercase font-bold text-base-content/40 ml-1">Destination Whitelist</label>
-								<input
-									type="text"
-									placeholder="Limit to: boss@company.com (comma separated)"
-									className="input input-xs input-bordered w-full font-mono text-[10px]"
+								<div className="flex justify-between items-center ml-1">
+									<label className="text-[10px] uppercase font-bold text-base-content/40">Destination Whitelist</label>
+									<span className="text-[8px] text-base-content/30 italic">Comma separated emails only</span>
+								</div>
+								<textarea
+									placeholder="Limit to: boss@company.com, assistant@company.com"
+									className="textarea textarea-xs textarea-bordered w-full font-mono text-[10px] min-h-[60px]"
 									value={config.permissions.whitelist.join(', ')}
 									onChange={e => {
 										const val = e.target.value.split(',').map(s => s.trim()).filter(Boolean)

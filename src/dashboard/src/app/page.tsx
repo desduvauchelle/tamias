@@ -7,7 +7,7 @@ import { DefaultChatTransport } from 'ai'
 export default function ChatPage() {
 	const [logs, setLogs] = useState('')
 	const [sessions, setSessions] = useState<{ id: string; messageCount: number }[]>([])
-	const [selectedSession, setSelectedSession] = useState('web')
+	const [selectedSession, setSelectedSession] = useState('')
 	const [history, setHistory] = useState<UIMessage[]>([])
 	const [loadingHistory, setLoadingHistory] = useState(false)
 	const [showNewSessionModal, setShowNewSessionModal] = useState(false)
@@ -18,7 +18,7 @@ export default function ChatPage() {
 	// Fetch logs
 	useEffect(() => {
 		const interval = setInterval(() => {
-			fetch('/api/logs')
+			fetch('/api/history')
 				.then(res => res.json())
 				.then(data => {
 					if (data.logs) {
@@ -75,6 +75,10 @@ export default function ChatPage() {
 	}
 
 	const loadSessionHistory = async (sid: string) => {
+		if (!sid) {
+			setHistory([])
+			return
+		}
 		setLoadingHistory(true)
 		try {
 			const res = await fetch(`/api/sessions/${sid}`)
@@ -169,27 +173,50 @@ export default function ChatPage() {
 					</div>
 				</div>
 
-				{/* Chat Loop - Re-keyed on session switch to ensure hook reset */}
-				<div className="flex-1 min-w-0 h-full">
-					{loadingHistory ? (
-						<div className="card h-full bg-base-200 border border-base-300 flex items-center justify-center">
-							<span className="loading loading-spinner text-success" />
+				{/* Main Content Area */}
+				<div className="flex-1 flex gap-4 min-w-0">
+					{!selectedSession ? (
+						<div className="flex-1 card bg-base-200 border border-base-300 border-dashed flex flex-col items-center justify-center p-12 text-center shadow-inner">
+							<div className="w-16 h-16 rounded-2xl bg-base-300 flex items-center justify-center mb-6 opacity-50">
+								<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-base-content"><path d="M21 15a2 2 0 0 1-2 2H7l4-4V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v10z" /><path d="M3 20v-8a2 2 0 0 1 2-2h4l4 4" /><path d="m7 15-4 4" /></svg>
+							</div>
+							<h3 className="font-bold font-mono text-base-content/70 mb-2">Initialize Connection</h3>
+							<p className="text-xs text-base-content/40 font-mono max-w-xs leading-relaxed mb-8">
+								Select an active session from the sidebar or initialize a new context to begin communication.
+							</p>
+							<button
+								className="btn btn-outline btn-success btn-sm font-mono uppercase tracking-widest"
+								onClick={() => setShowNewSessionModal(true)}
+							>
+								New Session
+							</button>
 						</div>
 					) : (
-						<ChatTerminal key={selectedSession} sessionId={selectedSession} initialHistory={history} />
-					)}
-				</div>
+						<>
+							{/* Chat Loop - Re-keyed on session switch to ensure hook reset */}
+							<div className="flex-1 min-w-0 h-full">
+								{loadingHistory ? (
+									<div className="card h-full bg-base-200 border border-base-300 flex items-center justify-center">
+										<span className="loading loading-spinner text-success" />
+									</div>
+								) : (
+									<ChatTerminal key={selectedSession} sessionId={selectedSession} initialHistory={history} />
+								)}
+							</div>
 
-				{/* Log Panel */}
-				<div className="card w-72 bg-base-200 border border-base-300 flex flex-col shrink-0 overflow-hidden shadow-xl">
-					<div className="card-body flex flex-col p-0 min-h-0">
-						<div className="px-5 py-3 border-b border-base-300 shrink-0 text-center bg-base-300/30">
-							<h2 className="card-title text-sm text-base-content/50 uppercase tracking-wider font-mono inline-block">Episodic Log</h2>
-						</div>
-						<div className="flex-1 overflow-y-auto bg-base-300/50 p-4 text-[10px] text-success font-mono whitespace-pre-wrap leading-relaxed animate-in fade-in duration-500">
-							{logs || 'Waiting for agent activity...'}
-						</div>
-					</div>
+							{/* Log Panel */}
+							<div className="card w-80 bg-base-200 border border-base-300 flex flex-col shrink-0 overflow-hidden shadow-xl">
+								<div className="card-body flex flex-col p-0 min-h-0">
+									<div className="px-5 py-3 border-b border-base-300 shrink-0 text-center bg-base-300/30">
+										<h2 className="card-title text-sm text-base-content/50 uppercase tracking-wider font-mono inline-block">Episodic History</h2>
+									</div>
+									<div className="flex-1 overflow-y-auto bg-base-300/50 p-4 text-[10px] text-success font-mono whitespace-pre-wrap leading-relaxed animate-in fade-in duration-500">
+										{logs || 'Waiting for agent activity...'}
+									</div>
+								</div>
+							</div>
+						</>
+					)}
 				</div>
 			</div>
 

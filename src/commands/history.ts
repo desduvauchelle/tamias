@@ -14,7 +14,7 @@ function tailLines(filePath: string, n: number): string[] {
 	return lines.slice(-n - 1, -1) // -1 strips trailing empty line
 }
 
-export const runLogsCommand = async (opts: { lines?: string; follow?: boolean; clear?: boolean } = {}) => {
+export const runHistoryCommand = async (opts: { lines?: string; follow?: boolean; clear?: boolean } = {}) => {
 	const n = parseInt(opts.lines ?? String(DEFAULT_LINES), 10) || DEFAULT_LINES
 	const follow = opts.follow ?? true // default: follow
 

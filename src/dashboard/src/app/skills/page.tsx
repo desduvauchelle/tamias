@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useToast } from "../_components/ToastProvider"
+import { HelpCircle, Lightbulb, FileCode, Terminal, Plus } from "lucide-react"
 
 export default function SkillsPage() {
 	const [skills, setSkills] = useState<any[]>([])
@@ -12,6 +13,7 @@ export default function SkillsPage() {
 	const [formName, setFormName] = useState("")
 	const [formDescription, setFormDescription] = useState("")
 	const [formContent, setFormContent] = useState("")
+	const [showDetails, setShowDetails] = useState(false)
 	const { toast, success, error } = useToast()
 
 	useEffect(() => {
@@ -243,20 +245,92 @@ export default function SkillsPage() {
 						</div>
 					</div>
 				) : (
-					<div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-base-content/50">
-						<div className="w-20 h-20 bg-base-200/50 rounded-full flex items-center justify-center mb-6">
-							<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 text-primary/40">
-								<path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
-							</svg>
+					<div className="flex-1 flex flex-col items-center justify-center p-8 overflow-y-auto">
+						<div className="max-w-2xl w-full space-y-8 py-12">
+							<div className="text-center space-y-4">
+								<div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto mb-6 transform rotate-3">
+									<HelpCircle className="w-10 h-10 text-primary" />
+								</div>
+								<h3 className="text-3xl font-bold text-base-content">What are Skills?</h3>
+								<p className="text-lg text-base-content/70 leading-relaxed">
+									Skills are modular sets of instructions that define how Tamias handles specific tasks or workflows.
+									They allow you to extend the agent's intelligence by providing specialized context and guidance for any scenario.
+								</p>
+							</div>
+
+							<div className={`collapse bg-base-200/50 border border-base-300/50 rounded-2xl transition-all ${showDetails ? 'collapse-open' : ''}`}>
+								<div
+									className="collapse-title flex items-center justify-between p-4 cursor-pointer hover:bg-base-300/30 transition-colors"
+									onClick={() => setShowDetails(!showDetails)}
+								>
+									<div className="flex items-center gap-3">
+										<Lightbulb className="w-5 h-5 text-warning" />
+										<span className="font-semibold text-base-content/80">Learn more about how skills work</span>
+									</div>
+									<div className={`transition-transform duration-300 ${showDetails ? 'rotate-180' : ''}`}>
+										<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 opacity-50">
+											<path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+										</svg>
+									</div>
+								</div>
+
+								<div className="collapse-content">
+									<div className="pt-4 space-y-6">
+										<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+											<div className="space-y-2">
+												<div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-base-content/40">
+													<FileCode className="w-3.5 h-3.5" />
+													<span>Instruction Based</span>
+												</div>
+												<p className="text-sm text-base-content/60">
+													Skills are defined using Markdown files. You can specify system prompts, constraints, and behavior patterns.
+												</p>
+											</div>
+											<div className="space-y-2">
+												<div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-base-content/40">
+													<Terminal className="w-3.5 h-3.5" />
+													<span>Extendable</span>
+												</div>
+												<p className="text-sm text-base-content/60">
+													Create your own library of specialized agents. Combine different skills to create complex agent personas.
+												</p>
+											</div>
+										</div>
+
+										<div className="space-y-4">
+											<div className="font-bold text-xs uppercase tracking-wider text-base-content/40">Sample Use Cases</div>
+											<div className="grid grid-cols-1 gap-2">
+												{[
+													{ title: "Customer Support", desc: "Handle inquiries with a specific tone and knowledge base.", icon: "💬" },
+													{ title: "Code Reviewer", desc: "Analyze pull requests for security and style tips.", icon: "🔍" },
+													{ title: "Content Creator", desc: "Generate blog posts matching your specific brand voice.", icon: "✍️" }
+												].map((sample, i) => (
+													<div key={i} className="flex items-center gap-4 p-3 bg-base-100/50 rounded-xl border border-base-200/50">
+														<div className="w-10 h-10 bg-base-200 rounded-lg flex items-center justify-center text-xl shadow-sm">
+															{sample.icon}
+														</div>
+														<div>
+															<div className="font-bold text-sm">{sample.title}</div>
+															<div className="text-xs text-base-content/50">{sample.desc}</div>
+														</div>
+													</div>
+												))}
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<div className="flex flex-col items-center gap-4 pt-4 text-center">
+								<button onClick={() => openEditor()} className="btn btn-primary btn-lg px-8 gap-3 shadow-lg shadow-primary/20 rounded-2xl">
+									<Plus className="w-5 h-5" />
+									Create New Skill
+								</button>
+								<p className="text-sm text-base-content/40">
+									Or select an existing one from the sidebar
+								</p>
+							</div>
 						</div>
-						<h3 className="text-xl font-medium text-base-content/80 mb-2">Select a skill</h3>
-						<p className="max-w-md mx-auto">Click on a skill in the sidebar to view its details, or create a new one to extend Tamias' capabilities.</p>
-						<button onClick={() => openEditor()} className="btn btn-primary btn-outline mt-8 gap-2">
-							<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-								<path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-							</svg>
-							Create Skill
-						</button>
 					</div>
 				)}
 			</div>
