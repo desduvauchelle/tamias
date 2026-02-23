@@ -2,6 +2,8 @@ import * as p from '@clack/prompts'
 import pc from 'picocolors'
 import { VERSION } from '../utils/version.ts'
 import { checkForUpdate, performUpdate, type UpdateProgress } from '../utils/update.ts'
+import { isDaemonRunning } from '../utils/daemon.ts'
+import { runRestartCommand } from './restart.ts'
 
 export const runUpdateCommand = async () => {
 	p.intro(pc.bgBlue(pc.white(' Tamias CLI Update ')))
@@ -22,16 +24,18 @@ export const runUpdateCommand = async () => {
 
 		const { latestVersion } = updateInfo
 
+		let forceReinstall = false
 		if (currentVersion === latestVersion) {
 			s.stop(`Already up to date. (v${currentVersion})`)
 			const shouldForce = await p.confirm({
-				message: 'Re-install current version (includes dashboard rebuild)?',
+				message: 'Re-install current version (includes dashboard update)?',
 				initialValue: false
 			})
 			if (!shouldForce || p.isCancel(shouldForce)) {
 				p.outro(pc.green('No update required.'))
 				process.exit(0)
 			}
+			forceReinstall = true
 			s.start('Re-installing...')
 		} else {
 			s.message(`New version found: v${latestVersion}.`)
@@ -45,10 +49,17 @@ export const runUpdateCommand = async () => {
 			} else {
 				s.message(progress.message)
 			}
-		})
+		}, { force: forceReinstall })
 
 		if (result.success) {
 			s.stop(`Successfully updated to v${result.latestVersion || result.currentVersion}!`)
+
+			// Restart the daemon so the new binary and dashboard take effect immediately.
+			if (await isDaemonRunning()) {
+				p.log.info('Restarting daemon to apply update...')
+				await runRestartCommand()
+			}
+
 			p.outro(pc.green('Update complete.'))
 		} else {
 			s.stop('Update failed.')

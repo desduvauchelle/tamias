@@ -67,7 +67,7 @@ export async function installDashboardTarball(downloadUrl: string, onProgress: P
 	}
 }
 
-export async function performUpdate(onProgress: ProgressCallback = () => { }): Promise<UpdateResult> {
+export async function performUpdate(onProgress: ProgressCallback = () => { }, { force = false }: { force?: boolean } = {}): Promise<UpdateResult> {
 	try {
 		const updateInfo = await checkForUpdate()
 		if (!updateInfo) {
@@ -77,12 +77,12 @@ export async function performUpdate(onProgress: ProgressCallback = () => { }): P
 		const { currentVersion, latestVersion, release } = updateInfo
 		const latestVersionStr = release.tag_name
 
-		if (currentVersion === latestVersion) {
+		if (currentVersion === latestVersion && !force) {
 			onProgress({ message: `Already up to date (v${currentVersion}).`, type: 'info' })
 			return { success: true, currentVersion, latestVersion }
 		}
 
-		onProgress({ message: `New version found: v${latestVersion}.`, type: 'info' })
+		onProgress({ message: force && currentVersion === latestVersion ? `Re-installing v${currentVersion}...` : `New version found: v${latestVersion}.`, type: 'info' })
 
 		// 1. Determine OS and Arch for binary
 		const sysOS = process.platform
