@@ -466,10 +466,10 @@ export const runOnboarding = async (): Promise<void> => {
 		}
 	}
 
-	// The workspacePath in config is ALWAYS TAMIAS_DIR by default now.
-	// We keep it as TAMIAS_DIR even if a shortcut is created, because
-	// the AI should work on the primary data source. The shortcut is for the user.
-	setWorkspacePath(TAMIAS_DIR)
+	// The workspacePath defaults to ~/.tamias/workspace so all AI-created documents
+	// stay within the ~/.tamias boundary. The shortcut (if created) gives the user
+	// a convenient access point to the whole ~/.tamias directory.
+	setWorkspacePath(getDefaultWorkspacePath())
 
 	// Scaffold remaining templates
 	scaffoldFromTemplates()

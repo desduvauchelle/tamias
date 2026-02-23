@@ -4,7 +4,61 @@ import { execSync } from 'child_process'
 import { readFileSync, writeFileSync, unlinkSync, cpSync, mkdirSync, readdirSync, statSync } from 'fs'
 import { rename } from 'fs/promises'
 import { join, dirname } from 'path'
+import { homedir } from 'os'
 import { validatePath, expandHome } from '../utils/path.ts'
+import { TAMIAS_DIR } from '../utils/config.ts'
+
+/** Absolute path of the secrets file — never readable via run_command */
+const TAMIAS_ENV_FILE = join(TAMIAS_DIR, '.env')
+/** Normalised home dir for path checks (no trailing slash) */
+const HOME = homedir()
+
+/**
+ * Scan a shell command string for references to paths that are either:
+ *  - the secrets file (~/.tamias/.env)
+ *  - outside ~/.tamias entirely
+ *
+ * This is a best-effort guard against the AI constructing commands like
+ * `cat ~/.tamias/.env` or `cp /etc/passwd ...`. Full shell AST parsing is
+ * not attempted; we check against known dangerous patterns.
+ */
+function auditCommand(command: string): void {
+	// Expand ~ so comparisons are consistent
+	const expanded = command.replace(/~\//g, HOME + '/').replace(/^~$/, HOME)
+
+	// 1. Always block access to the .env secrets file
+	const envVariants = [
+		TAMIAS_ENV_FILE,
+		'~/.tamias/.env',
+		join(HOME, '.tamias/.env'),
+	]
+	for (const variant of envVariants) {
+		if (expanded.includes(variant) || command.includes(variant)) {
+			throw new Error(`Access denied: commands that reference the secrets file '${TAMIAS_ENV_FILE}' are blocked.`)
+		}
+	}
+
+	// 2. Block obvious attempts to read/write outside ~/.tamias using absolute paths.
+	//    We look for path-like tokens that start with / or ~ and are NOT under ~/.tamias.
+	const pathTokens = expanded.match(/(?:^|\s|['"])(\/([\S]+)|~[\S]*)/g) || []
+	for (let token of pathTokens) {
+		token = token.trim().replace(/^['"]|['"]$/g, '')
+		if (!token.startsWith('/') && !token.startsWith(HOME)) continue
+		// Normalise
+		const norm = token.replace(/\/+$/, '')
+		if (norm.startsWith(TAMIAS_DIR)) continue          // inside ~/.tamias — fine
+		if (norm === HOME) continue                         // bare ~ — usually harmless (e.g. cd ~)
+		// Common system paths that would clearly be an escape attempt
+		const dangerPrefixes = ['/etc', '/root', '/private/etc', '/proc', '/sys', '/var', '/usr', '/bin', '/sbin']
+		if (dangerPrefixes.some(p => norm.startsWith(p))) {
+			throw new Error(`Access denied: command references a system path '${norm}' outside the authorized workspace '${TAMIAS_DIR}'.`)
+		}
+		// Any other absolute path outside ~/.tamias that isn't the home dir itself
+		if (!norm.startsWith(TAMIAS_DIR) && norm.startsWith(HOME) && norm !== HOME) {
+			throw new Error(`Access denied: command references '${norm}' which is outside the authorized workspace '${TAMIAS_DIR}'.`)
+		}
+	}
+}
 
 /** All tools exported from this file become the "terminal" internal tool */
 
@@ -18,6 +72,7 @@ export const terminalTools = {
 		}),
 		execute: async ({ command, cwd }: { command: string; cwd?: string }) => {
 			try {
+				auditCommand(command)
 				const targetCwd = cwd ? validatePath(cwd) : process.cwd()
 				const output = execSync(command, {
 					cwd: targetCwd,
@@ -170,8 +225,10 @@ export const terminalTools = {
 		execute: async ({ pattern, cwd }: { pattern: string; cwd?: string }) => {
 			try {
 				const targetCwd = cwd ? validatePath(cwd) : process.cwd()
+				const builtCommand = `find . -name "${pattern}" -type f 2>/dev/null || true`
+				auditCommand(builtCommand)
 				// Use `find` for actual filesystem searching
-				const output = execSync(`find . -name "${pattern}" -type f 2>/dev/null || true`, {
+				const output = execSync(builtCommand, {
 					cwd: targetCwd,
 					encoding: 'utf-8',
 				})

@@ -1,5 +1,5 @@
 import { expect, test, describe, beforeEach, afterEach } from "bun:test"
-import { getDefaultWorkspacePath, loadConfig, saveConfig, TAMIAS_DIR } from "./config"
+import { getDefaultWorkspacePath, loadConfig, saveConfig, TAMIAS_DIR, TAMIAS_WORKSPACE_DIR } from "./config"
 import type { TamiasConfig } from "./config"
 import { join } from "path"
 import { homedir } from "os"
@@ -13,8 +13,9 @@ describe("Config Utils", () => {
 		if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true })
 	})
 
-	test("getDefaultWorkspacePath returns ~/.tamias", () => {
-		expect(getDefaultWorkspacePath()).toBe(TAMIAS_DIR)
+	test("getDefaultWorkspacePath returns ~/.tamias/workspace", () => {
+		expect(getDefaultWorkspacePath()).toBe(TAMIAS_WORKSPACE_DIR)
+		expect(getDefaultWorkspacePath()).toBe(join(TAMIAS_DIR, "workspace"))
 	})
 
 	test("loadConfig migrates missing workspacePath to default", () => {

@@ -18,6 +18,7 @@ import {
 	deleteConnection,
 	getWorkspacePath,
 	setWorkspacePath,
+	TAMIAS_DIR,
 	ProviderEnum,
 	type McpServerConfig,
 } from '../utils/config.ts'
@@ -360,13 +361,24 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 		}),
 
 		set_workspace_path: tool({
-			description: 'Set the absolute path for the restricted workspace terminal.',
+			description: 'Set the workspace directory for file operations. MUST be a path inside ~/.tamias (e.g. ~/.tamias/workspace or ~/.tamias/workspace/<project>). Paths outside ~/.tamias are forbidden.',
 			inputSchema: z.object({
-				path: z.string().describe('Absolute path to the workspace directory'),
+				path: z.string().describe('Absolute path inside ~/.tamias, e.g. ~/.tamias/workspace/my-project'),
 			}),
 			execute: async ({ path }) => {
-				setWorkspacePath(path)
-				return { success: true, workspacePath: path }
+				const normalised = path.replace(/\/+$/, '')
+				if (!normalised.startsWith(TAMIAS_DIR)) {
+					return {
+						success: false,
+						error: `Workspace path must be inside ${TAMIAS_DIR}. Got: '${path}'. Use a sub-folder such as ~/.tamias/workspace or ~/.tamias/workspace/<project>.`
+					}
+				}
+				try {
+					setWorkspacePath(normalised)
+					return { success: true, workspacePath: normalised }
+				} catch (err) {
+					return { success: false, error: String(err) }
+				}
 			},
 		}),
 

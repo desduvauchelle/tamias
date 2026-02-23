@@ -1,7 +1,7 @@
 import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
-import { getBridgesConfig } from './config.ts'
+import { getBridgesConfig, getWorkspacePath, TAMIAS_DIR } from './config.ts'
 import { getLoadedSkills } from './skills.js'
 
 
@@ -112,7 +112,19 @@ Be concise, accurate, and focus ONLY on the assigned task. Your final response w
 	}
 
 	sections.push(`# Memory Location\n\nYour memory and persona files (USER.md, IDENTITY.md, SOUL.md, AGENTS.md, MEMORY.md, and daily logs) are persistently stored at \`${MEMORY_DIR}\` (which can also be accessed via \`~/.tamias/memory\`).
-When reading or updating your memory, you can use either the absolute path or the home-relative path (e.g., \`~/.tamias/memory/USER.md\`).`)
+When reading or updating your memory, you can use either the absolute path or the home-relative path (e.g., \`~/.tamias/memory/USER.md\`.)`)
+
+	// Hard-enforced workspace boundary — always injected, cannot be overridden by user files
+	const workspacePath = getWorkspacePath()
+	sections.push(
+		`# Workspace & File Creation Policy (ENFORCED)\n\n` +
+		`**All files you create MUST be stored inside \`${TAMIAS_DIR}\`. Writing outside this directory is forbidden.**\n\n` +
+		`- Your current workspace: \`${workspacePath}\`\n` +
+		`- Default location for new documents: \`${TAMIAS_DIR}/workspace/\`\n` +
+		`- For project-specific work, use a subfolder: \`${TAMIAS_DIR}/workspace/<project-name>/\`\n` +
+		`- **Never** write to \`~/Desktop\`, \`~/Documents\`, \`~/Downloads\`, or anywhere outside \`${TAMIAS_DIR}\`.\n` +
+		`- When unsure where to save, use \`tamias__get_workspace_path\` then save into that directory.`
+	)
 
 
 	// System framework overrides

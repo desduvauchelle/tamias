@@ -119,9 +119,11 @@ export const TamiasConfigSchema = z.object({
 
 export type TamiasConfig = z.infer<typeof TamiasConfigSchema>
 
+export const TAMIAS_WORKSPACE_DIR = join(TAMIAS_DIR, 'workspace')
+
 export const getDefaultWorkspacePath = () => {
-	// Everything lives in ~/.tamias, including the AI's operating context
-	return TAMIAS_DIR
+	// AI file creation lives in ~/.tamias/workspace — always within ~/.tamias
+	return TAMIAS_WORKSPACE_DIR
 }
 
 const getConfigPath = () => {
@@ -476,10 +478,19 @@ export const getWorkspacePath = (): string => {
 }
 
 export const setWorkspacePath = (path: string): void => {
+	// Security: workspace must always be within ~/.tamias
+	const realTamias = TAMIAS_DIR
+	const normalised = path.replace(/\/+$/, '') // strip trailing slashes
+	if (!normalised.startsWith(realTamias)) {
+		throw new Error(
+			`Workspace path must be inside ~/.tamias (got '${path}'). ` +
+			`Use a sub-folder such as ~/.tamias/workspace or ~/.tamias/workspace/<project>.`
+		)
+	}
 	const c = loadConfig()
-	c.workspacePath = path
-	if (!existsSync(path)) {
-		mkdirSync(path, { recursive: true })
+	c.workspacePath = normalised
+	if (!existsSync(normalised)) {
+		mkdirSync(normalised, { recursive: true })
 	}
 	saveConfig(c)
 }

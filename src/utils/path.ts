@@ -1,7 +1,10 @@
 import { join, resolve, isAbsolute, dirname } from 'path'
 import { homedir } from 'os'
 import { realpathSync } from 'fs'
-import { getWorkspacePath } from './config.ts'
+import { getWorkspacePath, TAMIAS_DIR } from './config.ts'
+
+/** Absolute path to the secrets file — always denied, regardless of workspace */
+const TAMIAS_ENV_FILE = join(TAMIAS_DIR, '.env')
 
 /**
  * Expand ~/ to absolute home directory path.
@@ -45,16 +48,34 @@ export const validatePath = (path: string): string => {
 	}
 
 	// 3. Ensure it starts with workspaceRoot
-	// Note: getDefaultWorkspacePath() returns ~/Documents/Tamias by default.
+	// Note: getDefaultWorkspacePath() returns ~/.tamias/workspace.
 	// If the user has a workspace configured, we MUST enforce it.
 	try {
 		const realWorkspace = realpathSync(workspaceRoot)
+		// Always deny the .env secrets file, even if workspace happens to cover it
+		try {
+			const realEnv = realpathSync(TAMIAS_ENV_FILE)
+			if (absolutePath === realEnv) {
+				throw new Error(`Access denied: '${TAMIAS_ENV_FILE}' is a protected secrets file and cannot be accessed by tools.`)
+			}
+		} catch (err: any) {
+			// If .env doesn't exist yet, still block by normalised path comparison
+			if (absolutePath === TAMIAS_ENV_FILE) {
+				throw new Error(`Access denied: '${TAMIAS_ENV_FILE}' is a protected secrets file and cannot be accessed by tools.`)
+			}
+			// Re-throw real access-denied errors
+			if (err.message?.startsWith('Access denied')) throw err
+		}
 		if (!absolutePath.startsWith(realWorkspace)) {
 			throw new Error(`Access denied: Path '${path}' is outside the authorized workspace '${realWorkspace}'.`)
 		}
 	} catch (err) {
 		// If workspaceRoot doesn't exist yet, we can't realpath it.
 		// In that case, we at least check if the string starts with workspaceRoot.
+		if ((err as any).message?.startsWith('Access denied')) throw err
+		if (absolutePath === TAMIAS_ENV_FILE) {
+			throw new Error(`Access denied: '${TAMIAS_ENV_FILE}' is a protected secrets file and cannot be accessed by tools.`)
+		}
 		if (!absolutePath.startsWith(workspaceRoot)) {
 			throw new Error(`Access denied: Path '${path}' is outside the authorized workspace '${workspaceRoot}'.`)
 		}

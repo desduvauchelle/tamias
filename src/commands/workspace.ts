@@ -1,6 +1,6 @@
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
-import { getWorkspacePath, setWorkspacePath } from '../utils/config.ts'
+import { getWorkspacePath, setWorkspacePath, TAMIAS_DIR } from '../utils/config.ts'
 import { existsSync, mkdirSync } from 'fs'
 import { resolve } from 'path'
 import { homedir } from 'os'
@@ -10,6 +10,11 @@ export const runWorkspaceCommand = async (newPath?: string) => {
 
 	if (newPath) {
 		const absolutePath = resolve(newPath.replace(/^~/, homedir()))
+		const normalised = absolutePath.replace(/\/+$/, '')
+		if (!normalised.startsWith(TAMIAS_DIR)) {
+			p.cancel(pc.red(`❌ Workspace path must be inside ${TAMIAS_DIR.replace(homedir(), '~')}. Got: '${absolutePath}'`))
+			process.exit(1)
+		}
 		try {
 			if (!existsSync(absolutePath)) {
 				const confirm = await p.confirm({
@@ -55,11 +60,14 @@ export const runWorkspaceCommand = async (newPath?: string) => {
 	}
 
 	if (action === 'change') {
+		const tamiasDisplay = TAMIAS_DIR.replace(homedir(), '~')
 		const result = await p.text({
-			message: 'Enter new workspace path:',
+			message: `Enter new workspace path (must be inside ${tamiasDisplay}):`,
 			placeholder: currentPath,
 			validate: (v) => {
 				if (!v) return 'Path is required'
+				const abs = resolve(v.replace(/^~/, homedir())).replace(/\/+$/, '')
+				if (!abs.startsWith(TAMIAS_DIR)) return `Path must be inside ${tamiasDisplay}`
 			},
 		})
 
