@@ -118,7 +118,7 @@ function HealthStatus() {
 			<div className="flex items-center gap-2 mb-1">
 				<span className={`w-2 h-2 rounded-full flex-shrink-0 ${status.running ? 'bg-success animate-pulse' : 'bg-error'}`} />
 				<span className={`text-xs font-medium ${status.running ? 'text-success' : 'text-error'}`}>
-					{status.running ? 'Daemon running' : 'Daemon stopped'}
+					{status.running ? 'Tamias ON' : 'Tamias OFF'}
 				</span>
 			</div>
 			{status.running && status.pid && (

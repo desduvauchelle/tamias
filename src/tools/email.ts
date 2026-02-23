@@ -4,6 +4,7 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { getEmailConfig, getEmailPassword } from '../utils/config.ts'
 import { hasDependency } from '../utils/dependencies.ts'
+import { ensureHimalayaAccount } from '../utils/himalaya.ts'
 
 const execAsync = promisify(exec)
 
@@ -26,10 +27,19 @@ export const emailTools = {
 				return { success: false, error: errorMsg }
 			}
 
+			const password = getEmailPassword(account)
+			const provisionResult = ensureHimalayaAccount({
+				accountName: config.accountName,
+				email: config.email || '',
+				service: config.service || 'gmail',
+				password: password || '',
+			})
+			if (!provisionResult.ok) return { success: false, error: provisionResult.reason }
+
 			try {
 				console.log(`[daemon] Listing emails for account: ${config.nickname || config.accountName} (page ${page})`)
 				const { stdout } = await execAsync(
-					`himalaya --account ${config.accountName} envelope list --page ${page} --page-size ${pageSize} --output json`
+					`himalaya envelope list --account ${config.accountName} --page ${page} --page-size ${pageSize} --output json`
 				)
 				const envelopes = JSON.parse(stdout)
 				return { success: true, envelopes }
@@ -58,9 +68,18 @@ export const emailTools = {
 				return { success: false, error: `Email tool is disabled for account '${config.nickname}'.` }
 			}
 
+			const readPassword = getEmailPassword(account)
+			const readProvision = ensureHimalayaAccount({
+				accountName: config.accountName,
+				email: config.email || '',
+				service: config.service || 'gmail',
+				password: readPassword || '',
+			})
+			if (!readProvision.ok) return { success: false, error: readProvision.reason }
+
 			try {
 				console.log(`[daemon] Reading email ${id} using account: ${config.nickname}`)
-				const { stdout } = await execAsync(`himalaya --account ${config.accountName} message read ${id}`)
+				const { stdout } = await execAsync(`himalaya message read --account ${config.accountName} ${id}`)
 				return { success: true, id, content: stdout }
 			} catch (err: any) {
 				console.error(`[daemon] Failed to read email ${id}: ${err.message}`)
@@ -103,6 +122,14 @@ export const emailTools = {
 			}
 
 			const password = getEmailPassword(account)
+			const sendProvision = ensureHimalayaAccount({
+				accountName: config.accountName,
+				email: config.email || '',
+				service: config.service || 'gmail',
+				password: password || '',
+			})
+			if (!sendProvision.ok) return { success: false, error: sendProvision.reason }
+
 			const env = { ...process.env }
 			if (password) {
 				env.EMAIL_PASSWORD = password
@@ -113,7 +140,7 @@ export const emailTools = {
 				const { execSync } = await import('child_process')
 				const template = `To: ${to}\nSubject: ${subject}\n\n${body}`
 
-				execSync(`himalaya --account ${config.accountName} template send`, {
+				execSync(`himalaya template send --account ${config.accountName}`, {
 					env,
 					input: template,
 					encoding: 'utf-8',

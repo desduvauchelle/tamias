@@ -34,6 +34,7 @@ export async function GET() {
 			prompt: l.inputSnippet ?? l.prompt,
 			response: l.outputSnippet ?? l.response,
 			estimatedCostUsd: l.estimatedCostUsd ?? 0,
+			fullHistory: l.fullHistory ?? []
 		}))
 
 		return NextResponse.json({ logs })

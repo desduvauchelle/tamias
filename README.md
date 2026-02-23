@@ -19,12 +19,15 @@ Tamias comes from the Ancient Greek word ταμίας (tamíās), which means "s
 **Requirements**: [Bun](https://bun.sh) ≥ 1.1
 
 ### One-line Install (Recommended)
+
 You can install the latest release directly via curl:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/desduvauchelle/tamias/main/install.sh | bash
 ```
 
 ### Build from Source
+
 ```bash
 git clone https://github.com/desduvauchelle/tamias.git
 cd tamias
@@ -53,6 +56,7 @@ tamias chat
 Tamias uses a **Client-Daemon** architecture to manage multiple concurrent chats and persistent tool state.
 
 ### The Daemon (`tamias start`)
+
 A central background process that maintains connections, manages message queues, and orchestrates tool execution. It also serves a **Dashboard** (usually on port 5678) and an **API** (port 9001).
 
 ---
@@ -60,6 +64,7 @@ A central background process that maintains connections, manages message queues,
 ## 📖 Learn More
 
 Explore our in-depth guides to understand how Tamias works under the hood:
+
 - **[Introduction to Tamias](./docs/introduction.md)**: Architecture and core concepts.
 - **[Safety & Security](./docs/safety.md)**: How we keep your machine safe.
 - **[Efficient Agency](./docs/efficient-agency.md)**: Optimizing token usage and sub-agents.
@@ -70,6 +75,7 @@ Explore our in-depth guides to understand how Tamias works under the hood:
 ## CLI Reference
 
 ### Configuration & Models
+
 - `tamias config`: Add a new AI provider connection (OpenAI, Anthropic, etc.).
 - `tamias models list`: See all configured connections.
 - `tamias models edit [nickname]`: Update a connection.
@@ -77,30 +83,35 @@ Explore our in-depth guides to understand how Tamias works under the hood:
 - `tamias model`: View or interactively set the global default model.
 
 ### Chat & Lifecycle
+
 - `tamias chat`: Launch an interactive CLI chat session.
 - `tamias onboarding`: Re-run the first-run setup wizard.
 - `tamias update`: Check for and install updates (Binary + Dashboard).
 - `tamias doctor`: Check and fix system dependencies (himalaya, git, etc.).
 
 ### Daemon Management
+
 - `tamias start`: Start the background process (use `--daemon` for quiet mode).
 - `tamias stop`: Shut down the running daemon.
 - `tamias status`: Show PID, uptime, active sessions, and URLs.
 - `tamias usage`: Display token usage and estimated cost stats.
 
 ### Channels (Gateways)
+
 - `tamias channels list`: See Discord/Telegram status.
 - `tamias channels add`: Connect a new platform bot.
 - `tamias channels edit`: Update tokens or allowed IDs.
 - `tamias channels remove [platform]`: Delete a gateway config.
 
 ### Agent Management (Personas)
+
 - `tamias agents list`: See all registered reusable personas.
 - `tamias agents add`: Register a new persona with custom instructions.
 - `tamias agents edit [id]`: Update an agent's name, model, or prompt.
 - `tamias agents rm [id]`: Delete a persona from the gallery.
 
 ### Maintenance & Data
+
 - `tamias workspace [path]`: Set a restricted directory for AI file operations.
 - `tamias backup`: Archive your config, logs, and database.
 - `tamias restore <file>`: Restore from a backup archive.
@@ -113,7 +124,9 @@ Explore our in-depth guides to understand how Tamias works under the hood:
 Tools make the AI **agentic**. Tamias includes several powerful built-in tools.
 
 ### `terminal`
+
 Full shell and filesystem access (can be restricted via allowlists).
+
 | Function | Description |
 |---|---|
 | `run_command` | Execute any shell command |
@@ -124,7 +137,9 @@ Full shell and filesystem access (can be restricted via allowlists).
 | `list_dir` | Browser directories |
 
 ### `workspace`
+
 A **restricted** version of the terminal that only allows operations within a specific directory.
+
 | Function | Description |
 |---|---|
 | `run_command` | Execute shell commands (blocked keywords) |
@@ -132,7 +147,9 @@ A **restricted** version of the terminal that only allows operations within a sp
 | `list_dir` | Scope-limited directory listing |
 
 ### `github`
+
 Integrated Git workflow for the AI.
+
 | Function | Description |
 |---|---|
 | `git_status` | Check repository status |
@@ -142,6 +159,7 @@ Integrated Git workflow for the AI.
 | `git_diff` / `git_log` | Inspect history |
 
 ### `email`
+
 AI-driven email management via the `himalaya` CLI.
 > [!NOTE]
 > Requires the `himalaya` CLI. If missing, Tamias will offer to install it for you during setup or via `tamias doctor`.
@@ -159,15 +177,19 @@ AI-driven email management via the `himalaya` CLI.
 Tamias allows your primary AI to delegate complex or long-running tasks to specialized **sub-agents**. Each sub-agent runs in its own isolated session and reports back to the main chat automatically.
 
 ### Why use Sub-agents?
+
 - **Isolation**: Prevent a complex task from bloating the main conversation history.
 - **Specialization**: Use pre-defined **Agents (Personas)** for specific tasks (e.g., a "Researcher" or "Code Auditor").
 - **Concurrency**: Let a worker handle a sub-task while you continue the main conversation.
 
 ### Agent Personas
+
 You can define reusable "identities" via `tamias agents add`. These contain fixed instructions and model preferences.
+
 - **Example**: A "Researcher" agent always uses a large-context model and has specific instructions to provide citations.
 
 ### Using Sub-agents in Chat
+
 The AI can spawn a sub-agent using the `subagent__spawn` tool. You can also prompt it to do so:
 > "Spawn a **Researcher** agent to read the documentation in `~/docs` and summarize the security section."
 
@@ -195,4 +217,5 @@ See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 ### Latest Version (v2026.2.22.1)
 
 ### Features
+
 - Implement AI model fallback and priority selection, alongside a new robust update mechanism.

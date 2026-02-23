@@ -62,7 +62,8 @@ program
 	.option('--clear', 'Clear the log file')
 	.action((opts: { lines?: string; follow?: boolean; clear?: boolean }) => runHistoryCommand(opts))
 
-	// ─── tamias stop ──────────────────────────────────────────────────────────────
+// ─── tamias stop ──────────────────────────────────────────────────────────────
+program
 	.command('stop')
 	.description('Stop the running Tamias daemon')
 	.action(runStopCommand)

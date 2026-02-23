@@ -357,6 +357,12 @@ export class AIService {
 		let lastError: any = null
 		const failures: Array<{ model: string; error: string }> = []
 
+		// Emit 'start' once per message job, BEFORE the model-retry loop.
+		// Emitting inside the loop caused a second 'start' on retry, which
+		// popped the next queued Discord message prematurely, resulting in
+		// that message receiving two responses.
+		session.emitter.emit('event', { type: 'start', sessionId: session.id } as DaemonEvent)
+
 		for (const currentModelStr of modelsToTry) {
 			const [nickname, ...rest] = currentModelStr.split('/')
 			const modelId = rest.join('/') || currentModelStr
@@ -382,8 +388,6 @@ export class AIService {
 					authorName: job.authorName,
 					isSubagent: session.isSubagent
 				})
-
-				session.emitter.emit('event', { type: 'start', sessionId: session.id } as DaemonEvent)
 
 				const startTime = Date.now()
 				const result = streamText({
@@ -418,6 +422,7 @@ export class AIService {
 					new Promise(resolve => setTimeout(() => resolve({}), 2000))
 				]).catch((err) => { console.warn('[AIService] Failed to retrieve usage stats:', err); return {} }) as any
 
+				const fullMessages = await (result as any).fullMessages
 				logAiRequest({
 					timestamp: new Date().toISOString(),
 					sessionId: session.id,
@@ -432,7 +437,7 @@ export class AIService {
 					},
 					messages: [
 						{ role: 'system', content: systemPrompt },
-						...session.messages,
+						...fullMessages,
 					],
 					response: fullResponse,
 				})
@@ -496,15 +501,15 @@ export class AIService {
 			case 'openai': return createOpenAI({ apiKey })(modelId)
 			case 'anthropic': return createAnthropic({ apiKey })(modelId) as any
 			case 'google': return createGoogleGenerativeAI({ apiKey })(modelId) as any
-		case 'openrouter': {
-			return createOpenRouter({ apiKey })(modelId)
-		}
-		case 'ollama': {
-			let baseURL = (connection as any).baseUrl || 'http://127.0.0.1:11434'
-			baseURL = baseURL.replace(/\/$/, '')
-			if (!baseURL.endsWith('/v1')) baseURL += '/v1'
-			return createOpenAI({ baseURL, apiKey: apiKey || 'ollama' }).chat(modelId)
-		}
+			case 'openrouter': {
+				return createOpenRouter({ apiKey })(modelId)
+			}
+			case 'ollama': {
+				let baseURL = (connection as any).baseUrl || 'http://127.0.0.1:11434'
+				baseURL = baseURL.replace(/\/$/, '')
+				if (!baseURL.endsWith('/v1')) baseURL += '/v1'
+				return createOpenAI({ baseURL, apiKey: apiKey || 'ollama' }).chat(modelId)
+			}
 			default: throw new Error(`Unsupported provider: ${connection.provider}`)
 		}
 	}

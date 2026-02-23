@@ -374,7 +374,8 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 						outputSnippet: r.response,
 						estimatedCostUsd: cost,
 						tokensPrompt: r.promptTokens || 0,
-						tokensCompletion: r.completionTokens || 0
+						tokensCompletion: r.completionTokens || 0,
+						fullHistory: msgs
 					}
 				})
 

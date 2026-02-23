@@ -4,12 +4,14 @@ import { join } from "path"
 const SRC_ROOT = join(import.meta.dir, "..")
 const DEPENDENCIES_PATH = join(SRC_ROOT, "utils", "dependencies.ts")
 const CONFIG_PATH = join(SRC_ROOT, "utils", "config.ts")
+const HIMALAYA_PATH = join(SRC_ROOT, "utils", "himalaya.ts")
 
 // Mock dependencies MUST be defined before importing the code under test
 const mockHasDependency = mock((name: string) => true)
 const mockGetEmailConfig = mock((account?: string) => ({}))
 const mockGetEmailPassword = mock((account?: string) => "secret")
 const mockExecSync = mock((cmd: string, options?: any) => Buffer.from(""))
+const mockEnsureHimalayaAccount = mock(() => ({ ok: true as const }))
 
 mock.module(DEPENDENCIES_PATH, () => ({
 	hasDependency: mockHasDependency
@@ -19,6 +21,10 @@ mock.module(CONFIG_PATH, () => ({
 	getEmailConfig: mockGetEmailConfig,
 	getEmailPassword: mockGetEmailPassword,
 	getAllEmailConfigs: mock(() => ({}))
+}))
+
+mock.module(HIMALAYA_PATH, () => ({
+	ensureHimalayaAccount: mockEnsureHimalayaAccount
 }))
 
 mock.module("child_process", () => ({
@@ -36,9 +42,11 @@ describe("Email Tool", () => {
 		mockGetEmailConfig.mockClear()
 		mockGetEmailPassword.mockClear()
 		mockExecSync.mockClear()
+		mockEnsureHimalayaAccount.mockClear()
 
 		// Reset to default passing state
 		mockHasDependency.mockImplementation(() => true)
+		mockEnsureHimalayaAccount.mockImplementation(() => ({ ok: true as const }))
 		mockGetEmailConfig.mockImplementation(() => ({
 			nickname: "Personal",
 			accountName: "personal",
@@ -162,7 +170,7 @@ describe("Email Tool", () => {
 		expect(result.success).toBe(true)
 		expect(mockExecSync).toHaveBeenCalled()
 		const callArgs = mockExecSync.mock.calls[0]
-		expect(expect.stringContaining("himalaya --account denis-growth template send")).toEqual(callArgs[0])
+		expect(expect.stringContaining("himalaya template send --account denis-growth")).toEqual(callArgs[0])
 		expect(callArgs[1].input).toContain("To: friend@example.com")
 		expect(callArgs[1].input).toContain("Subject: hello")
 	})

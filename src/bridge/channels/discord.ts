@@ -24,6 +24,8 @@ export class DiscordBridge implements IBridge {
 	private channelSessions = new Map<string, string>()
 	/** Text buffer for cron/stateless sessions that have no incoming Discord message */
 	private cronBuffers = new Map<string, string>()
+	/** Deduplication guard: set of Discord message IDs already dispatched for processing */
+	private seenMessageIds = new Set<string>()
 
 	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => void): Promise<void> {
 		this.onMessage = onMessage
@@ -46,6 +48,18 @@ export class DiscordBridge implements IBridge {
 		this.client.on(Events.MessageCreate, async (message) => {
 			if (message.author.bot) return
 			if (allowedChannels?.length && !allowedChannels.includes(message.channelId)) return
+
+			// Guard against duplicate Discord gateway events (e.g. reconnect replays)
+			if (this.seenMessageIds.has(message.id)) {
+				console.warn(`[Discord Bridge] Duplicate MessageCreate for ${message.id} — ignoring`)
+				return
+			}
+			this.seenMessageIds.add(message.id)
+			// Keep the set bounded to the last 1000 messages
+			if (this.seenMessageIds.size > 1000) {
+				const oldest = this.seenMessageIds.values().next().value
+				if (oldest) this.seenMessageIds.delete(oldest)
+			}
 
 			const channelId = message.channelId
 			console.log(`[Discord Bridge] Message received in channel ${channelId} from ${message.author.username}: "${message.content.slice(0, 80)}"`)
@@ -138,19 +152,28 @@ export class DiscordBridge implements IBridge {
 					state.currentMessage = message
 					state.buffer = ''
 
-					// 🧠 Add thinking reaction
-					try { await message.react('🧠') } catch { }
-
-					// Start typing indicator (Discord clears after ~9s so refresh every 7s)
+					// Start typing indicator synchronously before any awaits to avoid a race
+					// condition where 'done' fires during an await and clears currentMessage
+					// before the interval is even created (leaving it orphaned forever).
 					if (state.typingInterval) clearInterval(state.typingInterval)
+					state.typingInterval = undefined
 
 					const channel = message.channel
 					if ('sendTyping' in channel) {
-						await channel.sendTyping().catch(() => { })
-						state.typingInterval = setInterval(async () => {
-							await channel.sendTyping().catch(() => { })
+						channel.sendTyping().catch(() => { })
+						state.typingInterval = setInterval(() => {
+							// Self-cancel if no longer processing (safety net)
+							if (!state!.currentMessage) {
+								clearInterval(state!.typingInterval)
+								state!.typingInterval = undefined
+								return
+							}
+							channel.sendTyping().catch(() => { })
 						}, 7000)
 					}
+
+					// 🧠 Add thinking reaction (fire-and-forget, after typing is set up)
+					message.react('🧠').catch(() => { })
 				}
 				break
 			}
@@ -278,6 +301,7 @@ export class DiscordBridge implements IBridge {
 				if (state.typingInterval) clearInterval(state.typingInterval)
 			}
 			this.client.destroy()
+			this.seenMessageIds.clear()
 			console.log('[Discord Bridge] Stopped.')
 		}
 	}
