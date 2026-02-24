@@ -214,8 +214,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v2026.2.22.1)
+### Latest Version (v2026.2.23.5)
 
 ### Features
-
-- Implement AI model fallback and priority selection, alongside a new robust update mechanism.
+- enhance email tool with auto-provisioning for Himalaya accounts, improve Discord message handling, and update CLI command structure

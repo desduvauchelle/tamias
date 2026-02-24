@@ -1,9 +1,157 @@
 # Changelog
 
-## [v2026.2.22.1] - 2026-02-22
+## [Unreleased]
 
 ### Features
+- add support for photo and document attachments in Telegram bridge
+- update version numbers and enhance logging and error handling in various components
+- update version numbers and enhance workspace path handling for improved security and clarity
+- enhance update command to support forced reinstallation and restart daemon after updates
+- display version '1' next to TamiasOS in the navigation bar.
+- allow bridge `onMessage` to return a boolean to prevent AI processing and enhance Discord typing indicator reliability.
+
+### Maintenance
+- update package versions and standardize CI test command.
+- Update CI workflow to run tests with `bun run test`.
+
+## [v2026.2.23.5] - 2026-02-23
+
+### Features
+- enhance email tool with auto-provisioning for Himalaya accounts, improve Discord message handling, and update CLI command structure
+
+## [v2026.2.23.4] - 2026-02-23
+
+### Features
+- update cron job structure to support 'ai' and 'message' types, enhance cron management, and add tests for new functionality
+
+## [v2026.2.23.3] - 2026-02-23
+
+### Features
+- introduce history page, enhance skills page UI with detailed explanations, and add version information to the dashboard status API.
+
+## [v2026.2.23.1] - 2026-02-23
+
+### Features
+- Redefine email tool permissions logic and add a `restart` command for the daemon.
+
+## [v2026.2.22.19] - 2026-02-22
+
+### Features
+- update Next.js standalone dashboard path, add email `canSend` permission, and introduce email tool tests
+
+## [v2026.2.22.18] - 2026-02-22
+
+### Bug Fixes
+- update version to 2026.2.22.18
+- enhance daemon and dashboard process termination logic
+- update version to 2026.2.22.17 and add @openrouter/ai-sdk-provider dependency
+- bun install --ignore-scripts in all ubuntu CI jobs
+- use bun install --ignore-scripts in CI to avoid sharp/libvips build failure on ubuntu
+
+## [v2026.2.22.16] - 2026-02-22
+
+### Bug Fixes
+- typecheck errors + kill all orphan daemons on stop + OpenRouter/Ollama compatibility mode (v2026.2.22.16)
+
+## [v2026.2.22.14] - 2026-02-22
+
+### Features
+- verbose daemon logging + tamias logs command + tamias status diagnostics (v2026.2.22.15)
+
+## [v2026.2.22.13] - 2026-02-22
+
+### Features
+- pre-build dashboard in CI + fix isCompiled binary update bug v2026.2.22.12
+
+### Bug Fixes
+- mkdir -p before copying static into standalone bundle v2026.2.22.13
+
+## [v2026.2.22.11] - 2026-02-22
+
+### Bug Fixes
+- surface swallowed errors for fail-fast debugging
+- heal stale session models directly in SQLite at startup
+
+## [v2026.2.22.10] - 2026-02-22
+
+### Bug Fixes
+- VERSION now reads from package.json; heal stale session models at startup
+
+## [v2026.2.22.9] - 2026-02-22
+
+### Features
+- update version to 2026.2.22.9 and enhance model fallback logic in AIService and config utilities
+
+## [v2026.2.22.8] - 2026-02-22
+
+### Features
+- update version to 2026.2.22.8 and ensure TAMIAS_DIR is created before database initialization
+- Update version to 2026.2.22.7 and refine session persistence logic in AIService
+- Implement persistent AI model fallback, enhance README discovery, and improve dashboard update robustness with build error handling.
+
+### Refactors
+- Improve AI model fallback and cleanup logic for stale connections, centralize database directory path, and update version.
+
+## [v2026.2.22.4] - 2026-02-22
+
+### Features
+- standardize default workspace path to ~/.tamias and update package version.
+- enhance email account management with service selection and streamline onboarding workspace setup with an optional directory shortcut.
+
+## [v2026.2.22.2] - 2026-02-22
+
+### Features
+- Introduce comprehensive changelog generation and display, alongside new documentation and environment path refactoring.
+
+## [v2026.2.22.1] - 2026-02-22
+
+
+
+## [v26.2.23.7] - 2026-02-23
+
+### Features
+- update version numbers and enhance workspace path handling for improved security and clarity
+- enhance update command to support forced reinstallation and restart daemon after updates
+
+## [v26.2.23.6] - 2026-02-23
+
+### Features
+- display version '1' next to TamiasOS in the navigation bar.
+- allow bridge `onMessage` to return a boolean to prevent AI processing and enhance Discord typing indicator reliability.
+- enhance email tool with auto-provisioning for Himalaya accounts, improve Discord message handling, and update CLI command structure
+- update cron job structure to support 'ai' and 'message' types, enhance cron management, and add tests for new functionality
+- introduce history page, enhance skills page UI with detailed explanations, and add version information to the dashboard status API.
+- Redefine email tool permissions logic and add a `restart` command for the daemon.
+- update Next.js standalone dashboard path, add email `canSend` permission, and introduce email tool tests
+- verbose daemon logging + tamias logs command + tamias status diagnostics (v2026.2.22.15)
+- pre-build dashboard in CI + fix isCompiled binary update bug v2026.2.22.12
+- update version to 2026.2.22.9 and enhance model fallback logic in AIService and config utilities
+- update version to 2026.2.22.8 and ensure TAMIAS_DIR is created before database initialization
+- Update version to 2026.2.22.7 and refine session persistence logic in AIService
+- Implement persistent AI model fallback, enhance README discovery, and improve dashboard update robustness with build error handling.
+- standardize default workspace path to ~/.tamias and update package version.
+- enhance email account management with service selection and streamline onboarding workspace setup with an optional directory shortcut.
+- Introduce comprehensive changelog generation and display, alongside new documentation and environment path refactoring.
 - Implement AI model fallback and priority selection, alongside a new robust update mechanism.
+
+### Bug Fixes
+- update version to 2026.2.22.18
+- enhance daemon and dashboard process termination logic
+- update version to 2026.2.22.17 and add @openrouter/ai-sdk-provider dependency
+- bun install --ignore-scripts in all ubuntu CI jobs
+- use bun install --ignore-scripts in CI to avoid sharp/libvips build failure on ubuntu
+- typecheck errors + kill all orphan daemons on stop + OpenRouter/Ollama compatibility mode (v2026.2.22.16)
+- mkdir -p before copying static into standalone bundle v2026.2.22.13
+- surface swallowed errors for fail-fast debugging
+- heal stale session models directly in SQLite at startup
+- VERSION now reads from package.json; heal stale session models at startup
+
+### Refactors
+- Improve AI model fallback and cleanup logic for stale connections, centralize database directory path, and update version.
+
+### Maintenance
+- update package versions and standardize CI test command.
+- Update CI workflow to run tests with `bun run test`.
 
 ## [v1.0.19] - 2026-02-21
 
