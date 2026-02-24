@@ -305,15 +305,21 @@ export class DiscordBridge implements IBridge {
 				break
 			}
 			case 'file': {
+				const filePayload = { files: [{ attachment: event.buffer, name: event.name }] }
 				if (state && state.currentMessage) {
 					try {
-						const channel = state.currentMessage.channel
-						const anyChannel = channel as any
-						if (typeof anyChannel.send === 'function') {
-							await anyChannel.send({ files: [{ attachment: event.buffer, name: event.name }] })
-						}
+						const anyChannel = state.currentMessage.channel as any
+						if (typeof anyChannel.send === 'function') await anyChannel.send(filePayload)
 					} catch (err) {
 						console.error(`[Discord Bridge] Failed to send file to ${channelId}:`, err)
+					}
+				} else {
+					// Cron / stateless path
+					try {
+						const channel = await this.client!.channels.fetch(channelId)
+						if (channel && 'send' in channel) await (channel as any).send(filePayload)
+					} catch (err) {
+						console.error(`[Discord Bridge] Failed to send file (cron) to ${channelId}:`, err)
 					}
 				}
 				break

@@ -113,6 +113,82 @@ export class TelegramBridge implements IBridge {
 			await this.onMessage?.(bridgeMsg, sessionKey)
 		})
 
+		// Handle photos
+		this.bot.on('message:photo', async (ctx) => {
+			const chatId = ctx.chat.id
+			const messageId = ctx.message.message_id
+			const chatKey = String(chatId)
+
+			const sessionKey = this.chatSessions.get(chatKey) ?? `tg_${chatKey}`
+			this.chatSessions.set(chatKey, sessionKey)
+
+			try { await ctx.react('👀') } catch { }
+
+			try {
+				// Use the highest-resolution variant
+				const photos = ctx.message.photo
+				const photo = photos[photos.length - 1]
+				const file = await ctx.api.getFile(photo.file_id)
+				const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`
+				const res = await fetch(fileUrl)
+				const buffer = Buffer.from(await res.arrayBuffer())
+
+				const bridgeMsg: BridgeMessage = {
+					channelId: 'telegram',
+					channelUserId: chatKey,
+					channelName: ctx.chat.type === 'private' ? 'Private Chat' : (ctx.chat as any).title,
+					authorId: String(ctx.from?.id),
+					authorName: ctx.from?.first_name,
+					content: ctx.message.caption || 'What is in this image?',
+					attachments: [{ type: 'image', buffer, mimeType: 'image/jpeg' }],
+				}
+
+				this.contexts.set(chatKey, { chatId, messageId, buffer: '' })
+				await this.onMessage?.(bridgeMsg, sessionKey)
+			} catch (err: any) {
+				console.error('[Telegram Bridge] Failed to process photo:', err)
+				try { await ctx.reply(`❌ Failed to process image: ${err.message}`) } catch { }
+			}
+		})
+
+		// Handle documents / other files
+		this.bot.on('message:document', async (ctx) => {
+			const chatId = ctx.chat.id
+			const messageId = ctx.message.message_id
+			const chatKey = String(chatId)
+
+			const sessionKey = this.chatSessions.get(chatKey) ?? `tg_${chatKey}`
+			this.chatSessions.set(chatKey, sessionKey)
+
+			try { await ctx.react('👀') } catch { }
+
+			try {
+				const doc = ctx.message.document
+				const file = await ctx.api.getFile(doc.file_id)
+				const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`
+				const res = await fetch(fileUrl)
+				const buffer = Buffer.from(await res.arrayBuffer())
+				const mimeType = doc.mime_type ?? 'application/octet-stream'
+				const isImage = mimeType.startsWith('image/')
+
+				const bridgeMsg: BridgeMessage = {
+					channelId: 'telegram',
+					channelUserId: chatKey,
+					channelName: ctx.chat.type === 'private' ? 'Private Chat' : (ctx.chat as any).title,
+					authorId: String(ctx.from?.id),
+					authorName: ctx.from?.first_name,
+					content: ctx.message.caption ?? '',
+					attachments: [{ type: isImage ? 'image' : 'file', buffer, mimeType, url: doc.file_name }],
+				}
+
+				this.contexts.set(chatKey, { chatId, messageId, buffer: '' })
+				await this.onMessage?.(bridgeMsg, sessionKey)
+			} catch (err: any) {
+				console.error('[Telegram Bridge] Failed to process document:', err)
+				try { await ctx.reply(`❌ Failed to process file: ${err.message}`) } catch { }
+			}
+		})
+
 		this.bot.catch((err) => {
 			console.error('[Telegram Bridge] Bot error:', err.message)
 		})

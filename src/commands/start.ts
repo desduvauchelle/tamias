@@ -535,7 +535,16 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 
 			if (method === 'POST' && url.pathname === '/message') {
 				const body = await req.json() as any
-				await aiService.enqueueMessage(body.sessionId, body.content)
+				let attachments: BridgeMessage['attachments'] | undefined
+				if (Array.isArray(body.attachments) && body.attachments.length > 0) {
+					attachments = body.attachments.map((a: any) => ({
+						type: (a.mimeType?.startsWith('image/') ? 'image' : 'file') as 'image' | 'file',
+						mimeType: a.mimeType ?? 'application/octet-stream',
+						buffer: Buffer.from(a.base64 ?? '', 'base64'),
+						url: a.name,
+					}))
+				}
+				await aiService.enqueueMessage(body.sessionId, body.content ?? '', body.authorName, attachments)
 				return json({ ok: true })
 			}
 

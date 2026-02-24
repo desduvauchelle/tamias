@@ -1,1 +1,1 @@
-bun run typecheck:all && bun run test
+bun run changelog && bun run typecheck:all && bun run test

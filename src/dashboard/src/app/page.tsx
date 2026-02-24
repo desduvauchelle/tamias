@@ -149,7 +149,7 @@ export default function ChatPage() {
 								{!sessions.find(s => s.id === selectedSession) && (
 									<li key={selectedSession}>
 										<button className="active flex items-center justify-between transition-all">
-											<span className="truncate max-w-[120px]">{selectedSession}</span>
+											<span className="truncate max-w-30">{selectedSession}</span>
 											<span className="badge badge-xs bg-base-300 border-none opacity-50">0</span>
 										</button>
 									</li>
@@ -160,7 +160,7 @@ export default function ChatPage() {
 											className={`${selectedSession === s.id ? 'active' : ''} flex items-center justify-between transition-all`}
 											onClick={() => setSelectedSession(s.id)}
 										>
-											<span className="truncate max-w-[120px]">{s.id}</span>
+											<span className="truncate max-w-30">{s.id}</span>
 											<span className="badge badge-xs bg-base-300 border-none opacity-50">{s.messageCount}</span>
 										</button>
 									</li>
@@ -269,26 +269,56 @@ export default function ChatPage() {
 
 function ChatTerminal({ sessionId, initialHistory }: { sessionId: string, initialHistory: UIMessage[] }) {
 	const [input, setInput] = useState('')
+	const [pendingFiles, setPendingFiles] = useState<Array<{ name: string; mimeType: string; base64: string; previewUrl?: string }>>([])
+	const fileInputRef = useRef<HTMLInputElement>(null)
 	const chatEndRef = useRef<HTMLDivElement>(null)
 
-	const { messages, sendMessage, status } = useChat({
+	const { messages, sendMessage, status, ...chatRest } = useChat({
 		transport: new DefaultChatTransport({ api: `/api/chat?sessionId=${sessionId}` }),
 		messages: initialHistory,
 	})
 
+	// Files received from the AI (via 2: data parts in the stream)
+	const streamData = (chatRest as any).data as any[] | undefined
+	const receivedFiles = streamData?.filter((d: any) => d?.__tamias_file__) ?? []
+
 	const isLoading = status === 'submitted' || status === 'streaming'
+
+	const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const files = Array.from(e.target.files ?? [])
+		const parsed = await Promise.all(files.map(async (file) => {
+			const arrayBuffer = await file.arrayBuffer()
+			const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+			const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined
+			return { name: file.name, mimeType: file.type || 'application/octet-stream', base64, previewUrl }
+		}))
+		setPendingFiles(prev => [...prev, ...parsed])
+		// Reset the input so the same file can be re-attached
+		e.target.value = ''
+	}
+
+	const removePendingFile = (idx: number) => {
+		setPendingFiles(prev => {
+			const copy = [...prev]
+			if (copy[idx]?.previewUrl) URL.revokeObjectURL(copy[idx].previewUrl!)
+			copy.splice(idx, 1)
+			return copy
+		})
+	}
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault()
 		if (!input?.trim() || isLoading) return
 		const text = input.trim()
+		const attachments = pendingFiles.map(f => ({ name: f.name, mimeType: f.mimeType, base64: f.base64 }))
 		setInput('')
-		await sendMessage({ text })
+		setPendingFiles([])
+		await sendMessage({ text, data: attachments.length > 0 ? { attachments } : undefined } as any)
 	}
 
 	useEffect(() => {
 		chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-	}, [messages])
+	}, [messages, receivedFiles])
 
 	return (
 		<div className="card h-full bg-base-200 border border-base-300 flex flex-col min-h-0 overflow-hidden shadow-xl">
@@ -327,9 +357,38 @@ function ChatTerminal({ sessionId, initialHistory }: { sessionId: string, initia
 										{typeof part.text === 'string' ? part.text : JSON.stringify(part.text)}
 									</div>
 								))}
+
+								{/* Image attachments on user messages */}
+								{message.role === 'user' && (message as any)._pendingImages?.map((src: string, idx: number) => (
+									<img key={idx} src={src} alt="attachment" className="max-w-xs max-h-48 rounded-xl mt-1 shadow" />
+								))}
 							</div>
 						))
 					)}
+
+					{/* Files received from AI */}
+					{receivedFiles.map((f: any, idx: number) => (
+						<div key={idx} className="chat chat-start animate-in slide-in-from-bottom-2 duration-300">
+							<div className="chat-header text-[10px] text-base-content/50 mb-1 uppercase font-bold tracking-tighter">TAMIASOS — FILE</div>
+							{f.mimeType?.startsWith('image/') ? (
+								<img
+									src={`data:${f.mimeType};base64,${f.base64}`}
+									alt={f.name}
+									className="max-w-xs max-h-64 rounded-xl shadow"
+								/>
+							) : (
+								<a
+									href={`data:${f.mimeType ?? 'application/octet-stream'};base64,${f.base64}`}
+									download={f.name}
+									className="chat-bubble chat-bubble-success font-mono text-xs flex items-center gap-2"
+								>
+									<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+									{f.name}
+								</a>
+							)}
+						</div>
+					))}
+
 					{isLoading && (
 						<div className="chat chat-start">
 							<div className="chat-header text-[10px] text-base-content/50 mb-1 uppercase font-bold tracking-tighter">TAMIASOS</div>
@@ -341,9 +400,49 @@ function ChatTerminal({ sessionId, initialHistory }: { sessionId: string, initia
 					<div ref={chatEndRef} />
 				</div>
 
+				{/* Pending file previews */}
+				{pendingFiles.length > 0 && (
+					<div className="px-4 pt-2 flex flex-wrap gap-2 border-t border-base-300 bg-base-300/10">
+						{pendingFiles.map((f, idx) => (
+							<div key={idx} className="relative group">
+								{f.previewUrl ? (
+									<img src={f.previewUrl} alt={f.name} className="w-14 h-14 object-cover rounded-lg border border-base-300 shadow" />
+								) : (
+									<div className="w-14 h-14 rounded-lg border border-base-300 bg-base-300 flex flex-col items-center justify-center text-center px-1 shadow">
+										<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+										<span className="text-[8px] mt-0.5 truncate w-full text-center">{f.name.slice(0, 8)}</span>
+									</div>
+								)}
+								<button
+									type="button"
+									onClick={() => removePendingFile(idx)}
+									className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-error text-error-content text-[10px] items-center justify-center hidden group-hover:flex shadow"
+								>✕</button>
+							</div>
+						))}
+					</div>
+				)}
+
 				<form onSubmit={handleSubmit} className="p-4 border-t border-base-300 flex gap-2 shrink-0 bg-base-300/10">
 					<input
-						className="input input-bordered input-sm flex-grow font-mono text-xs focus:input-success transition-all bg-base-300/50"
+						ref={fileInputRef}
+						type="file"
+						multiple
+						accept="image/*,text/*,application/json,.pdf,.csv,.md,.ts,.js,.py"
+						className="hidden"
+						onChange={handleFileChange}
+					/>
+					<button
+						type="button"
+						onClick={() => fileInputRef.current?.click()}
+						className="btn btn-ghost btn-sm btn-square shrink-0 opacity-60 hover:opacity-100"
+						title="Attach file"
+						disabled={isLoading}
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+					</button>
+					<input
+						className="input input-bordered input-sm grow font-mono text-xs focus:input-success transition-all bg-base-300/50"
 						value={input}
 						onChange={e => setInput(e.target.value)}
 						placeholder={`Command input for [${sessionId}]...`}

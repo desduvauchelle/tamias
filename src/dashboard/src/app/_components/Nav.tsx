@@ -116,7 +116,7 @@ function HealthStatus() {
 	return (
 		<div className="p-4 border-t border-base-300">
 			<div className="flex items-center gap-2 mb-1">
-				<span className={`w-2 h-2 rounded-full flex-shrink-0 ${status.running ? 'bg-success animate-pulse' : 'bg-error'}`} />
+				<span className={`w-2 h-2 rounded-full shrink-0 ${status.running ? 'bg-success animate-pulse' : 'bg-error'}`} />
 				<span className={`text-xs font-medium ${status.running ? 'text-success' : 'text-error'}`}>
 					{status.running ? 'Tamias ON' : 'Tamias OFF'}
 				</span>
@@ -150,7 +150,7 @@ export default function Nav() {
 	const pathname = usePathname()
 
 	return (
-		<aside className="w-56 flex-shrink-0 bg-base-200 border-r border-base-300 flex flex-col">
+		<aside className="w-56 shrink-0 bg-base-200 border-r border-base-300 flex flex-col">
 			{/* Logo */}
 			<div className="px-6 py-5 border-b border-base-300">
 				<div className="flex items-center gap-2">

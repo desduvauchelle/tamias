@@ -98,7 +98,7 @@ function CronCard({
 						</span>
 						<textarea
 							placeholder={job.type === 'message' ? 'Text to send directly to the channel' : 'Instruction for the AI agent'}
-							className="textarea textarea-bordered textarea-sm w-full font-mono min-h-[80px]"
+							className="textarea textarea-bordered textarea-sm w-full font-mono min-h-20"
 							value={job.prompt}
 							onChange={e => onChange({ ...job, prompt: e.target.value })}
 						/>

@@ -37,7 +37,7 @@ export interface Session {
 	updatedAt: Date
 	queue: MessageJob[]
 	processing: boolean
-	messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+	messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string | any[] }>
 	summary?: string
 	emitter: EventEmitter
 	heartbeatTimer: ReturnType<typeof setInterval> | null
@@ -315,7 +315,19 @@ export class AIService {
 			}
 		}
 
-		session.messages.push({ role: 'user', content: messageContent })
+		// Build multimodal content when image attachments are present
+		const imageAttachments = job.attachments?.filter(att => att.type === 'image' && att.buffer) ?? []
+		let userContent: string | any[]
+		if (imageAttachments.length > 0) {
+			const parts: any[] = [{ type: 'text', text: messageContent }]
+			for (const img of imageAttachments) {
+				parts.push({ type: 'image', image: new Uint8Array(img.buffer!), mimeType: img.mimeType })
+			}
+			userContent = parts
+		} else {
+			userContent = messageContent
+		}
+		session.messages.push({ role: 'user', content: userContent })
 
 		const config = loadConfig()
 		// Priority order: configured default models → session's stored model → any other configured model
@@ -393,13 +405,27 @@ export class AIService {
 				const result = streamText({
 					model,
 					system: systemPrompt,
-					messages: session.messages,
+					messages: session.messages as any,
 					tools: toolNamesList.length > 0 ? (this.activeTools as any) : undefined,
 					stopWhen: stepCountIs(20),
-					onStepFinish: async ({ toolCalls }) => {
+					onStepFinish: async ({ toolCalls, toolResults }) => {
 						if (toolCalls?.length) {
 							for (const tc of toolCalls) {
 								session.emitter.emit('event', { type: 'tool_call', name: tc.toolName, input: (tc as any).input ?? {} } as DaemonEvent)
+							}
+						}
+						// Emit file events for tools returning { __tamias_file__: true, name, buffer, mimeType }
+						if ((toolResults as any)?.length) {
+							for (const tr of (toolResults as any)) {
+								const res = tr?.result
+								if (res?.__tamias_file__ === true && res.name && res.buffer) {
+									session.emitter.emit('event', {
+										type: 'file',
+										name: res.name,
+										buffer: Buffer.isBuffer(res.buffer) ? res.buffer : Buffer.from(res.buffer),
+										mimeType: res.mimeType ?? 'application/octet-stream',
+									} as DaemonEvent)
+								}
 							}
 						}
 					},
@@ -422,7 +448,8 @@ export class AIService {
 					new Promise(resolve => setTimeout(() => resolve({}), 2000))
 				]).catch((err) => { console.warn('[AIService] Failed to retrieve usage stats:', err); return {} }) as any
 
-				const fullMessages = await (result as any).fullMessages
+				const response = await Promise.resolve(result.response).catch(() => null)
+				const fullMessages = response?.messages ?? []
 				logAiRequest({
 					timestamp: new Date().toISOString(),
 					sessionId: session.id,
@@ -502,7 +529,7 @@ export class AIService {
 			case 'anthropic': return createAnthropic({ apiKey })(modelId) as any
 			case 'google': return createGoogleGenerativeAI({ apiKey })(modelId) as any
 			case 'openrouter': {
-				return createOpenRouter({ apiKey })(modelId)
+				return createOpenRouter({ apiKey })(`${modelId}:online`)
 			}
 			case 'ollama': {
 				let baseURL = (connection as any).baseUrl || 'http://127.0.0.1:11434'
