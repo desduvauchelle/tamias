@@ -349,9 +349,9 @@ describe('onCronTrigger dispatch logic', () => {
 			}
 
 			if (job.type === 'message') {
-				;(session as any).emitter.emit('event', { type: 'start', sessionId: session.id })
-				;(session as any).emitter.emit('event', { type: 'chunk', text: job.prompt })
-				;(session as any).emitter.emit('event', { type: 'done', sessionId: session.id })
+				; (session as any).emitter.emit('event', { type: 'start', sessionId: session.id })
+					; (session as any).emitter.emit('event', { type: 'chunk', text: job.prompt })
+					; (session as any).emitter.emit('event', { type: 'done', sessionId: session.id })
 			} else {
 				await enqueueMessage(session.id, job.prompt)
 			}
@@ -390,7 +390,7 @@ describe('onCronTrigger dispatch logic', () => {
 			channelUserId: '999',
 			updatedAt: new Date(),
 		}
-		;(existingSession as any).emitter = { emit: () => {} }
+			; (existingSession as any).emitter = { emit: () => { } }
 		const created: MockSession[] = []
 		const trigger = buildTrigger({ sessions: [existingSession], created, enqueued, directEmits: [] })
 		const job = makeJob({ type: 'ai', target: 'discord:999', prompt: 'Check tasks' })
@@ -419,13 +419,165 @@ describe('onCronTrigger dispatch logic', () => {
 		const enqueued: Array<{ sessionId: string; prompt: string }> = []
 		const older: MockSession = { id: 'older', channelId: 'terminal', updatedAt: new Date(Date.now() - 10000) }
 		const newer: MockSession = { id: 'newer', channelId: 'terminal', updatedAt: new Date(Date.now()) }
-		;(older as any).emitter = { emit: () => {} }
-		;(newer as any).emitter = { emit: () => {} }
+			; (older as any).emitter = { emit: () => { } }
+			; (newer as any).emitter = { emit: () => { } }
 		const trigger = buildTrigger({ sessions: [older, newer], created: [], enqueued, directEmits: [] })
 		const job = makeJob({ type: 'ai', target: 'last', prompt: 'ping' })
 
 		await trigger(job)
 
 		expect(enqueued[0].sessionId).toBe('newer')
+	})
+})
+
+// ─── /cron-test endpoint logic ─────────────────────────────────────────────────
+
+describe('/cron-test endpoint logic', () => {
+	/**
+	 * Inline the handler logic from start.ts so we can test it without a running daemon.
+	 * Mirrors: POST /cron-test → find job, optionally override target, call onCronTrigger.
+	 */
+	function makeCronTestHandler(jobs: CronJob[], triggered: Array<CronJob>) {
+		const onCronTrigger = async (job: CronJob) => { triggered.push(job) }
+		const loadJobs = () => jobs
+
+		return async (cronId: string, target?: string): Promise<{ status: number; body: any }> => {
+			const found = loadJobs().find(j => j.id === cronId)
+			if (!found) return { status: 404, body: { error: `Cron job '${cronId}' not found` } }
+			const testJob = target ? { ...found, target } : found
+			await onCronTrigger(testJob)
+			return { status: 200, body: { ok: true, jobName: found.name, target: testJob.target } }
+		}
+	}
+
+	test('returns 404 when cronId does not match any job', async () => {
+		const handler = makeCronTestHandler([], [])
+		const res = await handler('nonexistent-id')
+		expect(res.status).toBe(404)
+		expect(res.body.error).toContain('nonexistent-id')
+	})
+
+	test('triggers the correct job when cronId matches', async () => {
+		const job = makeJob({ name: 'My Job', target: 'discord:111' })
+		const triggered: CronJob[] = []
+		const handler = makeCronTestHandler([job], triggered)
+
+		const res = await handler(job.id)
+
+		expect(res.status).toBe(200)
+		expect(res.body.ok).toBe(true)
+		expect(res.body.jobName).toBe('My Job')
+		expect(triggered.length).toBe(1)
+		expect(triggered[0].id).toBe(job.id)
+	})
+
+	test('uses job default target when no override provided', async () => {
+		const job = makeJob({ target: 'discord:111' })
+		const triggered: CronJob[] = []
+		const handler = makeCronTestHandler([job], triggered)
+
+		await handler(job.id)
+
+		expect(triggered[0].target).toBe('discord:111')
+	})
+
+	test('overrides target when override is provided', async () => {
+		const job = makeJob({ target: 'discord:111' })
+		const triggered: CronJob[] = []
+		const handler = makeCronTestHandler([job], triggered)
+
+		const res = await handler(job.id, 'discord:999')
+
+		expect(triggered[0].target).toBe('discord:999')
+		expect(res.body.target).toBe('discord:999')
+	})
+
+	test('does not mutate the original job when overriding target', async () => {
+		const job = makeJob({ target: 'discord:111' })
+		const triggered: CronJob[] = []
+		const handler = makeCronTestHandler([job], triggered)
+
+		await handler(job.id, 'discord:999')
+
+		expect(job.target).toBe('discord:111') // original unchanged
+	})
+
+	test('only triggers once per call even when multiple jobs exist', async () => {
+		const job1 = makeJob({ name: 'Job A', target: 'discord:111' })
+		const job2 = makeJob({ name: 'Job B', target: 'discord:222' })
+		const triggered: CronJob[] = []
+		const handler = makeCronTestHandler([job1, job2], triggered)
+
+		await handler(job1.id)
+
+		expect(triggered.length).toBe(1)
+		expect(triggered[0].id).toBe(job1.id)
+	})
+})
+
+// ─── Session channel fields ────────────────────────────────────────────────────
+
+describe('Session channel fields (for /sessions endpoint)', () => {
+	/**
+	 * Verifies the shape of session data that the /sessions endpoint returns.
+	 * We replicate the mapping logic from start.ts.
+	 */
+	type SessionLike = {
+		id: string
+		channelId: string
+		channelUserId?: string
+		channelName?: string
+		model: string
+		createdAt: Date
+		updatedAt: Date
+		queue: unknown[]
+		summary?: string
+		name?: string
+	}
+
+	function mapSession(s: SessionLike) {
+		return {
+			id: s.id,
+			name: s.name,
+			model: s.model,
+			createdAt: s.createdAt.toISOString(),
+			updatedAt: s.updatedAt.toISOString(),
+			summary: s.summary,
+			queueLength: s.queue.length,
+			channelId: s.channelId,
+			channelUserId: s.channelUserId,
+			channelName: s.channelName,
+		}
+	}
+
+	test('includes channelId in mapped session', () => {
+		const s: SessionLike = { id: '1', channelId: 'discord', channelUserId: '123', model: 'x', createdAt: new Date(), updatedAt: new Date(), queue: [] }
+		const mapped = mapSession(s)
+		expect(mapped.channelId).toBe('discord')
+	})
+
+	test('includes channelUserId in mapped session', () => {
+		const s: SessionLike = { id: '1', channelId: 'discord', channelUserId: '456', model: 'x', createdAt: new Date(), updatedAt: new Date(), queue: [] }
+		const mapped = mapSession(s)
+		expect(mapped.channelUserId).toBe('456')
+	})
+
+	test('includes channelName when present', () => {
+		const s: SessionLike = { id: '1', channelId: 'discord', channelUserId: '456', channelName: '#general', model: 'x', createdAt: new Date(), updatedAt: new Date(), queue: [] }
+		const mapped = mapSession(s)
+		expect(mapped.channelName).toBe('#general')
+	})
+
+	test('channelName is undefined when not set', () => {
+		const s: SessionLike = { id: '1', channelId: 'discord', channelUserId: '456', model: 'x', createdAt: new Date(), updatedAt: new Date(), queue: [] }
+		const mapped = mapSession(s)
+		expect(mapped.channelName).toBeUndefined()
+	})
+
+	test('terminal sessions have channelId "terminal" and no channelUserId', () => {
+		const s: SessionLike = { id: '1', channelId: 'terminal', model: 'x', createdAt: new Date(), updatedAt: new Date(), queue: [] }
+		const mapped = mapSession(s)
+		expect(mapped.channelId).toBe('terminal')
+		expect(mapped.channelUserId).toBeUndefined()
 	})
 })

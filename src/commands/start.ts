@@ -11,6 +11,7 @@ import { BridgeManager } from '../bridge/index.ts'
 import { CronManager } from '../bridge/cronManager.ts'
 import { watchSkills } from '../utils/skills.ts'
 import type { CronJob } from '../utils/cronStore.ts'
+import { loadCronJobs } from '../utils/cronStore.ts'
 import { scaffoldFromTemplates } from '../utils/memory.ts'
 import { db } from '../utils/db.ts'
 import { getEstimatedCost } from '../utils/pricing.ts'
@@ -371,6 +372,9 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					updatedAt: s.updatedAt.toISOString(),
 					summary: s.summary,
 					queueLength: s.queue.length,
+					channelId: s.channelId,
+					channelUserId: s.channelUserId,
+					channelName: s.channelName,
 				}))
 				return json(list)
 			}
@@ -539,6 +543,21 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				return new Response(readable, {
 					headers: cors({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' }),
 				})
+			}
+
+			if (method === 'POST' && url.pathname === '/cron-test') {
+				try {
+					const body = await req.json() as any
+					const { cronId, target } = body
+					const jobs = loadCronJobs()
+					const job = jobs.find(j => j.id === cronId)
+					if (!job) return json({ error: `Cron job '${cronId}' not found` }, 404)
+					const testJob = target ? { ...job, target } : job
+					onCronTrigger(testJob).catch(err => console.error('[cron-test] Error:', err))
+					return json({ ok: true, jobName: job.name, target: testJob.target })
+				} catch (err) {
+					return json({ error: String(err) }, 500)
+				}
 			}
 
 			if (method === 'POST' && url.pathname === '/message') {

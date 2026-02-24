@@ -13,6 +13,7 @@
 - allow bridge `onMessage` to return a boolean to prevent AI processing and enhance Discord typing indicator reliability.
 
 ### Maintenance
+- bump tamias and dashboard package versions
 - update package versions and standardize CI test command.
 - Update CI workflow to run tests with `bun run test`.
 
