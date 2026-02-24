@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- Add image generation capabilities, subagent callback mechanism, and debug mode toggle.
 - add support for photo and document attachments in Telegram bridge
 - update version numbers and enhance logging and error handling in various components
 - update version numbers and enhance workspace path handling for improved security and clarity

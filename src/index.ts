@@ -21,6 +21,8 @@ import { runDoctorCommand } from './commands/doctor.ts'
 import { runHistoryCommand } from './commands/history.ts'
 import { runRestartCommand } from './commands/restart.ts'
 import { runDebugCommand } from './commands/debug.ts'
+import { runBrowserCommand } from './commands/browser.ts'
+import { skillsCommand } from './commands/skills.ts'
 import { isOnboarded } from './utils/memory.ts'
 import { VERSION } from './utils/version.ts'
 
@@ -255,6 +257,15 @@ program
 	.command('debug')
 	.description('Toggle debug mode (adds metadata to messages and shows tool calls in CLI)')
 	.action(runDebugCommand)
+
+// ─── tamias skills ────────────────────────────────────────────────────────────
+program.addCommand(skillsCommand)
+
+// ─── tamias browser ───────────────────────────────────────────────────────────
+program
+	.command('browser')
+	.description('Open a visible browser window for manual login (persists to ~/.tamias/browser-data)')
+	.action(runBrowserCommand)
 
 // ─── tamias maintenance ──────────────────────────────────────────────────────
 program

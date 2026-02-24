@@ -34,6 +34,8 @@ import { GEMINI_TOOL_NAME } from './gemini.ts'
 import { CRON_TOOL_NAME } from './cron.ts'
 import { SUBAGENT_TOOL_NAME } from './subagent.ts'
 import { GITHUB_TOOL_NAME } from './github.ts'
+import { saveSkill, deleteSkill, getLoadedSkills, loadSkills } from '../utils/skills.ts'
+import matter from 'gray-matter'
 
 export const TAMIAS_TOOL_NAME = 'tamias'
 export const TAMIAS_TOOL_LABEL = '🤖 Tamias (self-management: models, tools, sessions, daemon)'
@@ -497,6 +499,53 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 				const next = enabled !== undefined ? enabled : !current
 				setDebugMode(next)
 				return { success: true, debugMode: next }
+			},
+		}),
+		save_skill: tool({
+			description: 'Create or update a custom AI skill. Use this to give yourself long-term specialized instructions.',
+			inputSchema: z.object({
+				name: z.string().describe('Name of the skill, e.g. "React Expert"'),
+				description: z.string().describe('Short description of what this skill does'),
+				content: z.string().describe('The detailed instructions or knowledge for this skill in Markdown format.'),
+			}),
+			execute: async ({ name, description, content }) => {
+				try {
+					await saveSkill(name, description, content)
+					// Trigger a tool refresh since skills are injected into system prompt
+					return { success: true, message: `Skill '${name}' saved successfully. It will be available in future sessions.` }
+				} catch (err) {
+					return { success: false, error: String(err) }
+				}
+			},
+		}),
+		list_skills: tool({
+			description: 'List all available custom and built-in skills.',
+			inputSchema: z.object({}),
+			execute: async () => {
+				await loadSkills()
+				const skills = getLoadedSkills()
+				return {
+					skills: skills.map(s => ({
+						name: s.name,
+						description: s.description,
+						folder: s.sourceDir.split('/').pop(),
+						isBuiltIn: s.isBuiltIn
+					}))
+				}
+			},
+		}),
+		delete_skill: tool({
+			description: 'Delete a custom user skill by its folder name.',
+			inputSchema: z.object({
+				folder: z.string().describe('The folder name of the skill to delete (e.g. "react-expert")'),
+			}),
+			execute: async ({ folder }) => {
+				try {
+					await deleteSkill(folder)
+					return { success: true, message: `Skill folder '${folder}' deleted.` }
+				} catch (err) {
+					return { success: false, error: String(err) }
+				}
 			},
 		}),
 	}

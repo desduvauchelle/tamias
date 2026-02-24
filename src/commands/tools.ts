@@ -17,6 +17,7 @@ import { GITHUB_TOOL_NAME, GITHUB_TOOL_LABEL } from '../tools/github.ts'
 import { WORKSPACE_TOOL_NAME, WORKSPACE_TOOL_LABEL } from '../tools/workspace.ts'
 import { GEMINI_TOOL_NAME, GEMINI_TOOL_LABEL } from '../tools/gemini.ts'
 import { SUBAGENT_TOOL_NAME, SUBAGENT_TOOL_LABEL } from '../tools/subagent.ts'
+import { BROWSER_TOOL_NAME, BROWSER_TOOL_LABEL } from '../tools/browser.ts'
 
 // ─── Known internal tools ─────────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ const INTERNAL_TOOLS: Record<string, string> = {
 	[WORKSPACE_TOOL_NAME]: WORKSPACE_TOOL_LABEL,
 	[GEMINI_TOOL_NAME]: GEMINI_TOOL_LABEL,
 	[SUBAGENT_TOOL_NAME]: SUBAGENT_TOOL_LABEL,
+	[BROWSER_TOOL_NAME]: BROWSER_TOOL_LABEL,
 }
 
 // ─── List ─────────────────────────────────────────────────────────────────────

@@ -74,7 +74,8 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				p.note(`Verbose logging active — tail with:\n  tamias logs`, 'Debug')
 			}
 			if (info.dashboardPort) {
-				p.outro(pc.green(`✅ Dashboard running at http://localhost:${info.dashboardPort}`))
+				const url = `http://localhost:${info.dashboardPort}${info.token ? `?token=${info.token}` : ''}`
+				p.outro(pc.green(`✅ Dashboard running at ${pc.bold(url)}`))
 			}
 			process.exit(0)
 		} catch (err) {
@@ -172,6 +173,10 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	const isBuilt = isStandalone || fs.existsSync(join(dashboardDir, '.next'))
 	const isDev = process.env.TAMIAS_DEV === 'true' || !isBuilt
 
+	// Generate a secure random token for dashboard authentication
+	const { randomBytes } = await import('crypto')
+	const dashboardToken = randomBytes(24).toString('hex')
+
 	let dashboardProc: ReturnType<typeof Bun.spawn>
 	if (isStandalone) {
 		// Standalone server: bun <path/server.js> — no package.json scripts needed
@@ -179,7 +184,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			cwd: join(dashboardDir, '.next', 'standalone', 'src', 'dashboard'),
 			stdout: dashboardLogFile,
 			stderr: dashboardLogFile,
-			env: { ...process.env, PORT: dashboardPort.toString(), HOSTNAME: '0.0.0.0' },
+			env: { ...process.env, PORT: dashboardPort.toString(), HOSTNAME: '0.0.0.0', TAMIAS_DASHBOARD_TOKEN: dashboardToken },
 		})
 	} else {
 		const dashboardScript = isDev ? 'dev' : 'start'
@@ -187,6 +192,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			cwd: dashboardDir,
 			stdout: dashboardLogFile,
 			stderr: dashboardLogFile,
+			env: { ...process.env, TAMIAS_DASHBOARD_TOKEN: dashboardToken }
 		})
 	}
 	dashboardProc.unref()
@@ -196,7 +202,8 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 		port,
 		startedAt: new Date().toISOString(),
 		dashboardPort,
-		dashboardPid: dashboardProc.pid
+		dashboardPid: dashboardProc.pid,
+		token: dashboardToken
 	})
 
 	// Log version and binary path so daemon.log always shows which binary is running
@@ -263,7 +270,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			} else {
 				// AI path — send prompt to AI, deliver generated response to channel
 				console.log(`[Cron] ${now} Enqueuing AI prompt for session ${session.id}: "${job.prompt.slice(0, 80)}..."`)
-				await aiService.enqueueMessage(session.id, job.prompt)
+				await aiService.enqueueMessage(session.id, job.prompt, undefined, undefined, { source: 'from-cron' })
 				console.log(`[Cron] ${now} AI prompt enqueued successfully for job "${job.name}"`)
 			}
 		} catch (err) {
@@ -307,7 +314,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				session.channelName = msg.channelName
 			}
 		}
-		await aiService.enqueueMessage(session.id, msg.content, msg.authorName, msg.attachments)
+		await aiService.enqueueMessage(session.id, msg.content, msg.authorName, msg.attachments, { source: 'from-chat' })
 		return true // Message accepted for AI processing
 	}
 	await bridgeManager.initializeAll(config, onBridgeMessage).catch(console.error)
@@ -545,7 +552,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 						url: a.name,
 					}))
 				}
-				await aiService.enqueueMessage(body.sessionId, body.content ?? '', body.authorName, attachments)
+				await aiService.enqueueMessage(body.sessionId, body.content ?? '', body.authorName, attachments, body.metadata)
 				return json({ ok: true })
 			}
 

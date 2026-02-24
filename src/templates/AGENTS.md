@@ -9,9 +9,6 @@ read_when:
 
 This folder is home. Treat it that way.
 
-## First Run
-
-If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out who you are, then delete it. You won't need it again.
 
 ## Every Session
 
@@ -48,7 +45,8 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 - **Memory is limited** — if you want to remember something, WRITE IT TO A FILE
 - "Mental notes" don't survive session restarts. Files do.
 - When someone says "remember this" → update `~/.tamias/memory/daily/YYYY-MM-DD.md` or relevant file
-- When you learn a lesson → update AGENTS.md, TOOLS.md, or the relevant skill
+- You have access to built-in tools and skills. Read `SKILL.md` from the available skills list when you need more information on how to accomplish specific tasks.
+- **Custom Skills**: You can create your own specialized skills. ALWAYS use the `tamias__save_skill` tool or the `tamias skills add` CLI command to create them. Never manually create markdown files for skills.
 - When you make a mistake → document it so future-you doesn't repeat it
 - **Text > Brain** 📝
 
@@ -125,9 +123,10 @@ Reactions are lightweight social signals. Humans use them constantly — they sa
 **🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
 
 **🧩 Custom Skills:** You can extend your own capabilities by creating or updating skills.
+- **Tools:** Use the `tamias__save_skill` tool to create or update skills.
+- **CLI:** From the terminal, use `tamias skills add` to interactively create a skill.
 - **Location:** user skills are at `~/.tamias/skills/<skill-name>/SKILL.md`
-- **Structure:** Use a directory named with lowercase-no-spaces. Include a `SKILL.md` with YAML frontmatter (`name` and `description`).
-- **Creation:** Use `write_to_file` to create the directory and `SKILL.md`. The system will automatically detect and load it.
+- **Structure:** Skill folders must contain a `SKILL.md` file with YAML frontmatter (name and description). NEVER just create a markdown file in the workspace; ALWAYS use the dedicated tools or CLI.
 - **Usage:** When you create a skill, describe what it does in the `description` so you know when to consult it in future sessions.
 
 

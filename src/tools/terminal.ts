@@ -23,38 +23,63 @@ const HOME = homedir()
  * not attempted; we check against known dangerous patterns.
  */
 function auditCommand(command: string): void {
-	// Expand ~ so comparisons are consistent
-	const expanded = command.replace(/~\//g, HOME + '/').replace(/^~$/, HOME)
+	const trimmed = command.trim()
 
-	// 1. Always block access to the .env secrets file
+	// 1. Block privilege escalation
+	const privilegeEscalators = ['sudo ', 'su ', 'doas ', 'chmod +s', 'chown ', 'chgrp ']
+	if (privilegeEscalators.some(p => trimmed.toLowerCase().includes(p))) {
+		throw new Error(`Access denied: privilege escalation commands are strictly blocked.`)
+	}
+
+	// 2. Expand ~ for consistent checks
+	const expanded = trimmed.replace(/~\//g, HOME + '/').replace(/^~$/, HOME)
+
+	// 3. Block access to the .env secrets file
 	const envVariants = [
 		TAMIAS_ENV_FILE,
 		'~/.tamias/.env',
 		join(HOME, '.tamias/.env'),
 	]
 	for (const variant of envVariants) {
-		if (expanded.includes(variant) || command.includes(variant)) {
+		if (expanded.includes(variant) || trimmed.includes(variant)) {
 			throw new Error(`Access denied: commands that reference the secrets file '${TAMIAS_ENV_FILE}' are blocked.`)
 		}
 	}
 
-	// 2. Block obvious attempts to read/write outside ~/.tamias using absolute paths.
+	// 4. Block dangerous redirections/pipes to system paths
+	//    Matches > /path, >> /path, | tee /path etc.
+	const redirectionMatches = expanded.match(/(?:>|>>|\|\s*tee\s+(-a\s+)?)\s*(\/[^\s|&;]+|~[^\s|&;]*)/g) || []
+	for (const match of redirectionMatches) {
+		const pathPart = match.split(/\s+/).pop()?.replace(/^['"]|['"]$/g, '')
+		if (pathPart) {
+			const norm = pathPart.replace(/\/+$/, '')
+			if (!norm.startsWith(TAMIAS_DIR) && norm !== HOME) {
+				throw new Error(`Access denied: redirection to path '${norm}' outside the authorized workspace is blocked.`)
+			}
+		}
+	}
+
+	// 5. Block obvious attempts to read/write outside ~/.tamias using absolute paths as arguments.
 	//    We look for path-like tokens that start with / or ~ and are NOT under ~/.tamias.
-	const pathTokens = expanded.match(/(?:^|\s|['"])(\/([\S]+)|~[\S]*)/g) || []
+	//    Improved regex to catch paths in various contexts (quotes, spaces, starts of lines)
+	const pathTokens = expanded.match(/(?<=^|\s|['"])(?:\/|~)[^\s'"]*/g) || []
 	for (let token of pathTokens) {
 		token = token.trim().replace(/^['"]|['"]$/g, '')
 		if (!token.startsWith('/') && !token.startsWith(HOME)) continue
+
 		// Normalise
 		const norm = token.replace(/\/+$/, '')
 		if (norm.startsWith(TAMIAS_DIR)) continue          // inside ~/.tamias — fine
 		if (norm === HOME) continue                         // bare ~ — usually harmless (e.g. cd ~)
+
 		// Common system paths that would clearly be an escape attempt
-		const dangerPrefixes = ['/etc', '/root', '/private/etc', '/proc', '/sys', '/var', '/usr', '/bin', '/sbin']
+		const dangerPrefixes = ['/etc', '/root', '/private/etc', '/proc', '/sys', '/var', '/usr', '/bin', '/sbin', '/lib', '/opt']
 		if (dangerPrefixes.some(p => norm.startsWith(p))) {
 			throw new Error(`Access denied: command references a system path '${norm}' outside the authorized workspace '${TAMIAS_DIR}'.`)
 		}
+
 		// Any other absolute path outside ~/.tamias that isn't the home dir itself
-		if (!norm.startsWith(TAMIAS_DIR) && norm.startsWith(HOME) && norm !== HOME) {
+		if (norm.startsWith(HOME) && norm !== HOME && !norm.startsWith(TAMIAS_DIR)) {
 			throw new Error(`Access denied: command references '${norm}' which is outside the authorized workspace '${TAMIAS_DIR}'.`)
 		}
 	}
@@ -73,7 +98,7 @@ export const terminalTools = {
 		execute: async ({ command, cwd }: { command: string; cwd?: string }) => {
 			try {
 				auditCommand(command)
-				const targetCwd = cwd ? validatePath(cwd) : process.cwd()
+				const targetCwd = validatePath(cwd || '.')
 				const output = execSync(command, {
 					cwd: targetCwd,
 					encoding: 'utf-8',

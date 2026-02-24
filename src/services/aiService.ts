@@ -25,6 +25,9 @@ export interface MessageJob {
 	content: string
 	authorName?: string
 	attachments?: BridgeMessage['attachments']
+	metadata?: {
+		source: string
+	}
 }
 
 export interface Session {
@@ -310,10 +313,10 @@ export class AIService {
 		await this.enqueueMessage(parentSession.id, report)
 	}
 
-	public async enqueueMessage(sessionId: string, content: string, authorName?: string, attachments?: BridgeMessage['attachments']) {
+	public async enqueueMessage(sessionId: string, content: string, authorName?: string, attachments?: BridgeMessage['attachments'], metadata?: { source: string }) {
 		const session = this.sessions.get(sessionId)
 		if (!session) throw new Error('Session not found')
-		session.queue.push({ sessionId, content, authorName, attachments })
+		session.queue.push({ sessionId, content, authorName, attachments, metadata })
 		this.processSession(session).catch(console.error)
 	}
 
@@ -426,12 +429,19 @@ export class AIService {
 				})
 
 				const startTime = Date.now()
+				const source = job.metadata?.source || 'from-chat'
+				const headers: Record<string, string> = {
+					'X-Title': `Tamias (${source})`,
+					'X-Tamias-Source': source,
+				}
+
 				const result = streamText({
 					model,
 					system: systemPrompt,
 					messages: session.messages as any,
 					tools: toolNamesList.length > 0 ? (this.activeTools as any) : undefined,
 					stopWhen: stepCountIs(20),
+					headers,
 					onStepFinish: async ({ toolCalls, toolResults }) => {
 						if (toolCalls?.length) {
 							for (const tc of toolCalls) {
@@ -624,6 +634,10 @@ Return a structured object.`
 				}),
 				system: compactionPrompt,
 				prompt: `Current history to compact:\n${JSON.stringify(session.messages)}`,
+				headers: {
+					'X-Title': 'Tamias (from-compacting)',
+					'X-Tamias-Source': 'from-compacting',
+				}
 			})
 
 			logAiRequest({
