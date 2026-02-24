@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Clock, Terminal, Cpu, Database, ChevronRight, ChevronDown, Search } from 'lucide-react'
 
 interface LogEntry {
+	id: number | string
 	timestamp: string
 	sessionId: string
 	model: string
@@ -25,10 +27,21 @@ export default function HistoryPage() {
 	const [loading, setLoading] = useState(true)
 	const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null)
 	const [filter, setFilter] = useState('')
+	const searchParams = useSearchParams()
+	const logIdParam = searchParams.get('log')
 
 	useEffect(() => {
 		fetchLogs()
 	}, [])
+
+	useEffect(() => {
+		if (logIdParam && logs.length > 0) {
+			const target = logs.find(l => String(l.id) === logIdParam)
+			if (target) {
+				openModal(target)
+			}
+		}
+	}, [logIdParam, logs])
 
 	const fetchLogs = async () => {
 		try {

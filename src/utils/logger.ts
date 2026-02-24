@@ -17,11 +17,11 @@ export interface AiLogPayload {
 }
 
 /**
- * Appends a log entry to the SQLite database.
+ * Appends a log entry to the SQLite database and returns its ID.
  */
-export function logAiRequest(payload: AiLogPayload): void {
+export function logAiRequest(payload: AiLogPayload): number | undefined {
 	try {
-		db.prepare(`
+		const result = db.prepare(`
             INSERT INTO ai_logs (timestamp, sessionId, model, provider, action, durationMs, promptTokens, completionTokens, totalTokens, requestMessagesJson, response)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
@@ -37,7 +37,9 @@ export function logAiRequest(payload: AiLogPayload): void {
 			JSON.stringify(payload.messages),
 			payload.response
 		)
+		return result.lastInsertRowid as number
 	} catch (err) {
 		console.error('⚠️  Failed to write AI request log:', err)
+		return undefined
 	}
 }

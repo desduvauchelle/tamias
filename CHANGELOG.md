@@ -14,6 +14,9 @@
 - update package versions and standardize CI test command.
 - Update CI workflow to run tests with `bun run test`.
 
+### Documentation
+- update README to reflect latest version and highlight new features
+
 ## [v2026.2.23.5] - 2026-02-23
 
 ### Features
@@ -106,6 +109,15 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.23.9] - 2026-02-23
+
+### Features
+- add support for photo and document attachments in Telegram bridge
+- update version numbers and enhance logging and error handling in various components
+
+### Documentation
+- update README to reflect latest version and highlight new features
 
 ## [v26.2.23.7] - 2026-02-23
 

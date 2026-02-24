@@ -22,7 +22,8 @@ describe("Config Utils", () => {
 		const minimalConfig = {
 			version: "1.0",
 			connections: {},
-			bridges: { terminal: { enabled: true } }
+			bridges: { terminal: { enabled: true } },
+			debug: false
 		}
 		writeFileSync(process.env.TAMIAS_CONFIG_PATH!, JSON.stringify(minimalConfig))
 
@@ -36,7 +37,8 @@ describe("Config Utils", () => {
 			version: "1.0",
 			connections: {},
 			bridges: { terminal: { enabled: true } },
-			workspacePath: legacyPath
+			workspacePath: legacyPath,
+			debug: false
 		}
 		writeFileSync(process.env.TAMIAS_CONFIG_PATH!, JSON.stringify(legacyConfig))
 
@@ -49,7 +51,8 @@ describe("Config Utils", () => {
 			version: "1.0",
 			connections: {},
 			bridges: { terminal: { enabled: true } },
-			defaultModel: "openai/gpt-4o"
+			defaultModel: "openai/gpt-4o",
+			debug: false
 		}
 		writeFileSync(process.env.TAMIAS_CONFIG_PATH!, JSON.stringify(legacyConfig))
 
@@ -66,7 +69,8 @@ describe("Config Utils", () => {
 			connections: {
 				// "lc-openai" is gone (deleted from this machine)
 				"other": { nickname: "other", provider: "anthropic", selectedModels: ["claude-3-5-sonnet"] }
-			}
+			},
+			debug: false
 		}
 		writeFileSync(process.env.TAMIAS_CONFIG_PATH!, JSON.stringify(ghostConfig))
 		const config = loadConfig()

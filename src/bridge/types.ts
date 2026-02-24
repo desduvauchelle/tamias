@@ -17,6 +17,7 @@ export type DaemonEvent =
 	| { type: 'start'; sessionId: string }
 	| { type: 'chunk'; text: string }
 	| { type: 'tool_call'; name: string; input: unknown }
+	| { type: 'tool_result'; name: string; result: unknown }
 	| { type: 'done'; sessionId: string; suppressed?: boolean }
 	| { type: 'error'; message: string }
 	| { type: 'file'; name: string; buffer: Buffer; mimeType: string }

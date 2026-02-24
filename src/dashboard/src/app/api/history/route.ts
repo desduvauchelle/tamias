@@ -20,6 +20,7 @@ export async function GET() {
 		const data = await res.json()
 		// Forward daemon logs directly, mapping field names to dashboard format
 		const logs = (data.logs || []).map((l: any) => ({
+			id: l.id,
 			timestamp: l.timestamp,
 			sessionId: l.initiator ?? l.sessionId,
 			model: l.model,

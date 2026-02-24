@@ -211,6 +211,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	// Initialize components
 	const bridgeManager = new BridgeManager()
 	const aiService = new AIService(bridgeManager)
+	if (dashboardPort) aiService.setDashboardPort(dashboardPort)
 	await aiService.initialize()
 	await watchSkills()
 
@@ -368,13 +369,13 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			}
 
 			if (method === 'GET' && url.pathname === '/history') {
-				const rawLogs = db.query<{ timestamp: string, sessionId: string, model: string, provider: string, action: string, durationMs: number, promptTokens: number | null, completionTokens: number | null, totalTokens: number | null, requestMessagesJson: string, response: string }, []>(`
-                    SELECT timestamp, sessionId, model, provider, action, durationMs,
+				const rawLogs = db.query<{ id: number, timestamp: string, sessionId: string, model: string, provider: string, action: string, durationMs: number, promptTokens: number | null, completionTokens: number | null, totalTokens: number | null, requestMessagesJson: string, response: string }, []>(`
+                    SELECT id, timestamp, sessionId, model, provider, action, durationMs,
                         promptTokens, completionTokens, totalTokens, requestMessagesJson, response
                     FROM ai_logs ORDER BY id DESC LIMIT 100
                 `).all()
 
-				const logs = rawLogs.map((r, idx) => {
+				const logs = rawLogs.map((r) => {
 					let msgs: any[] = []
 					try {
 						msgs = JSON.parse(r.requestMessagesJson || '[]')
@@ -388,7 +389,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					const cost = getEstimatedCost(r.model, r.promptTokens || 0, r.completionTokens || 0)
 
 					return {
-						id: `log-${idx}`,
+						id: r.id,
 						timestamp: r.timestamp,
 						initiator: r.sessionId,
 						model: r.model,

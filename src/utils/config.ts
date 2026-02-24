@@ -97,10 +97,13 @@ export const TamiasConfigSchema = z.object({
 	defaultConnection: z.string().optional(),
 	/** The priority list of models in "nickname/modelId" format, e.g. ["lc-openai/gpt-4o", "anthropic/claude-3-5-sonnet"] */
 	defaultModels: z.array(z.string()).optional(),
+	/** Image generation model priority */
+	defaultImageModels: z.array(z.string()).optional(),
 	internalTools: z.record(z.string(), InternalToolConfigSchema).optional(),
 	mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
 	bridges: BridgesConfigSchema.default({ terminal: { enabled: true } }),
 	workspacePath: z.string().optional(),
+	debug: z.boolean().default(false),
 	emails: z.record(z.string(), z.object({
 		nickname: z.string(),
 		enabled: z.boolean().default(false),
@@ -142,7 +145,8 @@ export const loadConfig = (): TamiasConfig => {
 			version: '1.0',
 			connections: {},
 			bridges: { terminal: { enabled: true } },
-			workspacePath: getDefaultWorkspacePath()
+			workspacePath: getDefaultWorkspacePath(),
+			debug: false
 		}
 	}
 
@@ -246,7 +250,7 @@ export const loadConfig = (): TamiasConfig => {
 			process.exit(1)
 		}
 		console.error('Failed to load config file, using defaults:', err)
-		return { version: '1.0', connections: {}, bridges: { terminal: { enabled: true } } }
+		return { version: '1.0', connections: {}, bridges: { terminal: { enabled: true } }, debug: false }
 	}
 }
 
@@ -393,6 +397,16 @@ export const setDefaultModel = (model: string): void => {
 	setDefaultModels([model])
 }
 
+export const getDefaultImageModels = (): string[] => {
+	return loadConfig().defaultImageModels || []
+}
+
+export const setDefaultImageModels = (models: string[]): void => {
+	const c = loadConfig()
+	c.defaultImageModels = models
+	saveConfig(c)
+}
+
 /** Return all "nickname/modelId" pairs from all connections */
 export const getAllModelOptions = (): string[] => {
 	const config = loadConfig()
@@ -492,5 +506,17 @@ export const setWorkspacePath = (path: string): void => {
 	if (!existsSync(normalised)) {
 		mkdirSync(normalised, { recursive: true })
 	}
+	saveConfig(c)
+}
+
+// ─── Debug Config Helpers ─────────────────────────────────────────────────────
+
+export const getDebugMode = (): boolean => {
+	return loadConfig().debug ?? false
+}
+
+export const setDebugMode = (enabled: boolean): void => {
+	const c = loadConfig()
+	c.debug = enabled
 	saveConfig(c)
 }

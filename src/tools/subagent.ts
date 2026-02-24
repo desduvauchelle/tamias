@@ -53,5 +53,28 @@ export const createSubagentTools = (aiService: AIService, sessionId: string) => 
 				message: `Sub-agent ${subSession.id} spawned. Result will be posted back here when done.`
 			}
 		}
+	}),
+	callback: tool({
+		description: 'Report the final outcome of your task back to the parent agent. Use this when you have finished your work or if you encountered a terminal failure.',
+		inputSchema: z.object({
+			task: z.string().describe('The task you were assigned.'),
+			status: z.enum(['completed', 'failed']).describe('Whether you succeeded or failed.'),
+			reason: z.string().optional().describe('Brief reason, especially useful if failed.'),
+			outcome: z.string().optional().describe('Clear summary of what was achieved or discovered.'),
+			context: z.any().optional().describe('Optional structured data (JSON) to pass back as context.')
+		}),
+		execute: async ({ task, status, reason, outcome, context }) => {
+			const session = aiService.getSession(sessionId)
+			if (!session?.isSubagent || !session.parentSessionId) {
+				return { success: false, error: 'The callback tool can only be used by sub-agents to report to their parent.' }
+			}
+
+			await aiService.reportSubagentResult(sessionId, { task, status, reason, outcome, context })
+
+			return {
+				success: true,
+				message: 'Report sent to parent agent. You should now stop and let the parent continue.'
+			}
+		}
 	})
 })

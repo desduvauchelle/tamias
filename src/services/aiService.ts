@@ -65,6 +65,7 @@ export class AIService {
 	private mcpClients: Array<{ close: () => Promise<void> }> = []
 	private toolDocs = ''
 	private bridgeManager: BridgeManager
+	private dashboardPort?: number
 
 	constructor(bridgeManager: BridgeManager) {
 		this.bridgeManager = bridgeManager
@@ -80,6 +81,10 @@ export class AIService {
 		this.healStaleSessionModels()
 		this.loadAllSessions()
 		// We can't refresh tools globally anymore since it depends on sessionId
+	}
+
+	public setDashboardPort(port: number) {
+		this.dashboardPort = port
 	}
 
 	/** Directly update sessions in SQLite whose connectionNickname no longer exists in config */
@@ -286,6 +291,25 @@ export class AIService {
 		}
 	}
 
+	public async reportSubagentResult(sessionId: string, data: { task: string; status: 'completed' | 'failed'; reason?: string; outcome?: string; context?: any }) {
+		const session = this.sessions.get(sessionId)
+		if (!session || !session.parentSessionId) return
+
+		const parentSession = this.sessions.get(session.parentSessionId)
+		if (!parentSession) return
+
+		let report = `### 🧠 Sub-agent Report\n\n`
+		report += `**Task:** ${data.task}\n`
+		report += `**Status:** ${data.status === 'completed' ? '✅ completed' : '❌ failed'}\n`
+		if (data.reason) report += `**Reason:** ${data.reason}\n`
+		if (data.outcome) report += `\n**Outcome:**\n${data.outcome}\n`
+		if (data.context) {
+			report += `\n**Context:**\n\`\`\`json\n${JSON.stringify(data.context, null, 2)}\n\`\`\`\n`
+		}
+
+		await this.enqueueMessage(parentSession.id, report)
+	}
+
 	public async enqueueMessage(sessionId: string, content: string, authorName?: string, attachments?: BridgeMessage['attachments']) {
 		const session = this.sessions.get(sessionId)
 		if (!session) throw new Error('Session not found')
@@ -414,9 +438,12 @@ export class AIService {
 								session.emitter.emit('event', { type: 'tool_call', name: tc.toolName, input: (tc as any).input ?? {} } as DaemonEvent)
 							}
 						}
-						// Emit file events for tools returning { __tamias_file__: true, name, buffer, mimeType }
-						if ((toolResults as any)?.length) {
+						if (toolResults?.length) {
 							for (const tr of (toolResults as any)) {
+								// Emit tool_result event
+								session.emitter.emit('event', { type: 'tool_result', name: tr.toolName, result: tr.result } as DaemonEvent)
+
+								// Also emit file events for tools returning { __tamias_file__: true, name, buffer, mimeType }
 								const res = tr?.result
 								if (res?.__tamias_file__ === true && res.name && res.buffer) {
 									session.emitter.emit('event', {
@@ -450,7 +477,8 @@ export class AIService {
 
 				const response = await Promise.resolve(result.response).catch(() => null)
 				const fullMessages = response?.messages ?? []
-				logAiRequest({
+
+				const logId = logAiRequest({
 					timestamp: new Date().toISOString(),
 					sessionId: session.id,
 					model: currentModelStr,
@@ -468,6 +496,23 @@ export class AIService {
 					],
 					response: fullResponse,
 				})
+
+				if (config.debug) {
+					const debugMeta = [
+						'',
+						'--- DEBUG INFO ---',
+						`Model: ${currentModelStr}`,
+						`Tokens: ${usage?.totalTokens || 0} (Prompt: ${usage?.inputTokens || 0}, Completion: ${usage?.outputTokens || 0})`,
+					]
+					if (this.dashboardPort && logId) {
+						debugMeta.push(`Log: http://localhost:${this.dashboardPort}/history?log=${logId}`)
+					}
+					debugMeta.push('---')
+
+					const footer = debugMeta.join('\n')
+					fullResponse += footer
+					session.emitter.emit('event', { type: 'chunk', text: footer } as DaemonEvent)
+				}
 
 				session.messages.push({ role: 'assistant', content: fullResponse })
 				session.updatedAt = new Date()
@@ -487,7 +532,7 @@ export class AIService {
 				if (session.isSubagent && session.parentSessionId) {
 					const parentSession = this.sessions.get(session.parentSessionId)
 					if (parentSession) {
-						const report = `[Subagent Report from ${session.id}]:\n${fullResponse}`
+						const report = `[Subagent finished: ${session.id}]\n${fullResponse}`
 						this.enqueueMessage(parentSession.id, report).catch(console.error)
 					}
 				}

@@ -184,6 +184,10 @@ export const runChatCommand = async () => {
 					const { name, input: toolInput } = JSON.parse(evt.data) as { name: string; input: unknown }
 					if (!aiStarted) { spinner.stop(''); aiStarted = true }
 					process.stdout.write(pc.dim(`\n🔧 ${name}: ${JSON.stringify(toolInput).slice(0, 150)}\n`))
+				} else if (evt.event === 'tool_result') {
+					const { name, result: toolOutput } = JSON.parse(evt.data) as { name: string; result: unknown }
+					const outStr = typeof toolOutput === 'string' ? toolOutput : JSON.stringify(toolOutput)
+					process.stdout.write(pc.dim(`✅ ${name} result: ${outStr.slice(0, 200)}${outStr.length > 200 ? '...' : ''}\n`))
 				} else if (evt.event === 'done') {
 					break  // response complete — do NOT abort; keep SSE stream alive
 				} else if (evt.event === 'error') {

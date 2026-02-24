@@ -7,7 +7,7 @@ import { runChannelsCommand, runChannelsListCommand, runChannelsAddCommand, runC
 import { runStartCommand } from './commands/start.ts'
 import { runStopCommand } from './commands/stop.ts'
 import { runStatusCommand } from './commands/status.ts'
-import { runModelCommand, runModelSetCommand } from './commands/model.ts'
+import { runModelCommand, runModelSetCommand, runModelSetImageCommand } from './commands/model.ts'
 import { runOnboarding } from './commands/onboarding.ts'
 import { runUsageCommand } from './commands/usage.ts'
 import { runUpdateCommand } from './commands/update.ts'
@@ -20,6 +20,7 @@ import { runReadmeCommand } from './commands/readme.ts'
 import { runDoctorCommand } from './commands/doctor.ts'
 import { runHistoryCommand } from './commands/history.ts'
 import { runRestartCommand } from './commands/restart.ts'
+import { runDebugCommand } from './commands/debug.ts'
 import { isOnboarded } from './utils/memory.ts'
 import { VERSION } from './utils/version.ts'
 
@@ -98,6 +99,11 @@ modelCmd
 	.command('set')
 	.description('Interactively set the default model')
 	.action(runModelSetCommand)
+
+modelCmd
+	.command('set-image')
+	.description('Interactively set the default image model priority')
+	.action(runModelSetImageCommand)
 
 // ─── tamias onboarding ────────────────────────────────────────────────────────
 program
@@ -243,6 +249,12 @@ program
 	.argument('[path]', 'The path to the restricted workspace directory')
 	.description('View or set the restricted workspace directory for the AI')
 	.action(runWorkspaceCommand)
+
+// ─── tamias debug ─────────────────────────────────────────────────────────────
+program
+	.command('debug')
+	.description('Toggle debug mode (adds metadata to messages and shows tool calls in CLI)')
+	.action(runDebugCommand)
 
 // ─── tamias maintenance ──────────────────────────────────────────────────────
 program

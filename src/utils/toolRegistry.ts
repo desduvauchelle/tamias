@@ -10,6 +10,7 @@ import { githubTools, GITHUB_TOOL_NAME } from '../tools/github.ts'
 import { workspaceTools, WORKSPACE_TOOL_NAME } from '../tools/workspace.ts'
 import { geminiTools, GEMINI_TOOL_NAME } from '../tools/gemini.ts'
 import { createSubagentTools, SUBAGENT_TOOL_NAME } from '../tools/subagent.ts'
+import { createImageTools, IMAGE_TOOL_NAME } from '../tools/image.ts'
 import type { AIService } from '../services/aiService.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -81,6 +82,7 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 		[WORKSPACE_TOOL_NAME]: workspaceTools as ToolSet,
 		[GEMINI_TOOL_NAME]: geminiTools as ToolSet,
 		[SUBAGENT_TOOL_NAME]: createSubagentTools(aiService, sessionId) as ToolSet,
+		[IMAGE_TOOL_NAME]: createImageTools(aiService, sessionId) as ToolSet,
 	}
 
 	for (const [toolName, allFunctions] of Object.entries(internalCatalog)) {

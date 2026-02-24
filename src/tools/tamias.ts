@@ -7,6 +7,8 @@ import type { DaemonEvent } from '../bridge/types.ts'
 import {
 	getDefaultModel,
 	setDefaultModel,
+	getDefaultImageModels,
+	setDefaultImageModels,
 	getAllModelOptions,
 	getAllConnections,
 	getAllMcpServers,
@@ -18,6 +20,8 @@ import {
 	deleteConnection,
 	getWorkspacePath,
 	setWorkspacePath,
+	getDebugMode,
+	setDebugMode,
 	TAMIAS_DIR,
 	ProviderEnum,
 	type McpServerConfig,
@@ -62,6 +66,30 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 				return { success: true, defaultModel: model }
 			},
 		}),
+		get_default_image_models: tool({
+			description: 'Get the current priority list of models for image generation.',
+			inputSchema: z.object({}),
+			execute: async () => {
+				const models = getDefaultImageModels()
+				return { defaultImageModels: models }
+			},
+		}),
+
+		set_default_image_models: tool({
+			description: 'Set the priority list for image generation models. The AI will try them in order if one fails. Format: ["nickname/modelId", ...].',
+			inputSchema: z.object({
+				models: z.array(z.string()).describe('Array of models in "nickname/modelId" format.'),
+			}),
+			execute: async ({ models }: { models: string[] }) => {
+				const options = getAllModelOptions()
+				const invalid = models.filter(m => !options.includes(m))
+				if (invalid.length > 0) {
+					return { success: false, error: `Models ${invalid.join(', ')} not found. Available: ${options.join(', ')}` }
+				}
+				setDefaultImageModels(models)
+				return { success: true, defaultImageModels: models }
+			},
+		}),
 
 		list_model_configs: tool({
 			description: 'List all configured AI provider connections and their selected models.',
@@ -69,8 +97,10 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 			execute: async () => {
 				const connections = getAllConnections()
 				const defaultModel = getDefaultModel()
+				const defaultImageModels = getDefaultImageModels()
 				return {
 					defaultModel: defaultModel ?? null,
+					defaultImageModels: defaultImageModels,
 					connections: connections.map((c) => ({
 						nickname: c.nickname,
 						provider: c.provider,
@@ -455,6 +485,18 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 				} else {
 					return { success: false, error: result.error || 'Update failed' }
 				}
+			},
+		}),
+		toggle_debug: tool({
+			description: 'Toggle debug mode (adds metadata to messages and shows tool calls in CLI).',
+			inputSchema: z.object({
+				enabled: z.boolean().optional().describe('Force enable or disable. If omitted, toggles current state.'),
+			}),
+			execute: async ({ enabled }) => {
+				const current = getDebugMode()
+				const next = enabled !== undefined ? enabled : !current
+				setDebugMode(next)
+				return { success: true, debugMode: next }
 			},
 		}),
 	}
