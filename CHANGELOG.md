@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- introduce AI skill management, add browser command and tool, enhance AI request context, and improve terminal command auditing.
 - Add image generation capabilities, subagent callback mechanism, and debug mode toggle.
 - add support for photo and document attachments in Telegram bridge
 - update version numbers and enhance logging and error handling in various components
