@@ -219,32 +219,54 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 
 	// Cron setup
 	const onCronTrigger = async (job: CronJob) => {
-		console.log(`[Cron] Triggering job: ${job.name} (type=${job.type ?? 'ai'})`)
+		const now = new Date().toISOString()
+		console.log(`[Cron] ${now} Triggering job: "${job.name}" (id=${job.id}, type=${job.type ?? 'ai'}, target=${job.target})`)
 		let session: Session | undefined
 
-		if (job.target === 'last') {
-			const allSessions = aiService.getAllSessions()
-			session = allSessions.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]
-		} else if (job.target?.includes(':')) {
-			const [channelId, channelUserId] = job.target.split(':')
-			session = aiService.getSessionForBridge(channelId, channelUserId)
-			if (!session) {
-				session = aiService.createSession({ channelId, channelUserId })
+		try {
+			if (job.target === 'last') {
+				const allSessions = aiService.getAllSessions()
+				console.log(`[Cron] ${now} target=last — ${allSessions.length} session(s) available`)
+				session = allSessions.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]
+				if (session) {
+					console.log(`[Cron] ${now} Using last session: ${session.id} (channelId=${session.channelId}, updatedAt=${session.updatedAt.toISOString()})`)
+				} else {
+					console.log(`[Cron] ${now} No existing sessions found — will create a new one`)
+				}
+			} else if (job.target?.includes(':')) {
+				const [channelId, channelUserId] = job.target.split(':')
+				console.log(`[Cron] ${now} target split → channelId="${channelId}", channelUserId="${channelUserId}"`)
+				session = aiService.getSessionForBridge(channelId, channelUserId)
+				if (!session) {
+					console.log(`[Cron] ${now} No existing session for bridge — creating new session`)
+					session = aiService.createSession({ channelId, channelUserId })
+				} else {
+					console.log(`[Cron] ${now} Found existing session: ${session.id}`)
+				}
+			} else {
+				console.log(`[Cron] ${now} Unrecognised target format: "${job.target}" — creating bare session`)
 			}
-		}
 
-		if (!session) {
-			session = aiService.createSession({})
-		}
+			if (!session) {
+				session = aiService.createSession({})
+				console.log(`[Cron] ${now} Created bare session: ${session.id}`)
+			}
 
-		if (job.type === 'message') {
-			// Send the prompt text directly to the channel — no AI involved
-			session.emitter.emit('event', { type: 'start', sessionId: session.id })
-			session.emitter.emit('event', { type: 'chunk', text: job.prompt })
-			session.emitter.emit('event', { type: 'done', sessionId: session.id })
-		} else {
-			// AI path — send prompt to AI, deliver generated response to channel
-			await aiService.enqueueMessage(session.id, job.prompt)
+			if (job.type === 'message') {
+				// Send the prompt text directly to the channel — no AI involved
+				console.log(`[Cron] ${now} Sending direct message to session ${session.id}: "${job.prompt.slice(0, 80)}..."`)
+				session.emitter.emit('event', { type: 'start', sessionId: session.id })
+				session.emitter.emit('event', { type: 'chunk', text: job.prompt })
+				session.emitter.emit('event', { type: 'done', sessionId: session.id })
+				console.log(`[Cron] ${now} Direct message emitted for job "${job.name}"`)
+			} else {
+				// AI path — send prompt to AI, deliver generated response to channel
+				console.log(`[Cron] ${now} Enqueuing AI prompt for session ${session.id}: "${job.prompt.slice(0, 80)}..."`)
+				await aiService.enqueueMessage(session.id, job.prompt)
+				console.log(`[Cron] ${now} AI prompt enqueued successfully for job "${job.name}"`)
+			}
+		} catch (err) {
+			console.error(`[Cron] ${now} ERROR executing job "${job.name}" (id=${job.id}):`, err)
 		}
 	}
 	const cronManager = new CronManager(onCronTrigger)

@@ -134,7 +134,10 @@ export class DiscordBridge implements IBridge {
 	}
 
 	async handleDaemonEvent(event: DaemonEvent, sessionContext: any): Promise<void> {
-		if (!this.client) return
+		if (!this.client) {
+			console.error(`[Discord Bridge] handleDaemonEvent called but client is NOT ready (event=${event.type}, channelUserId=${sessionContext?.channelUserId}). Is the bot token configured and the bot connected?`)
+			return
+		}
 		const channelId = String(sessionContext?.channelUserId ?? '')
 		if (!channelId) {
 			console.error(`[Discord Bridge] handleDaemonEvent: no channelUserId in sessionContext`, sessionContext)
@@ -206,8 +209,10 @@ export class DiscordBridge implements IBridge {
 				if (!state && this.cronBuffers.has(channelId)) {
 					const text = this.cronBuffers.get(channelId) ?? ''
 					this.cronBuffers.delete(channelId)
-					if (text.trim() && this.client) {
+					console.log(`[Discord Bridge] Cron done — channelId=${channelId}, text length=${text.length}`)
+					if (text.trim()) {
 						try {
+							console.log(`[Discord Bridge] Fetching Discord channel ${channelId} to send cron message...`)
 							const channel = await this.client.channels.fetch(channelId)
 							if (channel && 'send' in channel) {
 								const chunks = splitText(text, 1900)
@@ -215,10 +220,14 @@ export class DiscordBridge implements IBridge {
 									await (channel as any).send(chunk)
 								}
 								console.log(`[Discord Bridge] Sent cron response to channel ${channelId} (${text.length} chars)`)
+							} else {
+								console.error(`[Discord Bridge] Channel ${channelId} not found or not sendable`)
 							}
 						} catch (err) {
 							console.error(`[Discord Bridge] Failed to send cron message to ${channelId}:`, err)
 						}
+					} else {
+						console.warn(`[Discord Bridge] Cron text was empty for channel ${channelId} — nothing sent`)
 					}
 					break
 				}

@@ -1,6 +1,6 @@
 import { join } from 'path'
 import { homedir } from 'os'
-import { existsSync, readFileSync, writeFileSync, unlinkSync, appendFileSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, unlinkSync, appendFileSync, renameSync, readdirSync, statSync } from 'fs'
 import { createServer } from 'net'
 
 const DAEMON_FILE = join(homedir(), '.tamias', 'daemon.json')
@@ -76,7 +76,41 @@ export async function autoStartDaemon(opts: { verbose?: boolean } = {}): Promise
 	// Detection of compiled state
 	const isCompiled = import.meta.dir?.includes('$bunfs') || !existsSync(import.meta.dir || '')
 	const projectRoot = isCompiled ? process.cwd() : join(import.meta.dir, '../..')
-	const logPath = join(homedir(), '.tamias', 'daemon.log')
+	const tamiasDir = join(homedir(), '.tamias')
+	const logPath = join(tamiasDir, 'daemon.log')
+
+	// ── Log rotation ──────────────────────────────────────────────────────────
+	// If an existing daemon.log was last written on a previous calendar day,
+	// archive it as daemon-YYYY-MM-DD.log and start a fresh file.
+	// Then prune archived logs older than 3 days.
+	try {
+		if (existsSync(logPath)) {
+			const stat = statSync(logPath)
+			const fileDay = stat.mtime.toISOString().slice(0, 10)  // "YYYY-MM-DD"
+			const today = new Date().toISOString().slice(0, 10)
+			if (fileDay !== today) {
+				const archivePath = join(tamiasDir, `daemon-${fileDay}.log`)
+				renameSync(logPath, archivePath)
+			}
+		}
+
+		// Prune archives older than 3 days
+		const cutoff = Date.now() - 3 * 24 * 60 * 60 * 1000
+		for (const entry of readdirSync(tamiasDir)) {
+			if (/^daemon-\d{4}-\d{2}-\d{2}\.log$/.test(entry)) {
+				const fullPath = join(tamiasDir, entry)
+				try {
+					const stat = statSync(fullPath)
+					if (stat.mtime.getTime() < cutoff) {
+						unlinkSync(fullPath)
+					}
+				} catch { /* ignore */ }
+			}
+		}
+	} catch {
+		/* Rotation errors are non-fatal — carry on with normal daemon start */
+	}
+	// ─────────────────────────────────────────────────────────────────────────
 
 	const logFile = Bun.file(logPath)
 	let spawnArgs: string[]

@@ -5,6 +5,10 @@ import { Cron } from 'croner'
 type SetIntervalFn = (callback: () => void, ms: number) => ReturnType<typeof setInterval>
 type ClearIntervalFn = (id: ReturnType<typeof setInterval>) => void
 
+function ts() {
+	return `[${new Date().toISOString()}]`
+}
+
 export class CronManager {
 	private timers: Map<string, ReturnType<typeof setInterval>> = new Map()
 	private cronJobs: Map<string, Cron> = new Map()
@@ -27,13 +31,17 @@ export class CronManager {
 	}
 
 	public start() {
+		console.log(`${ts()} [CronManager] Starting — loading jobs...`)
 		this.refresh()
 		// Also poll for file changes every minute in case of manual edits or tool updates
 		this.refreshTimer = this._setInterval(() => this.refresh(), 60000)
+		console.log(`${ts()} [CronManager] Started. ${this.timers.size} interval job(s), ${this.cronJobs.size} cron expression job(s) active.`)
 	}
 
 	public refresh() {
-		const jobs = this.loadJobs().filter(j => j.enabled)
+		const allJobs = this.loadJobs()
+		const jobs = allJobs.filter(j => j.enabled)
+		console.log(`${ts()} [CronManager] refresh() — ${allJobs.length} total jobs, ${jobs.length} enabled`)
 
 		// Remove timers/crons for jobs no longer present or disabled
 		const currentIds = new Array(...jobs.map(j => j.id))
@@ -41,12 +49,14 @@ export class CronManager {
 			if (!currentIds.includes(id)) {
 				this._clearInterval(this.timers.get(id)!)
 				this.timers.delete(id)
+				console.log(`${ts()} [CronManager] Removed stale interval job: ${id}`)
 			}
 		}
 		for (const id of this.cronJobs.keys()) {
 			if (!currentIds.includes(id)) {
 				this.cronJobs.get(id)?.stop()
 				this.cronJobs.delete(id)
+				console.log(`${ts()} [CronManager] Removed stale cron job: ${id}`)
 			}
 		}
 
@@ -56,17 +66,30 @@ export class CronManager {
 			if (this.isInterval(job.schedule)) {
 				const ms = this.parseInterval(job.schedule)
 				if (ms > 0) {
-					const timer = this._setInterval(() => this.onTrigger(job), ms)
+					const timer = this._setInterval(() => {
+						console.log(`${ts()} [CronManager] FIRING interval job: "${job.name}" (id=${job.id}, schedule=${job.schedule}, target=${job.target})`)
+						this.onTrigger(job).catch(err => {
+							console.error(`${ts()} [CronManager] ERROR in interval job "${job.name}":`, err)
+						})
+					}, ms)
 					this.timers.set(job.id, timer)
-					console.log(`[CronManager] Scheduled interval job: ${job.name} (${job.schedule})`)
+					console.log(`${ts()} [CronManager] Scheduled interval job: "${job.name}" (${job.schedule}) — fires every ${ms / 1000}s`)
+				} else {
+					console.warn(`${ts()} [CronManager] Could not parse interval for job "${job.name}": "${job.schedule}"`)
 				}
 			} else {
 				try {
-					const c = new Cron(job.schedule, () => this.onTrigger(job))
+					const c = new Cron(job.schedule, () => {
+						console.log(`${ts()} [CronManager] FIRING cron job: "${job.name}" (id=${job.id}, schedule=${job.schedule}, target=${job.target})`)
+						this.onTrigger(job).catch(err => {
+							console.error(`${ts()} [CronManager] ERROR in cron job "${job.name}":`, err)
+						})
+					})
 					this.cronJobs.set(job.id, c)
-					console.log(`[CronManager] Scheduled cron job: ${job.name} (${job.schedule})`)
+					const nextRun = c.nextRun()
+					console.log(`${ts()} [CronManager] Scheduled cron job: "${job.name}" (${job.schedule}) — next run: ${nextRun ? nextRun.toISOString() : 'unknown'}`)
 				} catch (err) {
-					console.error(`[CronManager] Invalid cron expression for job ${job.name}: ${job.schedule}`, err)
+					console.error(`${ts()} [CronManager] INVALID cron expression for job "${job.name}" (${job.schedule}):`, err)
 				}
 			}
 		}
@@ -91,6 +114,7 @@ export class CronManager {
 	}
 
 	public stop() {
+		console.log(`${ts()} [CronManager] Stopping — clearing ${this.timers.size} interval(s) and ${this.cronJobs.size} cron(s)...`)
 		if (this.refreshTimer !== undefined) {
 			this._clearInterval(this.refreshTimer)
 			this.refreshTimer = undefined
