@@ -17,6 +17,8 @@ export interface DaemonInfo {
 	startedAt: string
 	dashboardPort?: number
 	dashboardPid?: number
+	/** PID of the caffeinate process (macOS only, optional) */
+	caffeinatePid?: number
 	token?: string
 }
 

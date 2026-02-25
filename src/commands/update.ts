@@ -4,6 +4,7 @@ import { VERSION } from '../utils/version.ts'
 import { checkForUpdate, performUpdate, type UpdateProgress } from '../utils/update.ts'
 import { isDaemonRunning } from '../utils/daemon.ts'
 import { runRestartCommand } from './restart.ts'
+import { readDaemonInfo } from '../utils/daemon.ts'
 
 export const runUpdateCommand = async () => {
 	p.intro(pc.bgBlue(pc.white(' Tamias CLI Update ')))
@@ -58,6 +59,13 @@ export const runUpdateCommand = async () => {
 			if (await isDaemonRunning()) {
 				p.log.info('Restarting daemon to apply update...')
 				await runRestartCommand()
+			}
+
+			// Print dashboard URL with token if available
+			const info = readDaemonInfo()
+			if (info && info.dashboardPort && info.token) {
+				const url = `http://localhost:${info.dashboardPort}/configs?token=${info.token}`
+				p.outro(pc.green(`Dashboard URL: ${pc.bold(url)}\nPaste the token in the dashboard if prompted.`))
 			}
 
 			p.outro(pc.green('Update complete.'))

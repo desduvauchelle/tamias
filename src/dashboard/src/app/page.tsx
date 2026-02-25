@@ -14,6 +14,8 @@ export default function ChatPage() {
 	const [newSessionName, setNewSessionName] = useState('')
 	const [newSessionModel, setNewSessionModel] = useState('')
 	const [availableModels, setAvailableModels] = useState<string[]>([])
+	const [tokenRequired, setTokenRequired] = useState(false)
+	const [tokenInput, setTokenInput] = useState('')
 
 	// Fetch logs
 	useEffect(() => {
@@ -94,11 +96,11 @@ export default function ChatPage() {
 						parts = m.parts
 					}
 					return {
-						id: `${sid}-${idx}-${Date.now()}`,
+						id: m.id ?? String(idx),
 						role: m.role,
+						content: typeof m.content === 'string' ? m.content : '',
 						parts,
-						createdAt: new Date(),
-					}
+					} as UIMessage
 				})
 				setHistory(uiMsgs)
 			} else {
@@ -118,6 +120,39 @@ export default function ChatPage() {
 		setSelectedSession(sid)
 		setShowNewSessionModal(false)
 		setNewSessionName('')
+	}
+
+	if (tokenRequired) {
+		return (
+			<div className="flex flex-col items-center justify-center h-full">
+				<div className="bg-base-200 p-6 rounded shadow-lg max-w-md w-full">
+					<h2 className="text-xl font-bold mb-4">Token Required</h2>
+					<p className="mb-2 text-sm">To access the dashboard, paste the authentication token shown in your terminal after running <code>tamias start</code>.</p>
+					<p className="mb-4 text-xs text-base-content/50">You can also run <code>tamias token</code> at any time to retrieve it.</p>
+					<input
+						className="input input-bordered w-full mb-4 font-mono"
+						type="text"
+						placeholder="Paste token here..."
+						value={tokenInput}
+						onChange={e => setTokenInput(e.target.value)}
+						onKeyDown={e => {
+							if (e.key === 'Enter' && tokenInput) {
+								document.cookie = `tamias_token=${tokenInput}; path=/; max-age=${60 * 60 * 24 * 7}`
+								window.location.reload()
+							}
+						}}
+					/>
+					<button
+						className="btn btn-primary w-full"
+						disabled={!tokenInput.trim()}
+						onClick={() => {
+							document.cookie = `tamias_token=${tokenInput}; path=/; max-age=${60 * 60 * 24 * 7}`
+							window.location.reload()
+						}}
+					>Submit Token</button>
+				</div>
+			</div>
+		)
 	}
 
 	return (
@@ -267,6 +302,16 @@ export default function ChatPage() {
 	)
 }
 
+/** Strip XML-namespace tags injected by some models (e.g. <grok:render …>…</grok:render>) */
+function sanitizeText(text: string): string {
+	return text
+		// Remove paired namespace tags with their content: <ns:tag ...>...</ns:tag>
+		.replace(/<[a-z][a-z0-9]*:[a-z][a-z0-9_-]*(?:\s[^>]*)?>[\s\S]*?<\/[a-z][a-z0-9]*:[a-z][a-z0-9_-]*>/g, '')
+		// Remove self-closing namespace tags: <ns:tag ... />
+		.replace(/<[a-z][a-z0-9]*:[a-z][a-z0-9_-]*(?:\s[^>]*)?\/>/g, '')
+		.trim()
+}
+
 function ChatTerminal({ sessionId, initialHistory }: { sessionId: string, initialHistory: UIMessage[] }) {
 	const [input, setInput] = useState('')
 	const [pendingFiles, setPendingFiles] = useState<Array<{ name: string; mimeType: string; base64: string; previewUrl?: string }>>([])
@@ -354,7 +399,7 @@ function ChatTerminal({ sessionId, initialHistory }: { sessionId: string, initia
 								{/* Text parts */}
 								{message.parts?.filter(p => p.type === 'text').map((part: any, idx) => (
 									<div key={idx} className={`chat-bubble font-mono text-xs whitespace-pre-wrap leading-relaxed shadow-sm ${message.role === 'user' ? 'bg-primary text-primary-content' : 'chat-bubble-success'}`}>
-										{typeof part.text === 'string' ? part.text : JSON.stringify(part.text)}
+										{typeof part.text === 'string' ? sanitizeText(part.text) : JSON.stringify(part.text)}
 									</div>
 								))}
 

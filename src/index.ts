@@ -304,3 +304,8 @@ if (process.argv.length <= 2 && !isOnboarded()) {
 }
 
 program.parse(process.argv)
+
+program
+	.command('token')
+	.description('Show the dashboard authentication token and URL')
+	.action(() => import('./commands/token.ts').then(m => m.runTokenCommand()))

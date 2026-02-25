@@ -18,6 +18,10 @@ import { getEstimatedCost } from '../utils/pricing.ts'
 import { runDatabaseMaintenance } from '../utils/maintenance.ts'
 import type { DaemonEvent, BridgeMessage } from '../bridge/types.ts'
 
+
+// --- Caffeinate integration ---
+let caffeinateProc: ReturnType<typeof Bun.spawn> | undefined
+
 const encoder = new TextEncoder()
 
 function sseEvent(event: string, data: unknown): Uint8Array {
@@ -93,8 +97,23 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 		process.exit(1)
 	}
 
+
 	const port = await findFreePort(9001)
 	const dashboardPort = await findFreePort(5678)
+
+	// Start caffeinate to keep system awake (macOS only)
+	try {
+		if (process.platform === 'darwin') {
+			caffeinateProc = Bun.spawn(['caffeinate', '-dimsu'], {
+				stdout: 'ignore',
+				stderr: 'ignore',
+				env: process.env,
+			})
+			caffeinateProc.unref()
+		}
+	} catch (err) {
+		console.warn('[start] Failed to launch caffeinate:', err)
+	}
 
 	// Ensure dashboard port is free before starting
 	try {
@@ -198,14 +217,27 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	}
 	dashboardProc.unref()
 
+
+	// Store caffeinatePid in daemon info for cleanup
 	writeDaemonInfo({
 		pid: process.pid,
 		port,
 		startedAt: new Date().toISOString(),
 		dashboardPort,
 		dashboardPid: dashboardProc.pid,
+		caffeinatePid: caffeinateProc?.pid, // <-- used by stop.ts
 		token: dashboardToken
 	})
+
+	// Print dashboard token and URL for user
+	if (dashboardPort && dashboardToken) {
+		const url = `http://localhost:${dashboardPort}/configs?token=${dashboardToken}`
+		console.log(pc.green('\nDashboard Authentication Token:'))
+		console.log(pc.bold(dashboardToken))
+		console.log(pc.green('\nDashboard URL:'))
+		console.log(pc.bold(url))
+		console.log('\nPaste this token in the dashboard if prompted.')
+	}
 
 	// Log version and binary path so daemon.log always shows which binary is running
 	console.log(`[Daemon v${VERSION}] Starting from ${process.execPath}`)
@@ -500,7 +532,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				})
 			}
 
-			if (method === 'POST' && url.pathname === '/session') {
+			if (method === 'GET' && url.pathname === '/session') {
 				const body = await req.json() as any
 				const session = aiService.createSession({ id: body.id, model: body.model, channelId: body.channelId, channelUserId: body.channelUserId })
 				return json({ sessionId: session.id, model: session.model })

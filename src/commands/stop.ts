@@ -23,6 +23,10 @@ export const runStopCommand = async () => {
 		if (info.dashboardPid) {
 			try { process.kill(info.dashboardPid, 'SIGTERM') } catch { /* already gone */ }
 		}
+		// Kill caffeinate process if present
+		if (info.caffeinatePid) {
+			try { process.kill(info.caffeinatePid, 'SIGTERM') } catch { /* already gone */ }
+		}
 	}
 
 	// Step 3: kill ALL other tamias --daemon processes and dashboard processes
