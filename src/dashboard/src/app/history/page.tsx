@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Clock, Terminal, Cpu, Database, ChevronRight, ChevronDown, Search } from 'lucide-react'
 
@@ -22,7 +22,7 @@ interface LogEntry {
 	fullHistory: any[]
 }
 
-export default function HistoryPage() {
+function HistoryContent() {
 	const [logs, setLogs] = useState<LogEntry[]>([])
 	const [loading, setLoading] = useState(true)
 	const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null)
@@ -285,5 +285,12 @@ export default function HistoryPage() {
 				</form>
 			</dialog>
 		</div>
+	)
+}
+export default function HistoryPage() {
+	return (
+		<Suspense fallback={<div className="h-full flex items-center justify-center"><span className="loading loading-spinner text-success loading-lg" /></div>}>
+			<HistoryContent />
+		</Suspense>
 	)
 }
