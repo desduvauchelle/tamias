@@ -1,6 +1,6 @@
 {
 	"name": "tamias",
-	"version": "26.2.24.2",
+	"version": "26.2.25.1",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
@@ -16,7 +16,7 @@
 		"model": "bun run src/index.ts model",
 		"chat": "bun run src/index.ts chat",
 		"cron": "bun run src/index.ts cron",
-		"build": "bun build --compile --outfile=tamias src/index.ts",
+		"build": "bun build --compile --external playwright --outfile=tamias src/index.ts",
 		"dev": "bun --hot src/index.ts",
 		"install-it": "chmod +x install.sh && ./install.sh",
 		"test": "bun test --preload ./src/tests/setup.ts src/tests/*.test.ts src/utils/*.test.ts",

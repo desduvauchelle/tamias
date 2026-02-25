@@ -10,12 +10,15 @@ BINARY_NAME="tamias"
 # Pass --yes / -y (or TAMIAS_YES=1) to skip all prompts and use defaults.
 # Handy for CI and automated provisioning.
 AUTO_YES=0
+NO_BROWSER=0
 for arg in "$@"; do
   case "$arg" in
-    --yes|-y) AUTO_YES=1 ;;
+    --yes|-y)       AUTO_YES=1    ;;
+    --no-browser)   NO_BROWSER=1  ;;
   esac
 done
 [ "${TAMIAS_YES:-0}" = "1" ] && AUTO_YES=1
+[ "${TAMIAS_NO_BROWSER:-0}" = "1" ] && NO_BROWSER=1
 
 # Helper: prompt via /dev/tty so it works even when stdin is a curl pipe.
 ask() {
@@ -120,6 +123,24 @@ if [ ! -w "$INSTALL_DIR" ]; then
   sudo mv "$TMP_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
 else
   mv "$TMP_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+fi
+
+# 4.5. Install Playwright (Chromium) for browser tools
+if [ "$NO_BROWSER" = "0" ]; then
+  echo ""
+  echo "=> Installing Playwright (Chromium) for browser tools (~150 MB)..."
+  TAMIAS_PKG="$HOME/.tamias/package.json"
+  if [ ! -f "$TAMIAS_PKG" ]; then
+    echo '{"name":"tamias-data","version":"1.0.0","private":true}' > "$TAMIAS_PKG"
+  fi
+  if "$BUN_BIN" add playwright --cwd "$HOME/.tamias" --silent 2>/dev/null && \
+     "$HOME/.tamias/node_modules/.bin/playwright" install chromium 2>&1 | tail -3; then
+    echo "=> Chromium ready."
+  else
+    echo "WARNING: Playwright install failed — browser tools won\'t work until you run: tamias browser --setup"
+  fi
+else
+  echo "=> Skipping Playwright install (--no-browser). Run 'tamias browser --setup' later to enable browser tools."
 fi
 
 # 5. Dashboard setup — use the pre-built standalone tarball from the release,

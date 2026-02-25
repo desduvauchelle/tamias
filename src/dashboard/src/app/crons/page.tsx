@@ -315,54 +315,54 @@ export default function CronsPage() {
 
 	return (
 		<>
-		<div className="p-6 max-w-4xl max-h-screen overflow-y-auto space-y-12 font-mono pb-24 mx-auto">
-			<div className="flex justify-between items-start">
-				<div>
-					<h1 className="text-3xl font-black text-primary uppercase tracking-tighter flex items-center gap-3">
-						<Clock size={32} /> AUTOMATED TASKS
-					</h1>
-					<p className="text-base-content/50 text-sm mt-1">Configure background background AI agent triggers.</p>
-				</div>
-				<button
-					onClick={save}
-					disabled={saving}
-					className="btn btn-primary btn-md shadow-lg m-1 px-8 rounded-full"
-				>
-					{saving ? <span className="loading loading-spinner loading-sm" /> : saved ? <Check size={18} /> : null}
-					{saving ? 'Saving...' : saved ? 'Saved' : 'Save Changes'}
-				</button>
-			</div>
-
-			<section className="space-y-6">
-				<div className="border-b-2 border-primary/20 pb-4 flex justify-between items-end">
-					<h2 className="text-2xl font-black flex items-center gap-3 uppercase">
-						Active Background Tasks
-					</h2>
-					<button onClick={addCron} className="btn btn-sm btn-primary gap-2">
-						<Plus size={16} /> Create Cron
+			<div className="p-6 max-w-4xl max-h-screen overflow-y-auto space-y-12 font-mono pb-24 mx-auto">
+				<div className="flex justify-between items-start">
+					<div>
+						<h1 className="text-3xl font-black text-primary uppercase tracking-tighter flex items-center gap-3">
+							<Clock size={32} /> AUTOMATED TASKS
+						</h1>
+						<p className="text-base-content/50 text-sm mt-1">Configure background background AI agent triggers.</p>
+					</div>
+					<button
+						onClick={save}
+						disabled={saving}
+						className="btn btn-primary btn-md shadow-lg m-1 px-8 rounded-full"
+					>
+						{saving ? <span className="loading loading-spinner loading-sm" /> : saved ? <Check size={18} /> : null}
+						{saving ? 'Saving...' : saved ? 'Saved' : 'Save Changes'}
 					</button>
 				</div>
 
-				{crons.length === 0 ? (
-					<div className="text-sm text-base-content/30 italic p-12 border-2 border-dashed rounded-2xl border-base-300 text-center bg-base-200/50">
-						No scheduled tasks yet. Click above to create your first background worker.
+				<section className="space-y-6">
+					<div className="border-b-2 border-primary/20 pb-4 flex justify-between items-end">
+						<h2 className="text-2xl font-black flex items-center gap-3 uppercase">
+							Active Background Tasks
+						</h2>
+						<button onClick={addCron} className="btn btn-sm btn-primary gap-2">
+							<Plus size={16} /> Create Cron
+						</button>
 					</div>
-				) : (
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						{crons.map(c => (
-							<CronCard
-								key={c.id}
-								job={c}
-								onChange={(u) => updateCron(c.id, u)}
-								onRemove={(id) => removeCron(id)}
-								onTest={(job) => setTestJob(job)}
-							/>
-						))}
-					</div>
-				)}
-			</section>
-		</div>
-		{testJob && <CronTestModal job={testJob} onClose={() => setTestJob(null)} />}
+
+					{crons.length === 0 ? (
+						<div className="text-sm text-base-content/30 italic p-12 border-2 border-dashed rounded-2xl border-base-300 text-center bg-base-200/50">
+							No scheduled tasks yet. Click above to create your first background worker.
+						</div>
+					) : (
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+							{crons.map(c => (
+								<CronCard
+									key={c.id}
+									job={c}
+									onChange={(u) => updateCron(c.id, u)}
+									onRemove={(id) => removeCron(id)}
+									onTest={(job) => setTestJob(job)}
+								/>
+							))}
+						</div>
+					)}
+				</section>
+			</div>
+			{testJob && <CronTestModal job={testJob} onClose={() => setTestJob(null)} />}
 		</>
 	)
 }

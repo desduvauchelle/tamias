@@ -1,15 +1,28 @@
 import { tool } from 'ai'
 import { z } from 'zod'
-import { chromium, type BrowserContext, type Page } from 'playwright'
+import type { BrowserContext, Page } from 'playwright'
 import { join } from 'path'
 import { homedir } from 'os'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import type { AIService } from '../services/aiService'
 import { TAMIAS_DIR } from '../utils/config'
 
 export const BROWSER_TOOL_NAME = 'browser'
 export const BROWSER_TOOL_LABEL = '🌐 Browser (scrape, click, type, screenshot)'
 const BROWSER_DATA_DIR = join(TAMIAS_DIR, 'browser-data')
+// Playwright is stored in ~/.tamias/node_modules/playwright (installed by install.sh or browser_install tool)
+const PLAYWRIGHT_PATH = join(TAMIAS_DIR, 'node_modules', 'playwright')
+const PLAYWRIGHT_BIN = join(TAMIAS_DIR, 'node_modules', '.bin', 'playwright')
+
+async function loadPlaywright() {
+	try {
+		return await import(PLAYWRIGHT_PATH) as typeof import('playwright')
+	} catch {
+		throw new Error(
+			'Playwright is not installed. Ask the AI to run browser_install, or run: tamias browser --setup'
+		)
+	}
+}
 
 let sharedContext: BrowserContext | null = null
 
@@ -22,6 +35,7 @@ async function getBrowserContext(headless = true): Promise<BrowserContext> {
 		mkdirSync(BROWSER_DATA_DIR, { recursive: true })
 	}
 
+	const { chromium } = await loadPlaywright()
 	sharedContext = await chromium.launchPersistentContext(BROWSER_DATA_DIR, {
 		headless,
 		viewport: { width: 1280, height: 720 },
@@ -213,6 +227,54 @@ export function createBrowserTools(aiService: AIService, sessionId: string) {
 					const res = await fetch(url, { method, headers: headers as Record<string, string> })
 					const text = await res.text()
 					return { success: true, status: res.status, content: text.slice(0, 50000) }
+				} catch (err) {
+					return { success: false, error: String(err) }
+				}
+			},
+		}),
+
+		browser_install: tool({
+			description:
+				'Install the Playwright browser automation library and download Chromium (~150 MB). ' +
+				'Call this when any browser tool fails with "Playwright is not installed". Safe to run multiple times.',
+			inputSchema: z.object({}),
+			execute: async () => {
+				try {
+					const tamiasDir = TAMIAS_DIR
+					const pkgJson = join(tamiasDir, 'package.json')
+
+					// Ensure a package.json exists so `bun add` has somewhere to record the dep
+					if (!existsSync(pkgJson)) {
+						writeFileSync(pkgJson, JSON.stringify({ name: 'tamias-data', version: '1.0.0', private: true }, null, 2))
+					}
+
+					const bunPath =
+						Bun.which('bun') ??
+						join(homedir(), '.bun', 'bin', 'bun')
+
+					// Step 1: install the playwright npm package into ~/.tamias/node_modules
+					const addProc = Bun.spawn([bunPath, 'add', 'playwright', '--cwd', tamiasDir], {
+						stdout: 'pipe',
+						stderr: 'pipe',
+					})
+					const addCode = await addProc.exited
+					if (addCode !== 0) {
+						const err = await new Response(addProc.stderr).text()
+						return { success: false, error: 'Failed to install playwright package: ' + err }
+					}
+
+					// Step 2: download the Chromium browser binary
+					const installProc = Bun.spawn([PLAYWRIGHT_BIN, 'install', 'chromium'], {
+						stdout: 'pipe',
+						stderr: 'pipe',
+					})
+					const installCode = await installProc.exited
+					if (installCode !== 0) {
+						const err = await new Response(installProc.stderr).text()
+						return { success: false, error: 'Failed to download Chromium: ' + err }
+					}
+
+					return { success: true, message: 'Playwright and Chromium installed. Browser tools are ready.' }
 				} catch (err) {
 					return { success: false, error: String(err) }
 				}
