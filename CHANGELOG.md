@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- wrap HistoryContent in Suspense for improved loading state handling
 - enhance browser tools with Playwright installation and management
 - add UI and API for manual cron job testing with target selection
 - introduce AI skill management, add browser command and tool, enhance AI request context, and improve terminal command auditing.
