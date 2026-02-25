@@ -2,6 +2,7 @@ import { db } from './db'
 import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { runDailyDigestMaintenance } from './dailyDigest'
 
 const ARCHIVE_DIR = join(homedir(), '.tamias', 'archive')
 const ARCHIVE_FILE = join(ARCHIVE_DIR, 'history.json')
@@ -83,6 +84,9 @@ export async function runDatabaseMaintenance(): Promise<void> {
 		// 5. Run VACUUM to reclaim space
 		console.log('[Maintenance] Running VACUUM...')
 		db.exec('VACUUM;')
+
+		// 6. Generate daily digests for recent days that don't have one yet
+		runDailyDigestMaintenance(3)
 
 		console.log('[Maintenance] Database maintenance completed.')
 	} catch (err) {

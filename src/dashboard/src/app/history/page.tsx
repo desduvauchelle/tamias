@@ -4,6 +4,32 @@ import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Clock, Terminal, Cpu, Database, ChevronRight, ChevronDown, Search } from 'lucide-react'
 
+interface HistoryToolCall {
+	toolName: string
+	args: unknown
+	toolCallId: string
+}
+
+interface HistoryRecord {
+	role: string
+	content: unknown
+	toolCallId?: string
+	toolCalls?: HistoryToolCall[]
+}
+
+function extractText(content: unknown): string {
+	if (typeof content === 'string') return content
+	if (Array.isArray(content)) {
+		return content.map((part: unknown) => {
+			if (typeof part === 'string') return part
+			if (part && typeof part === 'object' && 'text' in part && typeof (part as { text: unknown }).text === 'string') return (part as { text: string }).text
+			return ''
+		}).filter(Boolean).join(' ')
+	}
+	if (content && typeof content === 'object' && 'text' in content && typeof (content as { text: unknown }).text === 'string') return (content as { text: string }).text
+	return String(content ?? '')
+}
+
 interface LogEntry {
 	id: number | string
 	timestamp: string
@@ -19,7 +45,7 @@ interface LogEntry {
 	}
 	prompt: string
 	response: string
-	fullHistory: any[]
+	fullHistory: HistoryRecord[]
 }
 
 function HistoryContent() {
@@ -55,12 +81,15 @@ function HistoryContent() {
 		}
 	}
 
-	const filteredLogs = logs.filter(l =>
-		l.prompt?.toLowerCase().includes(filter.toLowerCase()) ||
-		l.response?.toLowerCase().includes(filter.toLowerCase()) ||
-		l.sessionId?.toLowerCase().includes(filter.toLowerCase()) ||
-		l.model?.toLowerCase().includes(filter.toLowerCase())
-	)
+	const filteredLogs = logs.filter(l => {
+		const promptText = typeof l.prompt === 'string' ? l.prompt : extractText(l.prompt as unknown)
+		const responseText = typeof l.response === 'string' ? l.response : extractText(l.response as unknown)
+		const f = filter.toLowerCase()
+		return promptText?.toLowerCase().includes(f) ||
+			responseText?.toLowerCase().includes(f) ||
+			l.sessionId?.toLowerCase().includes(f) ||
+			l.model?.toLowerCase().includes(f)
+	})
 
 	const openModal = (log: LogEntry) => {
 		setSelectedLog(log)
@@ -68,13 +97,13 @@ function HistoryContent() {
 		if (modal) modal.showModal()
 	}
 
-	const systemPrompt = selectedLog?.fullHistory?.find(m => m.role === 'system')?.content || ''
+	const systemPrompt = extractText(selectedLog?.fullHistory?.find(m => m.role === 'system')?.content || '')
 	const chatConversation = selectedLog?.fullHistory?.filter(m => m.role !== 'system') || []
 	const toolCalls = selectedLog?.fullHistory?.flatMap(m =>
-		m.toolCalls ? m.toolCalls.map((tc: any) => ({
+		m.toolCalls ? m.toolCalls.map(tc => ({
 			name: tc.toolName,
 			input: tc.args,
-			output: selectedLog.fullHistory.find((r: any) => r.role === 'tool' && r.toolCallId === tc.toolCallId)?.content
+			output: selectedLog.fullHistory.find(r => r.role === 'tool' && r.toolCallId === tc.toolCallId)?.content
 		})) : []
 	) || []
 
@@ -140,7 +169,7 @@ function HistoryContent() {
 												</span>
 											</div>
 											<div className="truncate pr-4 text-success/80">
-												{log.prompt || <span className="opacity-30 italic">No prompt</span>}
+												{extractText(log.prompt as unknown) || <span className="opacity-30 italic">No prompt</span>}
 											</div>
 											<div className="text-right text-base-content/40 tabular-nums">
 												{log.tokens.total || 0}
@@ -224,13 +253,13 @@ function HistoryContent() {
 								{chatConversation.length === 0 ? (
 									<div className="text-[11px] italic opacity-30 text-center py-4 bg-base-300/20 rounded-lg">No chat messages found for this turn.</div>
 								) : (
-									chatConversation.map((msg: any, i: number) => (
+									chatConversation.map((msg: HistoryRecord, i: number) => (
 										<div key={i} className={`flex flex-col gap-1.5 ${msg.role === 'user' ? 'items-start' : 'items-end'}`}>
 											<div className={`text-[9px] uppercase font-bold opacity-30 px-1 ${msg.role === 'user' ? 'text-left' : 'text-right'}`}>
 												{msg.role}
 											</div>
 											<div className={`p-3 rounded-lg text-xs font-mono max-w-[85%] border ${msg.role === 'user' ? 'bg-base-300/50 border-base-300 text-base-content/80' : 'bg-success/5 border-success/20 text-success'}`}>
-												{msg.content}
+												{extractText(msg.content)}
 											</div>
 										</div>
 									))

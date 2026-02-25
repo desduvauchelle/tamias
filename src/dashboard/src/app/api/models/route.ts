@@ -8,7 +8,7 @@ export async function GET() {
 		const config = await getTamiasConfig()
 		const env = await getTamiasEnv()
 
-		const connections = Object.entries(config.connections || {}).map(([nickname, conn]: [string, any]) => {
+		const connections = (Object.entries(config.connections || {}) as [string, { envKeyName?: string } & Record<string, unknown>][]).map(([nickname, conn]) => {
 			const hasKey = conn.envKeyName && !!env[conn.envKeyName]
 			return {
 				...conn,
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
 		}
 
 		// Handle deletions
-		const newNicknames = new Set(connections.map((c: any) => c.nickname))
+		const newNicknames = new Set(connections.map((c: { nickname: string }) => c.nickname))
 		for (const oldNick of Object.keys(config.connections)) {
 			if (!newNicknames.has(oldNick)) {
 				const oldKey = config.connections[oldNick].envKeyName

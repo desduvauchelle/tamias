@@ -81,7 +81,13 @@ export class DiscordBridge implements IBridge {
 			state.queue.push(message)
 
 			const channelRef = message.channel
-			const channelName = 'name' in channelRef ? `#${(channelRef as any).name}` : 'DM'
+			const discordChannelName = 'name' in channelRef ? (channelRef as { name: string }).name : null
+			const guildName = message.guild?.name ?? null
+			const channelName = discordChannelName
+				? guildName
+					? `#${discordChannelName} (${guildName})`
+					: `#${discordChannelName}`
+				: 'DM'
 
 			const attachments: BridgeMessage['attachments'] = []
 			if (message.attachments.size > 0) {

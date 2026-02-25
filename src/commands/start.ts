@@ -418,6 +418,18 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
                     FROM ai_logs ORDER BY id DESC LIMIT 100
                 `).all()
 
+				const extractMsgText = (content: unknown): string => {
+					if (typeof content === 'string') return content
+					if (Array.isArray(content)) {
+						return content.map((part: any) => {
+							if (typeof part === 'string') return part
+							if (part?.type === 'text' && typeof part.text === 'string') return part.text
+							return ''
+						}).filter(Boolean).join(' ')
+					}
+					return String(content ?? '')
+				}
+
 				const logs = rawLogs.map((r) => {
 					let msgs: any[] = []
 					try {
@@ -425,8 +437,8 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					} catch (e) {
 						console.error('Failed to parse logs messages:', e)
 					}
-					const systemMsg = msgs.find(m => m.role === 'system')?.content || ''
-					const userMsgs = msgs.filter(m => m.role === 'user').map(m => m.content)
+					const systemMsg = extractMsgText(msgs.find(m => m.role === 'system')?.content || '')
+					const userMsgs = msgs.filter(m => m.role === 'user').map(m => extractMsgText(m.content))
 
 					const inputSnippet = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1] : ''
 					const cost = getEstimatedCost(r.model, r.promptTokens || 0, r.completionTokens || 0)

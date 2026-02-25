@@ -5,6 +5,16 @@ import { readFile } from 'fs/promises'
 
 const DAEMON_FILE = join(homedir(), '.tamias', 'daemon.json')
 
+interface DaemonSSEEvent {
+	type: string
+	text?: string
+	name?: string
+	input?: unknown
+	buffer?: { data?: number[] } | number[] | Record<string, number>
+	mimeType?: string
+	message?: string
+}
+
 export async function POST(req: Request) {
 	try {
 		const { searchParams } = new URL(req.url)
@@ -88,8 +98,8 @@ export async function POST(req: Request) {
 
 						for (const line of lines) {
 							if (line.startsWith('data: ')) {
-								let data: any
-								try { data = JSON.parse(line.slice(6)) } catch { continue }
+let data: DaemonSSEEvent
+						try { data = JSON.parse(line.slice(6)) as DaemonSSEEvent } catch { continue }
 
 								if (data.type === 'chunk') {
 									// Text delta: 0:"text"\n
@@ -147,8 +157,8 @@ export async function POST(req: Request) {
 			}
 		})
 
-	} catch (err: any) {
+	} catch (err: unknown) {
 		console.error('Chat API Error:', err)
-		return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json' } })
+		return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), { status: 500, headers: { 'Content-Type': 'application/json' } })
 	}
 }

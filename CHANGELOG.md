@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- integrate caffeinate process management and add token command for dashboard access
 - wrap HistoryContent in Suspense for improved loading state handling
 - enhance browser tools with Playwright installation and management
 - add UI and API for manual cron job testing with target selection
@@ -116,6 +117,11 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.25.3] - 2026-02-25
+
+### Features
+- integrate caffeinate process management and add token command for dashboard access
 
 ## [v26.2.25.2] - 2026-02-25
 

@@ -3,6 +3,7 @@ import { homedir } from 'os'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
 import { getBridgesConfig, getWorkspacePath, TAMIAS_DIR } from './config.ts'
 import { getLoadedSkills } from './skills.js'
+import { readRecentDigests } from './dailyDigest.js'
 
 
 export const MEMORY_DIR = join(homedir(), '.tamias', 'memory')
@@ -97,8 +98,10 @@ export function buildSystemPrompt(toolNames: string[], toolDocs: string, summary
 	}
 
 	if (channel) {
-		let channelSection = `# Channel Context\n\nYou are currently communicating on the **${channel.id}** channel`
-		if (channel.name) channelSection += ` in **${channel.name}**`
+		const platformNames: Record<string, string> = { discord: 'Discord', telegram: 'Telegram', terminal: 'Terminal' }
+		const platformLabel = platformNames[channel.id] ?? channel.id
+		let channelSection = `# Channel Context\n\nYou are currently communicating via **${platformLabel}**`
+		if (channel.name) channelSection += `, in the **${channel.name}** channel`
 		channelSection += '.'
 		if (channel.userId) channelSection += ` Session Identifier: \`${channel.userId}\`.`
 		if (channel.authorName) channelSection += `\nCurrent interlocutor: **${channel.authorName}**.`
@@ -167,7 +170,14 @@ When reading or updating your memory, you can use either the absolute path or th
 		sections.push('# Long-Term Memory\n\n' + files['MEMORY.md'])
 	}
 
-	// Today's daily notes
+	// Recent activity — last 3 completed days (concise digests)
+	const recentDigests = readRecentDigests(3)
+	if (recentDigests.length > 0) {
+		const digestBody = recentDigests.map(d => d.content).join('\n\n---\n\n')
+		sections.push(`# Recent Activity (Last ${recentDigests.length} Day${recentDigests.length > 1 ? 's' : ''})\n\n${digestBody}`)
+	}
+
+	// Today's daily notes (raw, appended during the day)
 	const today = new Date().toISOString().slice(0, 10)
 	const dailyPath = join(DAILY_DIR, `${today}.md`)
 	if (existsSync(dailyPath)) {
@@ -214,13 +224,14 @@ When reading or updating your memory, you can use either the absolute path or th
  * Update persona files with new insights discovered during conversation.
  * insights: Map of filename to new markdown block to append or merge.
  */
-export function updatePersonaFiles(insights: Record<string, string>): void {
+export function updatePersonaFiles(insights: Record<string, string>, date?: string): void {
 	ensureMemoryDir()
+	const label = date ? `## Update (${date})` : '## New Insights'
 	for (const [file, block] of Object.entries(insights)) {
 		const path = join(MEMORY_DIR, file)
 		const existing = existsSync(path) ? readFileSync(path, 'utf-8') : ''
 		const separator = existing.endsWith('\n') ? '' : '\n'
-		const newContent = existing + separator + '\n## New Insights\n\n' + block.trim() + '\n'
+		const newContent = existing + separator + '\n' + label + '\n\n' + block.trim() + '\n'
 		writeFileSync(path, newContent, 'utf-8')
 	}
 }

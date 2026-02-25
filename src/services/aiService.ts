@@ -13,7 +13,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getAllModelOptions } from '../utils/config'
 import { buildActiveTools } from '../utils/toolRegistry'
-import { buildSystemPrompt, updatePersonaFiles, scaffoldFromTemplates, readAllPersonaFiles } from '../utils/memory'
+import { buildSystemPrompt, updatePersonaFiles, writePersonaFile, appendDailyLog, scaffoldFromTemplates, readAllPersonaFiles } from '../utils/memory'
 import { saveSessionToDisk, type SessionPersist, listAllStoredSessions, loadSessionFromDisk } from '../utils/sessions'
 import { db } from '../utils/db'
 import { logAiRequest } from '../utils/logger'
@@ -605,20 +605,23 @@ export class AIService {
 				.map(([file, content]) => `### ${file}\n${content}`)
 				.join('\n\n')
 
-			const compactionPrompt = `You are a memory compaction agent for Tamias, an AI coding assistant.
-Your goal is to summarize the current conversation and extract new, IMPORTANT insights about the user to keep their persona files up-to-date.
+			const today = new Date().toISOString().slice(0, 10)
+			const compactionPrompt = `You are a memory compaction agent for Tamias, an AI assistant.
+Your goal is to summarize the current conversation and keep the user's persistent memory files accurate and up-to-date.
 
 # Existing Persona Context
 The user's persistent memory currently contains:
 ${existingContext}
 
 # Instructions
-1. **Summary**: Create a concise, high-level summary of the conversation so far. Focus on the core objective and current progress.
+1. **Summary**: Write a concise, high-level summary of the conversation so far. Focus on what was discussed, any decisions made, and current progress.
 2. **Session Name**: Suggest a short (2-4 words) descriptive name for this session (e.g., "Refactoring Auth Layer").
-3. **Insights**: Extract NEW facts, preferences, or recurring patterns about the user.
-   - DO NOT repeat information already present in the "Existing Persona Context".
-   - Be extremely brief and specific.
-   - Target files like "USER.md" (preferences/facts), "IDENTITY.md" (how they want to be addressed), or "SOUL.md" (personality traits).
+3. **Memory Update (MEMORY.md)**: Rewrite the FULL content of MEMORY.md to reflect the latest known facts about the user — their projects, preferences, habits, and anything worth remembering long-term. Merge the existing MEMORY.md content with any new facts from this conversation. This field replaces MEMORY.md entirely, so include everything relevant, not just new items.
+4. **Identity Insights** (optional): Only if the conversation revealed something genuinely NEW about the user's identity, preferences, or personality that is NOT already in the existing context above, add a brief note to the appropriate file:
+   - "USER.md" — new facts about who they are, what they work on, how they prefer to communicate
+   - "IDENTITY.md" — new preferences for how the AI should behave or address them
+   - "SOUL.md" — new personality traits or values
+   Leave this array EMPTY if nothing meaningfully new was learned. DO NOT repeat what is already in the existing context.
 
 Return a structured object.`
 
@@ -627,10 +630,11 @@ Return a structured object.`
 				schema: z.object({
 					summary: z.string().describe('A concise summary of the conversation history.'),
 					sessionName: z.string().describe('A short, descriptive name for the session.'),
+					memoryUpdate: z.string().describe('Full replacement content for MEMORY.md, merging existing facts with anything new from this conversation.'),
 					insights: z.array(z.object({
-						filename: z.string().describe('The filename, e.g., "USER.md"'),
-						content: z.string().describe('The content or insights to append.')
-					})).describe('New insights to append to persona files.')
+						filename: z.enum(['USER.md', 'IDENTITY.md', 'SOUL.md']).describe('The persona file to update.'),
+						content: z.string().describe('The new insight to append.')
+					})).describe('Genuinely new identity/preference insights to append. Leave empty if nothing new was learned.')
 				}),
 				system: compactionPrompt,
 				prompt: `Current history to compact:\n${JSON.stringify(session.messages)}`,
@@ -661,12 +665,21 @@ Return a structured object.`
 			if (object.sessionName && (!session.name || session.name.startsWith('sess_'))) {
 				session.name = object.sessionName
 			}
+			// Append a one-liner to today's raw daily log (feeds the nightly digest)
+			const sessionLabel = session.name || session.id
+			const oneLiner = object.summary.split(/[.\n]/)[0].trim()
+			appendDailyLog(`- **${sessionLabel}**: ${oneLiner}.`)
+			// Rewrite MEMORY.md entirely with the merged content
+			if (object.memoryUpdate?.trim()) {
+				writePersonaFile('MEMORY.md', object.memoryUpdate.trim() + '\n')
+			}
+			// Only append genuinely new identity/preference insights, dated
 			if (object.insights && object.insights.length > 0) {
 				const insightsRecord: Record<string, string> = {}
 				for (const item of object.insights) {
 					insightsRecord[item.filename] = item.content
 				}
-				updatePersonaFiles(insightsRecord)
+				updatePersonaFiles(insightsRecord, today)
 			}
 			session.messages = session.messages.slice(-10)
 		} catch (err) {

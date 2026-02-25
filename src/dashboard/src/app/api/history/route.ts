@@ -5,6 +5,26 @@ import { readFile } from 'fs/promises'
 
 export const dynamic = 'force-dynamic'
 
+interface DaemonLogEntry {
+	id: string
+	timestamp: string
+	initiator?: string
+	sessionId?: string
+	model: string
+	provider?: string
+	action?: string
+	durationMs?: number
+	tokensPrompt?: number
+	tokensCompletion?: number
+	tokens?: { prompt?: number; completion?: number }
+	inputSnippet?: string
+	prompt?: string
+	outputSnippet?: string
+	response?: string
+	estimatedCostUsd?: number
+	fullHistory?: unknown[]
+}
+
 const DAEMON_FILE = join(homedir(), '.tamias', 'daemon.json')
 
 export async function GET() {
@@ -19,7 +39,7 @@ export async function GET() {
 
 		const data = await res.json()
 		// Forward daemon logs directly, mapping field names to dashboard format
-		const logs = (data.logs || []).map((l: any) => ({
+		const logs = (data.logs || []).map((l: DaemonLogEntry) => ({
 			id: l.id,
 			timestamp: l.timestamp,
 			sessionId: l.initiator ?? l.sessionId,

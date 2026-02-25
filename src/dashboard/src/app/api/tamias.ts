@@ -15,14 +15,14 @@ export async function getTamiasConfig() {
 		const content = await readFile(CONFIG_PATH, 'utf8')
 		return JSON.parse(content)
 	} catch (err) {
-		if ((err as any).code !== 'ENOENT') {
+		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
 			console.error('[tamias] Failed to read config file, using defaults:', err)
 		}
 		return { version: '1.0', connections: {}, bridges: { terminal: { enabled: true } } }
 	}
 }
 
-export async function saveTamiasConfig(config: any) {
+export async function saveTamiasConfig(config: Record<string, unknown>) {
 	await mkdir(TAMIAS_DIR, { recursive: true })
 	await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8')
 }
@@ -42,7 +42,7 @@ export async function getTamiasEnv() {
 			}
 		}
 	} catch (err) {
-		if ((err as any).code !== 'ENOENT') {
+		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
 			console.error('[tamias] Failed to read env file:', err)
 		}
 	}
@@ -67,20 +67,29 @@ export async function getTamiasCrons() {
 		const content = await readFile(CRONS_PATH, 'utf8')
 		return JSON.parse(content)
 	} catch (err) {
-		if ((err as any).code !== 'ENOENT') {
+		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
 			console.error('[tamias] Failed to read cron jobs file:', err)
 		}
 		return []
 	}
 }
 
-export async function saveTamiasCrons(crons: any[]) {
+export async function saveTamiasCrons(crons: unknown[]) {
 	await mkdir(TAMIAS_DIR, { recursive: true })
 	await writeFile(CRONS_PATH, JSON.stringify(crons, null, 2), 'utf8')
 }
 
+interface SkillEntry {
+	name: string
+	description: string
+	content: string
+	isBuiltIn: boolean
+	folder: string
+	filePath: string
+}
+
 export async function getTamiasSkills() {
-	const skills: any[] = []
+	const skills: SkillEntry[] = []
 
 	const loadFromDir = async (dirPath: string, isBuiltIn: boolean) => {
 		try {
@@ -109,7 +118,7 @@ export async function getTamiasSkills() {
 				}
 			}
 		} catch (e) {
-			if ((e as any).code !== 'ENOENT') {
+			if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
 				console.warn(`[tamias] Failed to read skills directory '${dirPath}':`, e)
 			}
 		}

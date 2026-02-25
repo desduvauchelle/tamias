@@ -170,6 +170,17 @@ AI-driven email management via the `himalaya` CLI.
 | `read_email` | Get full message content |
 | `send_email` | Send to whitelisted recipients |
 
+### `image`
+
+AI image generation. Requires at least one image model to be configured via `tamias model set-image`.
+
+> [!NOTE]
+> Supports OpenAI (`dall-e-3`, `dall-e-2`) and Google Imagen models. Use `tamias model set-image` to configure a priority list; Tamias will automatically fall back to the next model if one fails.
+
+| Function | Description |
+|---|---|
+| `generate` | Generate an image from a text prompt and send it back to the channel |
+
 ---
 
 ## Multi-Agent System

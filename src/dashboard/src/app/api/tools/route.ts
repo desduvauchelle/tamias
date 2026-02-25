@@ -19,6 +19,7 @@ export async function GET() {
 				workspace: 'Workspace Management',
 				gemini: 'Gemini AI Tool',
 				subagent: 'Sub-agent Spawner',
+				image: 'Image Generation',
 			}
 		})
 	} catch (error) {

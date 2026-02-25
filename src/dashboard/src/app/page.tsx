@@ -4,6 +4,37 @@ import { useState, useEffect, useRef } from 'react'
 import { useChat, type UIMessage } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 
+interface LogHistoryEntry {
+	timestamp: string
+	sessionId?: string
+	prompt?: string
+	response?: string
+}
+
+interface RawMessage {
+	id?: string
+	role: 'user' | 'assistant' | 'system'
+	content: string | unknown[]
+	parts?: unknown[]
+}
+
+interface ReceivedFile {
+	__tamias_file__: true
+	name: string
+	base64: string
+	mimeType?: string
+}
+
+interface ToolDisplayPart {
+	type: string
+	toolName: string
+	state: string
+}
+
+interface UIMessageWithImages extends UIMessage {
+	_pendingImages?: string[]
+}
+
 export default function ChatPage() {
 	const [logs, setLogs] = useState('')
 	const [sessions, setSessions] = useState<{ id: string; messageCount: number }[]>([])
@@ -24,7 +55,7 @@ export default function ChatPage() {
 				.then(res => res.json())
 				.then(data => {
 					if (data.logs) {
-						const logText = data.logs.slice(0, 50).map((l: any) => {
+						const logText = data.logs.slice(0, 50).map((l: LogHistoryEntry) => {
 							const time = new Date(l.timestamp).toLocaleTimeString()
 							return `[${time}] ${l.sessionId}: ${l.prompt}\n -> ${l.response}`
 						}).join('\n\n')
@@ -86,8 +117,8 @@ export default function ChatPage() {
 			const res = await fetch(`/api/sessions/${sid}`)
 			const data = await res.json()
 			if (data.messages) {
-				const uiMsgs: UIMessage[] = data.messages.map((m: any, idx: number) => {
-					let parts: any[] = []
+				const uiMsgs: UIMessage[] = data.messages.map((m: RawMessage, idx: number) => {
+					let parts: unknown[] = []
 					if (typeof m.content === 'string') {
 						parts = [{ type: 'text', text: m.content }]
 					} else if (Array.isArray(m.content)) {
@@ -318,14 +349,15 @@ function ChatTerminal({ sessionId, initialHistory }: { sessionId: string, initia
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const chatEndRef = useRef<HTMLDivElement>(null)
 
-	const { messages, sendMessage, status, ...chatRest } = useChat({
+	const chatHook = useChat({
 		transport: new DefaultChatTransport({ api: `/api/chat?sessionId=${sessionId}` }),
 		messages: initialHistory,
 	})
+	const { messages, sendMessage, status } = chatHook
 
 	// Files received from the AI (via 2: data parts in the stream)
-	const streamData = (chatRest as any).data as any[] | undefined
-	const receivedFiles = streamData?.filter((d: any) => d?.__tamias_file__) ?? []
+	const chatHookWithData = chatHook as typeof chatHook & { data?: ReceivedFile[] }
+	const receivedFiles = chatHookWithData.data?.filter(d => d.__tamias_file__ === true) ?? []
 
 	const isLoading = status === 'submitted' || status === 'streaming'
 
@@ -358,7 +390,10 @@ function ChatTerminal({ sessionId, initialHistory }: { sessionId: string, initia
 		const attachments = pendingFiles.map(f => ({ name: f.name, mimeType: f.mimeType, base64: f.base64 }))
 		setInput('')
 		setPendingFiles([])
-		await sendMessage({ text, data: attachments.length > 0 ? { attachments } : undefined } as any)
+		await sendMessage(
+			{ text },
+			attachments.length > 0 ? { body: { data: { attachments } } } : undefined
+		)
 	}
 
 	useEffect(() => {
@@ -376,7 +411,7 @@ function ChatTerminal({ sessionId, initialHistory }: { sessionId: string, initia
 					{messages.length === 0 ? (
 						<div className="h-full flex flex-col items-center justify-center text-center opacity-40">
 							<div className="text-4xl mb-3">⚡</div>
-							<p className="text-xs font-mono">Session "{sessionId}" initialized.</p>
+							<p className="text-xs font-mono">Session &quot;{sessionId}&quot; initialized.</p>
 						</div>
 					) : (
 						messages.map((message: UIMessage) => (
@@ -386,25 +421,28 @@ function ChatTerminal({ sessionId, initialHistory }: { sessionId: string, initia
 								</div>
 
 								{/* Tool invocations */}
-								{message.parts?.filter(p => p.type.startsWith('tool-') || p.type === 'dynamic-tool').map((toolInv: any, idx) => (
-									<div key={idx} className="chat-bubble chat-bubble-warning text-[10px] font-mono mb-1 py-1 px-3 min-h-0 max-w-sm">
-										<span className="opacity-70 lowercase">executing: </span>
-										<span className="font-bold underline decoration-dotted">{toolInv.toolName}</span>
-										<span className={`ml-2 ${toolInv.state === 'output-available' ? 'text-success' : 'text-warning'}`}>
-											{toolInv.state === 'output-available' ? '✓' : '⟳'}
-										</span>
-									</div>
-								))}
+								{message.parts?.filter(p => p.type.startsWith('tool-') || p.type === 'dynamic-tool').map((part, idx) => {
+									const toolInv = part as unknown as ToolDisplayPart
+									return (
+										<div key={idx} className="chat-bubble chat-bubble-warning text-[10px] font-mono mb-1 py-1 px-3 min-h-0 max-w-sm">
+											<span className="opacity-70 lowercase">executing: </span>
+											<span className="font-bold underline decoration-dotted">{toolInv.toolName}</span>
+											<span className={`ml-2 ${toolInv.state === 'output-available' ? 'text-success' : 'text-warning'}`}>
+												{toolInv.state === 'output-available' ? '✓' : '⟳'}
+											</span>
+										</div>
+									)
+								})}
 
 								{/* Text parts */}
-								{message.parts?.filter(p => p.type === 'text').map((part: any, idx) => (
+								{message.parts?.filter(p => p.type === 'text').map((part, idx) => (
 									<div key={idx} className={`chat-bubble font-mono text-xs whitespace-pre-wrap leading-relaxed shadow-sm ${message.role === 'user' ? 'bg-primary text-primary-content' : 'chat-bubble-success'}`}>
 										{typeof part.text === 'string' ? sanitizeText(part.text) : JSON.stringify(part.text)}
 									</div>
 								))}
 
 								{/* Image attachments on user messages */}
-								{message.role === 'user' && (message as any)._pendingImages?.map((src: string, idx: number) => (
+								{message.role === 'user' && (message as UIMessageWithImages)._pendingImages?.map((src: string, idx: number) => (
 									<img key={idx} src={src} alt="attachment" className="max-w-xs max-h-48 rounded-xl mt-1 shadow" />
 								))}
 							</div>
@@ -412,7 +450,7 @@ function ChatTerminal({ sessionId, initialHistory }: { sessionId: string, initia
 					)}
 
 					{/* Files received from AI */}
-					{receivedFiles.map((f: any, idx: number) => (
+					{receivedFiles.map((f: ReceivedFile, idx: number) => (
 						<div key={idx} className="chat chat-start animate-in slide-in-from-bottom-2 duration-300">
 							<div className="chat-header text-[10px] text-base-content/50 mb-1 uppercase font-bold tracking-tighter">TAMIASOS — FILE</div>
 							{f.mimeType?.startsWith('image/') ? (

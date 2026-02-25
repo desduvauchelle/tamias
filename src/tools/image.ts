@@ -9,6 +9,7 @@ import { loadConfig, getApiKeyForConnection, getDefaultImageModels, type Connect
 import type { DaemonEvent } from '../bridge/types'
 
 export const IMAGE_TOOL_NAME = 'image'
+export const IMAGE_TOOL_LABEL = '🖼️ Image (AI image generation)'
 
 export function createImageTools(aiService: AIService, sessionId: string) {
 	return {

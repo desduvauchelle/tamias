@@ -12,6 +12,7 @@ import { geminiTools, GEMINI_TOOL_NAME } from '../tools/gemini.ts'
 import { createSubagentTools, SUBAGENT_TOOL_NAME } from '../tools/subagent.ts'
 import { createImageTools, IMAGE_TOOL_NAME } from '../tools/image.ts'
 import { createBrowserTools, BROWSER_TOOL_NAME } from '../tools/browser.ts'
+import { createPdfTools, PDF_TOOL_NAME } from '../tools/pdf.ts'
 import type { AIService } from '../services/aiService.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -85,6 +86,7 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 		[SUBAGENT_TOOL_NAME]: createSubagentTools(aiService, sessionId) as ToolSet,
 		[IMAGE_TOOL_NAME]: createImageTools(aiService, sessionId) as ToolSet,
 		[BROWSER_TOOL_NAME]: createBrowserTools(aiService, sessionId) as ToolSet,
+		[PDF_TOOL_NAME]: createPdfTools(aiService, sessionId) as ToolSet,
 	}
 
 	for (const [toolName, allFunctions] of Object.entries(internalCatalog)) {

@@ -5,10 +5,19 @@ import {
 	AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 	PieChart, Pie, Cell, BarChart, Bar, Legend
 } from 'recharts'
+import type { ComponentType } from 'react'
 import {
 	TrendingUp, Coins, Calendar, Clock, ArrowUpRight, ArrowDownRight,
 	Zap, Cpu, Globe, Terminal, MessageSquare
 } from 'lucide-react'
+
+interface StatCardProps {
+	title: string
+	value: number
+	previousValue?: number
+	icon: ComponentType<{ className?: string }>
+	colorClass?: string
+}
 
 interface DataPoint {
 	date: string
@@ -33,7 +42,7 @@ interface CostsData {
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d']
 
-const StatCard = ({ title, value, previousValue, icon: Icon, colorClass = "text-primary" }: any) => {
+const StatCard = ({ title, value, previousValue, icon: Icon, colorClass = "text-primary" }: StatCardProps) => {
 	const diff = previousValue ? ((value - previousValue) / previousValue) * 100 : 0
 	const isUp = diff > 0
 
@@ -184,7 +193,7 @@ export default function UsagePage() {
 									contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px' }}
 									itemStyle={{ color: '#3b82f6' }}
 									labelStyle={{ color: '#888', marginBottom: '4px', fontSize: '10px' }}
-									formatter={(value: any) => [`$${parseFloat(value || 0).toFixed(4)}`, 'Cost']}
+									formatter={(value: number | string | undefined) => [`$${parseFloat(String(value || 0)).toFixed(4)}`, 'Cost']}
 								/>
 								<Area
 									type="monotone"
@@ -226,7 +235,7 @@ export default function UsagePage() {
 								</Pie>
 								<Tooltip
 									contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px' }}
-									formatter={(value: any) => [`$${parseFloat(value || 0).toFixed(4)}`, 'Spend']}
+									formatter={(value: number | string | undefined) => [`$${parseFloat(String(value || 0)).toFixed(4)}`, 'Spend']}
 								/>
 								<Legend
 									verticalAlign="bottom"
@@ -267,7 +276,7 @@ export default function UsagePage() {
 								/>
 								<Tooltip
 									contentStyle={{ backgroundColor: '#111', border: '1px solid #333', borderRadius: '8px' }}
-									formatter={(value: any) => [`$${parseFloat(value || 0).toFixed(4)}`, 'Cost']}
+									formatter={(value: number | string | undefined) => [`$${parseFloat(String(value || 0)).toFixed(4)}`, 'Cost']}
 								/>
 								<Bar dataKey="value" fill="#8884d8" radius={[0, 4, 4, 0]} barSize={20}>
 									{(data.initiatorDistribution || []).map((_entry, index) => (
