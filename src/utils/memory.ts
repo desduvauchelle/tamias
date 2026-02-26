@@ -24,10 +24,23 @@ export function isOnboarded(): boolean {
 	return existsSync(join(MEMORY_DIR, 'IDENTITY.md'))
 }
 
-/** Read a persona file from memory dir. Returns null if not found. */
+/** Read a persona file from memory dir.
+ * If the file is missing but a template exists, the template is scaffolded first.
+ * Returns null only if neither the file nor a template can be found. */
 export function readPersonaFile(name: string): string | null {
 	const path = join(MEMORY_DIR, name)
-	if (!existsSync(path)) return null
+	if (!existsSync(path)) {
+		// Attempt to recover from template before giving up
+		const templatePath = join(TEMPLATES_DIR, name)
+		if (existsSync(templatePath)) {
+			ensureMemoryDir()
+			let content = readFileSync(templatePath, 'utf-8')
+			content = stripFrontmatter(content)
+			writeFileSync(path, content, 'utf-8')
+			return content
+		}
+		return null
+	}
 	return readFileSync(path, 'utf-8')
 }
 
@@ -42,7 +55,7 @@ export function scaffoldFromTemplates(): void {
 	ensureMemoryDir()
 
 	// These files are only copied once if they don't exist
-	const toScaffoldOnce = ['SOUL.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md']
+	const toScaffoldOnce = ['SOUL.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md', 'MEMORY.md']
 	for (const file of toScaffoldOnce) {
 		const dest = join(MEMORY_DIR, file)
 		if (!existsSync(dest)) {
@@ -187,15 +200,10 @@ When reading or updating your memory, you can use either the absolute path or th
 		}
 	}
 
-	// Tools
+	// Tools — full schemas flow natively via the tool protocol; only list enabled groups here to save tokens
 	if (toolNames.length > 0) {
-		let toolSection = `# Available Tools\n\nYou have access to the following tools. Tool names use the format \`toolName__functionName\`.\n\n`
-		if (toolDocs) {
-			toolSection += toolDocs
-		} else {
-			toolSection += `List of enabled tools: ${toolNames.map((t) => `\`${t}\``).join(', ')}.`
-		}
-		sections.push(toolSection)
+		const groups = toolNames.map(t => `\`${t.replace(/^(internal:|mcp:)/, '')}\``).join(', ')
+		sections.push(`# Available Tools\n\nTool calls use the format \`toolName__functionName\`. Enabled tool groups: ${groups}.`)
 	}
 
 	// Skills

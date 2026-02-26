@@ -737,15 +737,35 @@ Your goal is to summarize the current conversation and keep the user's persisten
 The user's persistent memory currently contains:
 ${existingContext}
 
+# File Responsibilities — What Goes Where
+
+## MEMORY.md (rewritten every compaction)
+The living, evolving memory. Contains:
+1. **Active Projects** — a table of current projects with description, folder path, and channel/Discord ID if known.
+2. **Recent Activity** — a rolling 7-day log in this format:
+   \`[YYYY-MM-DD HH:MM] (Project name): brief task description\`
+   DROP entries older than 7 days from this section on every rewrite. They are already captured in daily logs.
+3. **Notes & Context** — decisions, follow-ups, ongoing threads worth remembering.
+
+This file is fully rewritten on every compaction. Always merge existing content with new information from this conversation.
+
+## USER.md (rewritten only when genuinely new personal facts are discovered)
+Stable, personal facts about the human: identity, personality, communication style, what they care about, what annoys them, recurring habits/patterns. This is NOT a project log or activity list.
+- Only provide a \`userUpdate\` if something meaningfully NEW was learned about the person (a new preference, a personality observation, a new habit pattern).
+- If provided, rewrite USER.md entirely — merge existing content with the new info. Do NOT just append a bullet.
+- Leave \`userUpdate\` as an empty string if nothing new was learned.
+
+## IDENTITY.md / SOUL.md (appended only when genuinely new)
+- IDENTITY.md — new preferences for how the AI should behave or address the user
+- SOUL.md — new AI personality traits or values
+Leave the insights array EMPTY if nothing new was learned. DO NOT repeat what is already in the existing context.
+
 # Instructions
-1. **Summary**: Write a concise, high-level summary of the conversation so far. Focus on what was discussed, any decisions made, and current progress.
-2. **Session Name**: Suggest a short (2-4 words) descriptive name for this session (e.g., "Refactoring Auth Layer").
-3. **Memory Update (MEMORY.md)**: Rewrite the FULL content of MEMORY.md to reflect the latest known facts about the user — their projects, preferences, habits, and anything worth remembering long-term. Merge the existing MEMORY.md content with any new facts from this conversation. This field replaces MEMORY.md entirely, so include everything relevant, not just new items.
-4. **Identity Insights** (optional): Only if the conversation revealed something genuinely NEW about the user's identity, preferences, or personality that is NOT already in the existing context above, add a brief note to the appropriate file:
-   - "USER.md" — new facts about who they are, what they work on, how they prefer to communicate
-   - "IDENTITY.md" — new preferences for how the AI should behave or address them
-   - "SOUL.md" — new personality traits or values
-   Leave this array EMPTY if nothing meaningfully new was learned. DO NOT repeat what is already in the existing context.
+1. **Summary**: Write a concise, high-level summary of the conversation. Focus on what was discussed, decisions made, and current progress.
+2. **Session Name**: Suggest a short (2-4 words) descriptive name for this session (e.g., "Investment Research Run").
+3. **MEMORY.md Update**: Rewrite MEMORY.md entirely with updated projects table + 7-day rolling activity log + notes.
+4. **USER.md Update** (optional): If a genuinely new personal fact was learned, provide a full rewrite of USER.md. Otherwise leave empty.
+5. **IDENTITY.md / SOUL.md Insights** (optional): Append-only notes for genuinely new AI behavior or personality insights.
 
 Return a structured object.`
 
@@ -754,11 +774,12 @@ Return a structured object.`
 				schema: z.object({
 					summary: z.string().describe('A concise summary of the conversation history.'),
 					sessionName: z.string().describe('A short, descriptive name for the session.'),
-					memoryUpdate: z.string().describe('Full replacement content for MEMORY.md, merging existing facts with anything new from this conversation.'),
+					memoryUpdate: z.string().describe('Full replacement content for MEMORY.md: active projects table + 7-day rolling activity log + notes.'),
+					userUpdate: z.string().describe('Full replacement content for USER.md if genuinely new personal facts were learned. Empty string if nothing new.'),
 					insights: z.array(z.object({
-						filename: z.enum(['USER.md', 'IDENTITY.md', 'SOUL.md']).describe('The persona file to update.'),
+						filename: z.enum(['IDENTITY.md', 'SOUL.md']).describe('The persona file to append a new insight to.'),
 						content: z.string().describe('The new insight to append.')
-					})).describe('Genuinely new identity/preference insights to append. Leave empty if nothing new was learned.')
+					})).describe('Genuinely new AI behavior/personality insights to append to IDENTITY.md or SOUL.md. Leave empty if nothing new was learned.')
 				}),
 				system: compactionPrompt,
 				prompt: `Current history to compact:\n${JSON.stringify(session.messages)}`,
@@ -796,6 +817,10 @@ Return a structured object.`
 			// Rewrite MEMORY.md entirely with the merged content
 			if (object.memoryUpdate?.trim()) {
 				writePersonaFile('MEMORY.md', object.memoryUpdate.trim() + '\n')
+			}
+			// Rewrite USER.md entirely if new personal facts were discovered
+			if (object.userUpdate?.trim()) {
+				writePersonaFile('USER.md', object.userUpdate.trim() + '\n')
 			}
 			// Only append genuinely new identity/preference insights, dated
 			if (object.insights && object.insights.length > 0) {

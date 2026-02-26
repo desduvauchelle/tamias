@@ -504,10 +504,10 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 			},
 		}),
 		save_skill: tool({
-			description: 'Create or update a custom AI skill. Skills are Markdown instruction sets injected into the system prompt. Use `tags` to categorise a skill and `parent` (folder name) to mark it as a child step in a multi-step sequence whose orchestrator skill has that folder name.',
+			description: 'Create or update a custom AI skill. Skills are Markdown files that live at ~/.tamias/skills/<folder>/SKILL.md and are injected into the system prompt. The `description` field is the ONLY thing the AI sees before deciding to read the full skill — write it as a trigger phrase: "Use this when the user asks to...". Use `tags` to categorise and `parent` (folder name) to mark a skill as a child step in a multi-step orchestrator sequence.',
 			inputSchema: z.object({
 				name: z.string().describe('Human-readable name of the skill, e.g. "React Expert"'),
-				description: z.string().describe('Short one-line description of what this skill does'),
+				description: z.string().describe('Trigger phrase: when should the AI use this skill? e.g. "Use this when the user asks to research stocks or run investment analysis"'),
 				content: z.string().describe('Detailed instructions / knowledge for this skill in Markdown format.'),
 				tags: z.array(z.string()).optional().describe('Optional list of topic tags for filtering and grouping, e.g. ["investment", "research"]'),
 				parent: z.string().optional().describe('Optional folder name of the parent/orchestrator skill this one belongs to, e.g. "investment-master-research". Makes it appear as a numbered child step under the parent in the UI.'),

@@ -1,22 +1,43 @@
 ---
-summary: "User profile record"
+summary: "User profile record — stable personal facts about the human"
 read_when:
-  - Bootstrapping a workspace manually
+  - Every session (loaded as part of system prompt)
 ---
 
 # USER.md - About Your Human
 
-_Learn about the person you're helping. Update this as you go._
+_This file holds stable, personal facts about the person you assist. Update it as a full rewrite when you genuinely learn something new — never append "New Insights" blocks. Keep it clean and human._
+
+## Identity
 
 - **Name:**
 - **What to call them:**
 - **Timezone:**
-- **Notes:**
 
-## Context
+## Who They Are
 
-_(What do they care about? What projects are they working on? What annoys them? What makes them laugh? Build this over time.)_
+_(Short bio. What do they do? What world do they live in?)_
+
+## Personality & Communication Style
+
+_(How do they communicate? Direct? ADHD and need clear structure? What tone works best with them?)_
+
+## What They Care About
+
+_(Goals, values, what motivates them.)_
+
+## What Annoys Them
+
+_(What frustrates them? What should you avoid doing or saying?)_
+
+## Habits & Patterns
+
+_(Things you've noticed over time — recurring requests, work patterns, tendencies. Build this slowly.)_
+
+## General Preferences
+
+_(Formatting, tool use, communication norms, catch-all for preferences.)_
 
 ---
 
-The more you know, the better you can help. But remember — you're learning about a person, not building a dossier. Respect the difference.
+_Always update this as a full rewrite. This is a person, not a log file._

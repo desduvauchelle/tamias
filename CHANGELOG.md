@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- implement version bumping and enhance skills documentation
 - refactor bot configuration to support multiple instances for Discord and Telegram
 - implement sub-agent lifecycle management in AIService
 - Enhance skills and usage pages with TypeScript types and error handling
@@ -122,6 +123,11 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.26.2] - 2026-02-26
+
+### Features
+- implement version bumping and enhance skills documentation
 
 ## [v26.2.25.7] - 2026-02-25
 
