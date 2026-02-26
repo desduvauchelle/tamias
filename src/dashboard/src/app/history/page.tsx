@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Clock, Terminal, Cpu, Database, ChevronRight, ChevronDown, Search } from 'lucide-react'
+import { Modal } from '../_components/Modal'
 
 interface HistoryToolCall {
 	toolName: string
@@ -52,6 +53,7 @@ function HistoryContent() {
 	const [logs, setLogs] = useState<LogEntry[]>([])
 	const [loading, setLoading] = useState(true)
 	const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null)
+	const [isModalOpen, setIsModalOpen] = useState(false)
 	const [filter, setFilter] = useState('')
 	const searchParams = useSearchParams()
 	const logIdParam = searchParams.get('log')
@@ -93,8 +95,7 @@ function HistoryContent() {
 
 	const openModal = (log: LogEntry) => {
 		setSelectedLog(log)
-		const modal = document.getElementById('history_modal') as HTMLDialogElement
-		if (modal) modal.showModal()
+		setIsModalOpen(true)
 	}
 
 	const systemPrompt = extractText(selectedLog?.fullHistory?.find(m => m.role === 'system')?.content || '')
@@ -196,123 +197,118 @@ function HistoryContent() {
 				</div>
 			</div>
 
-			{/* DaisyUI Modal */}
-			<dialog id="history_modal" className="modal">
-				<div className="modal-box w-11/12 max-w-5xl bg-base-200 border border-base-300 p-0 overflow-hidden flex flex-col max-h-[90vh]">
-					{/* Modal Header */}
-					<div className="px-6 py-4 border-b border-base-300 bg-base-300/50 flex items-center justify-between shrink-0">
-						<div>
-							<h3 className="font-bold text-lg text-success font-mono">Interaction Details</h3>
-							<p className="text-[10px] text-base-content/50 font-mono uppercase tracking-widest mt-0.5">
-								{selectedLog && new Date(selectedLog.timestamp).toLocaleString()} • {selectedLog?.model}
-							</p>
+			{/* Modal */}
+			<Modal
+				isOpen={isModalOpen}
+				onClose={() => setIsModalOpen(false)}
+				title={
+					<div>
+						<h3 className="font-bold text-lg text-success font-mono">Interaction Details</h3>
+						<p className="text-[10px] text-base-content/50 font-mono uppercase tracking-widest mt-0.5">
+							{selectedLog && new Date(selectedLog.timestamp).toLocaleString()} • {selectedLog?.model}
+						</p>
+					</div>
+				}
+				footer={
+					<div className="flex justify-end">
+						<button
+							className="btn btn-sm btn-outline border-base-300 text-[10px] font-mono uppercase tracking-widest px-6"
+							onClick={() => setIsModalOpen(false)}
+						>
+							Close Trace Log
+						</button>
+					</div>
+				}
+			>
+				<div className="space-y-8">
+					{/* Info Stats */}
+					<div className="flex flex-wrap gap-8 text-[10px] uppercase font-bold tracking-tighter text-base-content/40 border-b border-base-300 pb-4">
+						<div className="flex flex-col gap-1">
+							<span className="opacity-50">Session ID</span>
+							<span className="text-success text-xs font-mono">{selectedLog?.sessionId}</span>
 						</div>
-						<form method="dialog">
-							<button className="btn btn-sm btn-ghost btn-square">✕</button>
-						</form>
+						<div className="flex flex-col gap-1">
+							<span className="opacity-50">Provider</span>
+							<span className="text-success text-xs font-mono">{selectedLog?.provider}</span>
+						</div>
+						<div className="flex flex-col gap-1">
+							<span className="opacity-50">Tokens (In/Out)</span>
+							<span className="text-success text-xs font-mono">{selectedLog?.tokens.prompt} / {selectedLog?.tokens.completion}</span>
+						</div>
+						<div className="flex flex-col gap-1">
+							<span className="opacity-50">Duration</span>
+							<span className="text-success text-xs font-mono">{selectedLog?.durationMs}ms</span>
+						</div>
 					</div>
 
-					{/* Modal Content */}
-					<div className="p-6 overflow-y-auto space-y-8">
-						{/* Info Stats */}
-						<div className="flex flex-wrap gap-8 text-[10px] uppercase font-bold tracking-tighter text-base-content/40 border-b border-base-300 pb-4">
-							<div className="flex flex-col gap-1">
-								<span className="opacity-50">Session ID</span>
-								<span className="text-success text-xs font-mono">{selectedLog?.sessionId}</span>
-							</div>
-							<div className="flex flex-col gap-1">
-								<span className="opacity-50">Provider</span>
-								<span className="text-success text-xs font-mono">{selectedLog?.provider}</span>
-							</div>
-							<div className="flex flex-col gap-1">
-								<span className="opacity-50">Tokens (In/Out)</span>
-								<span className="text-success text-xs font-mono">{selectedLog?.tokens.prompt} / {selectedLog?.tokens.completion}</span>
-							</div>
-							<div className="flex flex-col gap-1">
-								<span className="opacity-50">Duration</span>
-								<span className="text-success text-xs font-mono">{selectedLog?.durationMs}ms</span>
-							</div>
+					{/* System Prompt Section */}
+					<div className="space-y-3">
+						<div className="text-xs uppercase font-bold text-primary/60 flex items-center gap-2">
+							<div className="w-1.5 h-1.5 rounded-full bg-primary/60" /> System Prompt
 						</div>
-
-						{/* System Prompt Section */}
-						<div className="space-y-3">
-							<div className="text-xs uppercase font-bold text-primary/60 flex items-center gap-2">
-								<div className="w-1.5 h-1.5 rounded-full bg-primary/60" /> System Prompt
-							</div>
-							<div className="bg-base-300/40 p-4 rounded-lg border border-base-300 text-[11px] font-mono whitespace-pre-wrap text-base-content/70 max-h-[200px] overflow-y-auto">
-								{systemPrompt || <span className="opacity-30 italic font-sans">No system prompt provided.</span>}
-							</div>
+						<div className="bg-base-300/40 p-4 rounded-lg border border-base-300 text-[11px] font-mono whitespace-pre-wrap text-base-content/70 max-h-[200px] overflow-y-auto">
+							{systemPrompt || <span className="opacity-30 italic font-sans">No system prompt provided.</span>}
 						</div>
+					</div>
 
-						{/* Chat Conversation Section */}
-						<div className="space-y-3">
-							<div className="text-xs uppercase font-bold text-success/60 flex items-center gap-2">
-								<div className="w-1.5 h-1.5 rounded-full bg-success/60" /> Chat Conversation ({chatConversation.length} messages)
-							</div>
-							<div className="space-y-4">
-								{chatConversation.length === 0 ? (
-									<div className="text-[11px] italic opacity-30 text-center py-4 bg-base-300/20 rounded-lg">No chat messages found for this turn.</div>
-								) : (
-									chatConversation.map((msg: HistoryRecord, i: number) => (
-										<div key={i} className={`flex flex-col gap-1.5 ${msg.role === 'user' ? 'items-start' : 'items-end'}`}>
-											<div className={`text-[9px] uppercase font-bold opacity-30 px-1 ${msg.role === 'user' ? 'text-left' : 'text-right'}`}>
-												{msg.role}
-											</div>
-											<div className={`p-3 rounded-lg text-xs font-mono max-w-[85%] border ${msg.role === 'user' ? 'bg-base-300/50 border-base-300 text-base-content/80' : 'bg-success/5 border-success/20 text-success'}`}>
-												{extractText(msg.content)}
-											</div>
-										</div>
-									))
-								)}
-							</div>
+					{/* Chat Conversation Section */}
+					<div className="space-y-3">
+						<div className="text-xs uppercase font-bold text-success/60 flex items-center gap-2">
+							<div className="w-1.5 h-1.5 rounded-full bg-success/60" /> Chat Conversation ({chatConversation.length} messages)
 						</div>
-
-						{/* Tool Calls Section */}
-						<div className="space-y-3 pb-4">
-							<div className="text-xs uppercase font-bold text-warning/60 flex items-center gap-2">
-								<div className="w-1.5 h-1.5 rounded-full bg-warning/60" /> Tools Called ({toolCalls.length})
-							</div>
-							{toolCalls.length === 0 ? (
-								<div className="text-[11px] italic opacity-30 text-center py-4 bg-base-300/20 rounded-lg border border-base-300/50">No tools were called in this turn.</div>
+						<div className="space-y-4">
+							{chatConversation.length === 0 ? (
+								<div className="text-[11px] italic opacity-30 text-center py-4 bg-base-300/20 rounded-lg">No chat messages found for this turn.</div>
 							) : (
-								<div className="grid grid-cols-1 gap-4">
-									{toolCalls.map((tc, i) => (
-										<div key={i} className="flex flex-col rounded-lg border border-base-300 overflow-hidden">
-											<div className="bg-base-300/50 px-4 py-2 border-b border-base-300 flex items-center justify-between">
-												<span className="text-[10px] font-bold text-warning font-mono uppercase tracking-tighter">Tool: {tc.name}</span>
-											</div>
-											<div className="grid grid-cols-2 divide-x divide-base-300 bg-base-300/10">
-												<div className="p-4 space-y-2">
-													<div className="text-[9px] uppercase font-bold opacity-30">Input Args</div>
-													<pre className="text-[10px] font-mono text-base-content/60 overflow-x-auto whitespace-pre-wrap break-all">
-														{JSON.stringify(tc.input, null, 2)}
-													</pre>
-												</div>
-												<div className="p-4 space-y-2">
-													<div className="text-[9px] uppercase font-bold opacity-30">Output Result</div>
-													<pre className="text-[10px] font-mono text-success/70 overflow-x-auto whitespace-pre-wrap break-all">
-														{typeof tc.output === 'string' ? tc.output : JSON.stringify(tc.output, null, 2)}
-													</pre>
-												</div>
-											</div>
+								chatConversation.map((msg: HistoryRecord, i: number) => (
+									<div key={i} className={`flex flex-col gap-1.5 ${msg.role === 'user' ? 'items-start' : 'items-end'}`}>
+										<div className={`text-[9px] uppercase font-bold opacity-30 px-1 ${msg.role === 'user' ? 'text-left' : 'text-right'}`}>
+											{msg.role}
 										</div>
-									))}
-								</div>
+										<div className={`p-3 rounded-lg text-xs font-mono max-w-[85%] border ${msg.role === 'user' ? 'bg-base-300/50 border-base-300 text-base-content/80' : 'bg-success/5 border-success/20 text-success'}`}>
+											{extractText(msg.content)}
+										</div>
+									</div>
+								))
 							)}
 						</div>
 					</div>
 
-					{/* Modal Footer */}
-					<div className="modal-action p-4 border-t border-base-300 bg-base-300/30 shrink-0 m-0">
-						<form method="dialog">
-							<button className="btn btn-sm btn-outline border-base-300 text-[10px] font-mono uppercase tracking-widest px-6">Close Trace Log</button>
-						</form>
+					{/* Tool Calls Section */}
+					<div className="space-y-3 pb-4">
+						<div className="text-xs uppercase font-bold text-warning/60 flex items-center gap-2">
+							<div className="w-1.5 h-1.5 rounded-full bg-warning/60" /> Tools Called ({toolCalls.length})
+						</div>
+						{toolCalls.length === 0 ? (
+							<div className="text-[11px] italic opacity-30 text-center py-4 bg-base-300/20 rounded-lg border border-base-300/50">No tools were called in this turn.</div>
+						) : (
+							<div className="grid grid-cols-1 gap-4">
+								{toolCalls.map((tc, i) => (
+									<div key={i} className="flex flex-col rounded-lg border border-base-300 overflow-hidden">
+										<div className="bg-base-300/50 px-4 py-2 border-b border-base-300 flex items-center justify-between">
+											<span className="text-[10px] font-bold text-warning font-mono uppercase tracking-tighter">Tool: {tc.name}</span>
+										</div>
+										<div className="grid grid-cols-2 divide-x divide-base-300 bg-base-300/10">
+											<div className="p-4 space-y-2">
+												<div className="text-[9px] uppercase font-bold opacity-30">Input Args</div>
+												<pre className="text-[10px] font-mono text-base-content/60 overflow-x-auto whitespace-pre-wrap break-all">
+													{JSON.stringify(tc.input, null, 2)}
+												</pre>
+											</div>
+											<div className="p-4 space-y-2">
+												<div className="text-[9px] uppercase font-bold opacity-30">Output Result</div>
+												<pre className="text-[10px] font-mono text-success/70 overflow-x-auto whitespace-pre-wrap break-all">
+													{typeof tc.output === 'string' ? tc.output : JSON.stringify(tc.output, null, 2)}
+												</pre>
+											</div>
+										</div>
+									</div>
+								))}
+							</div>
+						)}
 					</div>
 				</div>
-				<form method="dialog" className="modal-backdrop bg-base-900/40 backdrop-blur-[2px]">
-					<button>close</button>
-				</form>
-			</dialog>
+			</Modal>
 		</div>
 	)
 }

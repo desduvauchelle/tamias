@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- add tool provider preference system and vector store implementation
 - Enhance chat command with agent options and routing
 - enhance memory management with structured templates and detailed responsibilities
 - implement version bumping and enhance skills documentation

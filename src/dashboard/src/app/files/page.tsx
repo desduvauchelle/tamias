@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { RefreshCw, Folder, File, Image, FileText, FileCode, Download, Edit3, X, ChevronRight, FolderOpen, Pencil, Trash2, Copy, Check } from 'lucide-react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { Modal } from '../_components/Modal'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -301,23 +302,16 @@ function FileModal({
 		}
 	}, [editContent, path, qc, queryKey])
 
-	// Close on Escape
-	useEffect(() => {
-		const handler = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') onClose()
-		}
-		window.addEventListener('keydown', handler)
-		return () => window.removeEventListener('keydown', handler)
-	}, [onClose])
-
 	const canEdit = data && (data.type === 'markdown' || data.type === 'json' || data.type === 'code' || data.type === 'text')
 	const isEditable = canEdit && !editing
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-			<div className="bg-base-200 border border-base-300 rounded-xl shadow-2xl flex flex-col w-[90vw] max-w-4xl h-[85vh]">
-				{/* Header */}
-				<div className="flex items-center gap-3 px-4 py-3 border-b border-base-300 shrink-0">
+		<Modal
+			isOpen={true}
+			onClose={onClose}
+			className="w-[90vw] max-w-4xl h-[85vh]"
+			title={
+				<div className="flex items-center gap-3">
 					<span className="font-mono text-sm font-bold truncate flex-1 text-base-content/80">{name}</span>
 					<div className="flex items-center gap-2 shrink-0">
 						{data?.size !== undefined && (
@@ -360,71 +354,11 @@ function FileModal({
 							<Download className="w-3.5 h-3.5" />
 							Download
 						</button>
-						<button className="btn btn-ghost btn-xs btn-square" onClick={onClose}>
-							<X className="w-4 h-4" />
-						</button>
 					</div>
 				</div>
-
-				{/* Content */}
-				<div className="flex-1 overflow-auto p-4">
-					{isLoading && (
-						<div className="flex items-center justify-center h-full">
-							<span className="loading loading-md" />
-						</div>
-					)}
-					{isError && <p className="text-error text-sm">Failed to load file content.</p>}
-					{saveError && <p className="text-error text-xs mb-2">{saveError}</p>}
-
-					{data && !editing && (
-						<>
-							{data.type === 'image' && data.base64 && data.mimeType && (
-								<div className="flex items-center justify-center h-full">
-									{/* eslint-disable-next-line @next/next/no-img-element */}
-									<img
-										src={`data:${data.mimeType};base64,${data.base64}`}
-										alt={name}
-										className="max-w-full max-h-full object-contain rounded-lg"
-									/>
-								</div>
-							)}
-							{data.type === 'markdown' && data.content !== undefined && (
-								<div
-									className="prose prose-sm prose-invert max-w-none"
-									dangerouslySetInnerHTML={{
-										__html: DOMPurify.sanitize(marked.parse(data.content) as string)
-									}}
-								/>
-							)}
-							{data.type === 'json' && data.content !== undefined && (
-								<pre className="text-xs font-mono text-base-content/80 whitespace-pre-wrap break-words">
-									{(() => {
-										try { return JSON.stringify(JSON.parse(data.content), null, 2) }
-										catch { return data.content }
-									})()}
-								</pre>
-							)}
-							{(data.type === 'code' || data.type === 'text') && data.content !== undefined && (
-								<pre className="text-xs font-mono text-base-content/80 whitespace-pre-wrap break-words">
-									{data.content}
-								</pre>
-							)}
-						</>
-					)}
-
-					{data && editing && (
-						<textarea
-							className="w-full h-full font-mono text-xs bg-base-300 rounded-lg p-3 text-base-content resize-none focus:outline-none focus:ring-1 focus:ring-primary border border-base-content/10"
-							value={editContent}
-							onChange={e => setEditContent(e.target.value)}
-							spellCheck={false}
-							autoFocus
-						/>
-					)}
-				</div>
-
-				{/* Footer: file path + copy */}
-				<div className="flex items-center gap-2 px-4 py-2 border-t border-base-300 shrink-0 bg-base-300/40">
+			}
+			footer={
+				<div className="flex items-center gap-2">
 					<span className="font-mono text-[11px] text-base-content/40 truncate flex-1">{fullPath}</span>
 					<button
 						className="btn btn-ghost btn-xs gap-1 shrink-0"
@@ -436,8 +370,64 @@ function FileModal({
 							: <><Copy className="w-3 h-3" /> Copy path</>}
 					</button>
 				</div>
+			}
+		>
+			<div className="flex-1 flex flex-col min-h-0">
+				{isLoading && (
+					<div className="flex items-center justify-center h-full">
+						<span className="loading loading-md" />
+					</div>
+				)}
+				{isError && <p className="text-error text-sm">Failed to load file content.</p>}
+				{saveError && <p className="text-error text-xs mb-2">{saveError}</p>}
+
+				{data && !editing && (
+					<>
+						{data.type === 'image' && data.base64 && data.mimeType && (
+							<div className="flex items-center justify-center h-full">
+								{/* eslint-disable-next-line @next/next/no-img-element */}
+								<img
+									src={`data:${data.mimeType};base64,${data.base64}`}
+									alt={name}
+									className="max-w-full max-h-full object-contain rounded-lg"
+								/>
+							</div>
+						)}
+						{data.type === 'markdown' && data.content !== undefined && (
+							<div
+								className="prose prose-sm prose-invert max-w-none"
+								dangerouslySetInnerHTML={{
+									__html: DOMPurify.sanitize(marked.parse(data.content) as string)
+								}}
+							/>
+						)}
+						{data.type === 'json' && data.content !== undefined && (
+							<pre className="text-xs font-mono text-base-content/80 whitespace-pre-wrap break-words">
+								{(() => {
+									try { return JSON.stringify(JSON.parse(data.content), null, 2) }
+									catch { return data.content }
+								})()}
+							</pre>
+						)}
+						{(data.type === 'code' || data.type === 'text') && data.content !== undefined && (
+							<pre className="text-xs font-mono text-base-content/80 whitespace-pre-wrap break-words">
+								{data.content}
+							</pre>
+						)}
+					</>
+				)}
+
+				{data && editing && (
+					<textarea
+						className="w-full flex-1 font-mono text-xs bg-base-300 rounded-lg p-3 text-base-content resize-none focus:outline-none focus:ring-1 focus:ring-primary border border-base-content/10"
+						value={editContent}
+						onChange={e => setEditContent(e.target.value)}
+						spellCheck={false}
+						autoFocus
+					/>
+				)}
 			</div>
-		</div>
+		</Modal>
 	)
 }
 
@@ -646,12 +636,36 @@ export default function FilesPage() {
 			)}
 
 			{/* Confirm remove modal */}
-			{confirmRemove && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-					<div className="bg-base-200 border border-base-300 rounded-xl shadow-2xl p-6 w-96">
-						<h3 className="font-bold text-sm mb-2 font-mono">
-							Remove {confirmRemove.entry.isDirectory ? 'folder' : 'file'}?
-						</h3>
+			<Modal
+				isOpen={!!confirmRemove}
+				onClose={() => setConfirmRemove(null)}
+				className="w-96"
+				title={
+					<h3 className="font-bold text-sm font-mono">
+						Remove {confirmRemove?.entry.isDirectory ? 'folder' : 'file'}?
+					</h3>
+				}
+				footer={
+					<div className="flex justify-end gap-2">
+						<button
+							className="btn btn-ghost btn-sm"
+							onClick={() => setConfirmRemove(null)}
+							disabled={removing}
+						>
+							Cancel
+						</button>
+						<button
+							className="btn btn-error btn-sm"
+							onClick={() => void handleConfirmRemove()}
+							disabled={removing}
+						>
+							{removing ? <span className="loading loading-xs" /> : 'Remove'}
+						</button>
+					</div>
+				}
+			>
+				{confirmRemove && (
+					<div>
 						<p className="text-xs text-base-content/60 mb-1">
 							<span className="font-mono text-base-content/80 break-all">{confirmRemove.entry.name}</span>
 							{' '}will be permanently deleted.
@@ -660,25 +674,9 @@ export default function FilesPage() {
 							<p className="text-xs text-warning/80 mb-4">All contents inside will be removed.</p>
 						)}
 						{!confirmRemove.entry.isDirectory && <div className="mb-4" />}
-						<div className="flex justify-end gap-2">
-							<button
-								className="btn btn-ghost btn-sm"
-								onClick={() => setConfirmRemove(null)}
-								disabled={removing}
-							>
-								Cancel
-							</button>
-							<button
-								className="btn btn-error btn-sm"
-								onClick={() => void handleConfirmRemove()}
-								disabled={removing}
-							>
-								{removing ? <span className="loading loading-xs" /> : 'Remove'}
-							</button>
-						</div>
 					</div>
-				</div>
-			)}
+				)}
+			</Modal>
 		</div>
 	)
 }

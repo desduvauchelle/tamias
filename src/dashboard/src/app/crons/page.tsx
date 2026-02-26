@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Trash2, Plus, Check, Clock, Brain, Target, Info, Play, X, Loader2 } from 'lucide-react'
+import { Modal } from '../_components/Modal'
 
 export type CronJob = {
 	id: string
@@ -75,18 +76,29 @@ function CronTestModal({ job, onClose }: { job: CronJob; onClose: () => void }) 
 	}
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-			<div className="bg-base-100 border border-base-300 rounded-2xl shadow-2xl w-full max-w-lg mx-4 p-6 space-y-5 font-mono" onClick={e => e.stopPropagation()}>
-				<div className="flex items-start justify-between">
-					<div>
-						<h2 className="text-xl font-black uppercase tracking-tighter text-primary flex items-center gap-2">
-							<Play size={20} /> Test Job
-						</h2>
-						<p className="text-sm text-base-content/60 mt-0.5">{job.name}</p>
-					</div>
-					<button onClick={onClose} className="btn btn-sm btn-ghost btn-circle"><X size={18} /></button>
+		<Modal
+			isOpen={true}
+			onClose={onClose}
+			className="w-full max-w-lg"
+			title={
+				<div>
+					<h2 className="text-xl font-black uppercase tracking-tighter text-primary flex items-center gap-2">
+						<Play size={20} /> Test Job
+					</h2>
+					<p className="text-sm text-base-content/60 mt-0.5">{job.name}</p>
 				</div>
-
+			}
+			footer={
+				<div className="flex gap-3 justify-end">
+					<button onClick={onClose} className="btn btn-sm btn-ghost">Cancel</button>
+					<button onClick={run} disabled={running} className="btn btn-sm btn-primary gap-2">
+						{running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+						{running ? 'Triggering…' : 'Run Test'}
+					</button>
+				</div>
+			}
+		>
+			<div className="space-y-5 font-mono">
 				<div className="text-xs text-base-content/50">
 					Type: <span className="badge badge-ghost badge-sm">{job.type === 'message' ? '💬 Direct message' : '🤖 AI Response'}</span>
 				</div>
@@ -133,16 +145,8 @@ function CronTestModal({ job, onClose }: { job: CronJob; onClose: () => void }) 
 						{result.ok ? '✅ ' : '❌ '}{result.message}
 					</div>
 				)}
-
-				<div className="flex gap-3 justify-end pt-1">
-					<button onClick={onClose} className="btn btn-sm btn-ghost">Cancel</button>
-					<button onClick={run} disabled={running} className="btn btn-sm btn-primary gap-2">
-						{running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-						{running ? 'Triggering…' : 'Run Test'}
-					</button>
-				</div>
 			</div>
-		</div>
+		</Modal>
 	)
 }
 
