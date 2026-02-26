@@ -1,6 +1,6 @@
 {
 	"name": "tamias",
-	"version": "26.2.26.7",
+	"version": "26.2.26.9",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
@@ -20,6 +20,7 @@
 		"dev": "bun --hot src/index.ts",
 		"install-it": "chmod +x install.sh && ./install.sh",
 		"test": "bun test --preload ./src/tests/setup.ts src/tests/*.test.ts src/utils/*.test.ts",
+		"test:integration": "./test/integration/run.sh",
 		"typecheck": "bunx tsc --noEmit",
 		"typecheck:all": "bunx tsc --noEmit && bunx tsc --noEmit -p src/dashboard/tsconfig.json",
 		"prepare": "husky",

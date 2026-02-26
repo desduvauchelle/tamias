@@ -6,7 +6,7 @@ import { rename } from 'fs/promises'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
 import { validatePath, expandHome } from '../utils/path.ts'
-import { TAMIAS_DIR } from '../utils/config.ts'
+import { TAMIAS_DIR, getSandboxConfig } from '../utils/config.ts'
 
 /** Absolute path of the secrets file — never readable via run_command */
 const TAMIAS_ENV_FILE = join(TAMIAS_DIR, '.env')
@@ -87,6 +87,38 @@ function auditCommand(command: string): void {
 
 /** All tools exported from this file become the "terminal" internal tool */
 
+/**
+ * Build a sandboxed command string using docker/podman.
+ * Mounts TAMIAS_DIR as /workspace inside the container.
+ */
+function buildSandboxedCommand(command: string, cwd: string): { cmd: string; args: string[] } {
+	const sandbox = getSandboxConfig()
+	const engine = sandbox.engine // 'docker' or 'podman'
+
+	// Map the host cwd to a container-relative path
+	const containerWorkspace = '/workspace'
+	let containerCwd = containerWorkspace
+	if (cwd.startsWith(TAMIAS_DIR)) {
+		containerCwd = containerWorkspace + cwd.slice(TAMIAS_DIR.length)
+	}
+
+	const args = [
+		'run', '--rm',
+		'-v', `${TAMIAS_DIR}:${containerWorkspace}`,
+		'-w', containerCwd,
+		'--memory', sandbox.memoryLimit,
+		'--cpus', sandbox.cpuLimit,
+	]
+
+	if (!sandbox.networkEnabled) {
+		args.push('--network', 'none')
+	}
+
+	args.push(sandbox.image, 'sh', '-c', command)
+
+	return { cmd: engine, args }
+}
+
 export const terminalTools = {
 
 	run_command: tool({
@@ -99,6 +131,33 @@ export const terminalTools = {
 			try {
 				auditCommand(command)
 				const targetCwd = validatePath(cwd || '.')
+				const sandbox = getSandboxConfig()
+
+				if (sandbox.engine !== 'none') {
+					// Run inside container
+					const { cmd, args } = buildSandboxedCommand(command, targetCwd)
+					const timeout = sandbox.timeout * 1000
+					const proc = Bun.spawn([cmd, ...args], {
+						stdout: 'pipe',
+						stderr: 'pipe',
+					})
+
+					// Apply timeout
+					const timer = setTimeout(() => proc.kill(), timeout)
+					const [stdout, stderr] = await Promise.all([
+						new Response(proc.stdout).text(),
+						new Response(proc.stderr).text(),
+					])
+					clearTimeout(timer)
+
+					const exitCode = await proc.exited
+					if (exitCode !== 0) {
+						return { success: false, stdout, stderr: stderr || `Process exited with code ${exitCode}`, sandboxed: true }
+					}
+					return { success: true, stdout, stderr: '', sandboxed: true }
+				}
+
+				// Non-sandboxed (original behaviour)
 				const output = execSync(command, {
 					cwd: targetCwd,
 					encoding: 'utf-8',

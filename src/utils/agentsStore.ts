@@ -8,12 +8,18 @@ export interface AgentDefinition {
 	slug: string
 	name: string
 	model?: string
+	/** Model degradation chain: if the primary model fails, try these in order */
+	modelFallbacks?: string[]
 	instructions: string
 	enabled: boolean
 	/** Discord/Telegram channel IDs this agent is bound to — messages in these channels route directly to this agent */
 	channels?: string[]
 	/** Extra skill folder names loaded on top of global skills, e.g. ["lookup-larry"] */
 	extraSkills?: string[]
+	/** Agent-scoped internal tools: only these tools are available to this agent. If empty, all tools are available. */
+	allowedTools?: string[]
+	/** Agent-scoped MCP servers: only these MCP servers are available to this agent. If empty, all are available. */
+	allowedMcpServers?: string[]
 }
 
 const AGENTS_DIR = join(homedir(), '.tamias')
@@ -123,4 +129,16 @@ export function findAgent(query: string): AgentDefinition | undefined {
 	return agents.find(
 		a => a.id === query || a.slug === q || a.name.toLowerCase() === q
 	)
+}
+
+/**
+ * Build the model degradation chain for a named agent.
+ * Returns [agentModel, ...agentFallbacks] with the agent's explicit
+ * preferences first, then falls back to the global default models.
+ */
+export function resolveAgentModelChain(agent: AgentDefinition): string[] {
+	const chain: string[] = []
+	if (agent.model) chain.push(agent.model)
+	if (agent.modelFallbacks?.length) chain.push(...agent.modelFallbacks)
+	return chain
 }

@@ -74,6 +74,8 @@ export const DiscordBotConfigSchema = z.object({
 	envKeyName: z.string().optional(),
 	botToken: z.string().optional(), // legacy plaintext (migrated on load)
 	allowedChannels: z.array(z.string()).optional(),
+	/** Channel mode: full = all messages, mention-only = only @mentions, listen-only = read but never respond */
+	mode: z.enum(['full', 'mention-only', 'listen-only']).default('full').optional(),
 })
 
 export const TelegramBotConfigSchema = z.object({
@@ -81,10 +83,28 @@ export const TelegramBotConfigSchema = z.object({
 	envKeyName: z.string().optional(),
 	botToken: z.string().optional(), // legacy plaintext (migrated on load)
 	allowedChats: z.array(z.string()).optional(),
+	/** Channel mode: full = all messages, mention-only = only @mentions, listen-only = read but never respond */
+	mode: z.enum(['full', 'mention-only', 'listen-only']).default('full').optional(),
 })
 
 export type DiscordBotConfig = z.infer<typeof DiscordBotConfigSchema>
 export type TelegramBotConfig = z.infer<typeof TelegramBotConfigSchema>
+
+export const WhatsAppBotConfigSchema = z.object({
+	enabled: z.boolean().default(false),
+	/** WhatsApp Business Cloud API phone number ID */
+	phoneNumberId: z.string().optional(),
+	/** Env var name for the access token */
+	envKeyName: z.string().optional(),
+	/** Webhook verification token */
+	verifyToken: z.string().optional(),
+	/** Webhook path (e.g., /webhook/whatsapp/default) */
+	webhookPath: z.string().optional(),
+	/** Channel mode: full = all messages, mention-only = only @mentions */
+	mode: z.enum(['full', 'mention-only']).default('full').optional(),
+})
+
+export type WhatsAppBotConfig = z.infer<typeof WhatsAppBotConfigSchema>
 
 export const BridgesConfigSchema = z.object({
 	terminal: z.object({
@@ -94,6 +114,8 @@ export const BridgesConfigSchema = z.object({
 	discords: z.record(z.string(), DiscordBotConfigSchema).optional(),
 	/** Multi-instance Telegram bots, keyed by a user-chosen nickname */
 	telegrams: z.record(z.string(), TelegramBotConfigSchema).optional(),
+	/** Multi-instance WhatsApp Business API bridges, keyed by a user-chosen nickname */
+	whatsapps: z.record(z.string(), WhatsAppBotConfigSchema).optional(),
 	/** @deprecated Use `discords` instead. Kept only for seamless migration. */
 	discord: DiscordBotConfigSchema.optional(),
 	/** @deprecated Use `telegrams` instead. Kept only for seamless migration. */
@@ -131,6 +153,21 @@ export const TamiasConfigSchema = z.object({
 			canSend: z.boolean().default(true),
 		}).default({ whitelist: [], canSend: true }),
 	})).optional(),
+	/** Sandbox configuration for container-isolated tool execution */
+	sandbox: z.object({
+		/** Container engine: 'none' = no sandboxing, 'docker' or 'podman' */
+		engine: z.enum(['none', 'docker', 'podman']).default('none'),
+		/** Container image to use (default: ubuntu:22.04) */
+		image: z.string().default('ubuntu:22.04'),
+		/** Memory limit (e.g., '512m', '1g') */
+		memoryLimit: z.string().default('512m'),
+		/** CPU limit (e.g., '1.0' = one CPU core) */
+		cpuLimit: z.string().default('1.0'),
+		/** Network access inside container */
+		networkEnabled: z.boolean().default(false),
+		/** Command timeout in seconds */
+		timeout: z.number().default(30),
+	}).default({ engine: 'none', image: 'ubuntu:22.04', memoryLimit: '512m', cpuLimit: '1.0', networkEnabled: false, timeout: 30 }).optional(),
 })
 
 export type TamiasConfig = z.infer<typeof TamiasConfigSchema>
@@ -238,12 +275,11 @@ export const loadConfig = (): TamiasConfig => {
 		}
 
 		// Migrate legacy single email tool config
-		const legacyData = data as any
-		if (legacyData.email) {
-			const old = legacyData.email
+		// Must read from rawData since Zod strips unknown top-level keys like 'email'
+		if (rawData.email) {
+			const old = rawData.email
 			const nickname = 'default'
 			data.emails = { [nickname]: { ...old, nickname, isDefault: true } }
-			delete legacyData.email
 			needsMigration = true
 		}
 
@@ -476,6 +512,12 @@ export const getAllModelOptions = (): string[] => {
 export const getBridgesConfig = (): BridgesConfig => {
 	const config = loadConfig()
 	return config.bridges ?? { terminal: { enabled: true } }
+}
+
+/** Get sandbox configuration */
+export const getSandboxConfig = () => {
+	const config = loadConfig()
+	return config.sandbox ?? { engine: 'none' as const, image: 'ubuntu:22.04', memoryLimit: '512m', cpuLimit: '1.0', networkEnabled: false, timeout: 30 }
 }
 
 /** Get the bot token for a specific named instance */

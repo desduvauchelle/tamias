@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { runConfigCommand } from './commands/config.ts'
+import { runConfigCommand, runConfigShowCommand, runConfigPathCommand } from './commands/config.ts'
 import { runChatCommand } from './commands/chat.ts'
 import { runModelsCommand, runModelsListCommand, runModelsDeleteCommand, runModelsEditCommand } from './commands/models.ts'
 import { runToolsCommand, runToolsListCommand, runToolsAddMcpCommand, runToolsEnableCommand, runToolsDisableCommand, runToolsEditCommand, runToolsRemoveMcpCommand } from './commands/tools.ts'
@@ -9,6 +9,7 @@ import { runStopCommand } from './commands/stop.ts'
 import { runStatusCommand } from './commands/status.ts'
 import { runModelCommand, runModelSetCommand, runModelSetImageCommand } from './commands/model.ts'
 import { runOnboarding } from './commands/onboarding.ts'
+import { runSetupCommand } from './commands/setup.ts'
 import { runUsageCommand } from './commands/usage.ts'
 import { runUpdateCommand } from './commands/update.ts'
 import { cronCommand } from './commands/cron.ts'
@@ -22,7 +23,11 @@ import { runHistoryCommand } from './commands/history.ts'
 import { runRestartCommand } from './commands/restart.ts'
 import { runDebugCommand } from './commands/debug.ts'
 import { runBrowserCommand } from './commands/browser.ts'
+import { runDocsGenerateCommand } from './commands/docs.ts'
 import { skillsCommand } from './commands/skills.ts'
+import { runMigrateStatusCommand, runMigrateRunCommand } from './commands/migrate.ts'
+import { runProjectCommand, runProjectListCommand, runProjectCreateCommand, runProjectShowCommand, runProjectArchiveCommand } from './commands/projects.ts'
+import { runTenantCommand, runTenantListCommand, runTenantCreateCommand, runTenantDeleteCommand, runTenantSwitchCommand } from './commands/tenant.ts'
 import { isOnboarded } from './utils/memory.ts'
 import { VERSION } from './utils/version.ts'
 
@@ -37,10 +42,27 @@ program.addCommand(cronCommand)
 program.addCommand(agentsCommand)
 
 // ─── tamias config ────────────────────────────────────────────────────────────
-program
+const configCmd = program
 	.command('config')
-	.description('Add a new model configuration (API key and model selection)')
+	.description('Manage configuration (add provider, show, path)')
 	.action(runConfigCommand)
+
+configCmd
+	.command('show')
+	.description('Display current configuration summary')
+	.option('--json', 'Output as JSON')
+	.action((opts: { json?: boolean }) => runConfigShowCommand(opts))
+
+configCmd
+	.command('path')
+	.description('Print the config file path')
+	.action(runConfigPathCommand)
+
+// ─── tamias setup ─────────────────────────────────────────────────────────────
+program
+	.command('setup')
+	.description('Interactive setup wizard (providers, model, channels, identity)')
+	.action(runSetupCommand)
 
 // ─── tamias chat ──────────────────────────────────────────────────────────────
 program
@@ -293,9 +315,93 @@ program
 // ─── tamias doctor ────────────────────────────────────────────────────────────
 program
 	.command('doctor')
-	.description('Check and fix system dependencies (himalaya, git, etc.)')
-	.option('--fix', 'Automatically attempt to install missing dependencies')
-	.action((opts: { fix?: boolean }) => runDoctorCommand(opts))
+	.description('Check and fix system dependencies, health checks, and configuration')
+	.option('--fix', 'Automatically attempt to fix all issues')
+	.option('--json', 'Output results as JSON')
+	.action((opts: { fix?: boolean; json?: boolean }) => runDoctorCommand(opts))
+
+// ─── tamias docs ──────────────────────────────────────────────────────────────
+program
+	.command('docs')
+	.description('Generate documentation files')
+	.option('-o, --output <dir>', 'Output directory (default: ~/.tamias/docs)')
+	.action((opts: { output?: string }) => runDocsGenerateCommand(opts))
+
+// ─── tamias migrate ───────────────────────────────────────────────────────────
+const migrateCmd = program
+	.command('migrate')
+	.description('Manage schema and filesystem migrations')
+	.action(runMigrateStatusCommand)
+
+migrateCmd
+	.command('status')
+	.description('Show current migration state')
+	.action(runMigrateStatusCommand)
+
+migrateCmd
+	.command('run')
+	.description('Apply pending migrations')
+	.option('--dry-run', 'Preview changes without writing')
+	.option('--tenant <id>', 'Run for a specific tenant')
+	.action((opts: { dryRun?: boolean; tenant?: string }) => runMigrateRunCommand(opts))
+
+// ─── tamias project ───────────────────────────────────────────────────────────
+const projectCmd = program
+	.command('project')
+	.description('Manage project memory and context')
+	.action(runProjectCommand)
+
+projectCmd
+	.command('list')
+	.description('List all projects')
+	.action(runProjectListCommand)
+
+projectCmd
+	.command('create')
+	.argument('[name]', 'Project name')
+	.description('Create a new project')
+	.action(runProjectCreateCommand)
+
+projectCmd
+	.command('show')
+	.argument('[slug]', 'Project slug')
+	.description('Show project details')
+	.action(runProjectShowCommand)
+
+projectCmd
+	.command('archive')
+	.argument('[slug]', 'Project slug to archive')
+	.description('Archive a project')
+	.action(runProjectArchiveCommand)
+
+// ─── tamias tenant ────────────────────────────────────────────────────────────
+const tenantCmd = program
+	.command('tenant')
+	.description('Manage multi-tenant environments')
+	.action(runTenantCommand)
+
+tenantCmd
+	.command('list')
+	.description('List all tenants')
+	.action(runTenantListCommand)
+
+tenantCmd
+	.command('create')
+	.argument('[name]', 'Tenant name')
+	.description('Create a new tenant')
+	.action(runTenantCreateCommand)
+
+tenantCmd
+	.command('delete')
+	.argument('[id]', 'Tenant ID to delete')
+	.description('Delete a tenant')
+	.action(runTenantDeleteCommand)
+
+tenantCmd
+	.command('switch')
+	.argument('[id]', 'Tenant ID to switch to')
+	.description('Switch active tenant')
+	.action(runTenantSwitchCommand)
 
 // First-run detection: if no subcommand given and not yet onboarded, launch chat (which triggers onboarding)
 if (process.argv.length <= 2 && !isOnboarded()) {

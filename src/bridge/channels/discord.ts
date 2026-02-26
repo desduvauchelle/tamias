@@ -44,6 +44,7 @@ export class DiscordBridge implements IBridge {
 
 		const instanceCfg = config.bridges?.discords?.[this.instanceKey]
 		const allowedChannels = instanceCfg?.allowedChannels
+		const mode: string = (instanceCfg as any)?.mode ?? 'full'
 
 		this.client = new Client({
 			intents: [
@@ -56,6 +57,17 @@ export class DiscordBridge implements IBridge {
 		this.client.on(Events.MessageCreate, async (message) => {
 			if (message.author.bot) return
 			if (allowedChannels?.length && !allowedChannels.includes(message.channelId)) return
+
+			// Mode enforcement:
+			// - 'listen-only': never respond (bridge is destroyed, but guard here too)
+			// - 'mention-only': only respond when bot is mentioned
+			// - 'full' (default): respond to all messages
+			if (mode === 'listen-only') return
+			if (mode === 'mention-only') {
+				const botId = this.client?.user?.id
+				const mentioned = botId && message.mentions.users.has(botId)
+				if (!mentioned) return
+			}
 
 			// Guard against duplicate Discord gateway events (e.g. reconnect replays)
 			if (this.seenMessageIds.has(message.id)) {
@@ -402,6 +414,25 @@ export class DiscordBridge implements IBridge {
 							await (channel as any).send(msg).catch(console.error)
 						}
 					}
+				}
+				break
+			}
+			case 'agent-handoff': {
+				const handoffMsg = `🐝 **Agent Handoff**\n\n` +
+					`**From:** ${event.fromAgent}\n` +
+					`**To:** ${event.toAgent}\n` +
+					`**Reason:** ${event.reason}\n\n` +
+					`_The conversation is now being handled by **${event.toAgent}**._`
+				try {
+					if (state?.currentMessage) {
+						const channel = state.currentMessage.channel as any
+						if (typeof channel.send === 'function') await channel.send(handoffMsg)
+					} else {
+						const channel = await this.client!.channels.fetch(channelId)
+						if (channel && 'send' in channel) await (channel as any).send(handoffMsg)
+					}
+				} catch (err) {
+					console.error(`[Discord Bridge] Failed to send handoff notification to ${channelId}:`, err)
 				}
 				break
 			}

@@ -256,6 +256,37 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	await aiService.initialize()
 	await watchSkills()
 
+	// Run startup health checks (auto-fix what we can, log the rest)
+	try {
+		const { runHealthChecks, formatHealthReport } = await import('../utils/health/index.ts')
+		const healthReport = await runHealthChecks({ autoFix: true })
+		if (healthReport.fixedCount > 0) {
+			console.log(`[Daemon] Health checks auto-fixed ${healthReport.fixedCount} issue(s)`)
+		}
+		if (healthReport.hasErrors) {
+			console.warn(`[Daemon] Health check errors found:\n${formatHealthReport(healthReport)}`)
+		} else if (healthReport.hasWarnings) {
+			console.log(`[Daemon] Health check warnings:\n${formatHealthReport(healthReport)}`)
+		} else {
+			console.log(`[Daemon] All health checks passed`)
+		}
+	} catch (err) {
+		console.warn('[Daemon] Health checks failed to run:', err)
+	}
+
+	// Run pending migrations on startup
+	try {
+		const { runMigrations } = await import('../utils/migrations/index.ts')
+		const { TAMIAS_DIR } = await import('../utils/config.ts')
+		const migrationResults = await runMigrations(TAMIAS_DIR)
+		const applied = migrationResults.applied
+		if (applied.length > 0) {
+			console.log(`[Daemon] Applied ${applied.length} migration(s): ${applied.map((r: { domain: string; version: number; description: string }) => `${r.domain}-v${r.version}`).join(', ')}`)
+		}
+	} catch (err) {
+		console.warn('[Daemon] Migrations failed:', err)
+	}
+
 	// Ensure memory files (HEARTBEAT.md, AGENTS.md, etc.) exist before cron starts
 	scaffoldFromTemplates()
 
@@ -548,8 +579,9 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			}
 
 			if (method === 'GET' && url.pathname === '/usage') {
-				const rows = db.query<{ timestamp: string, model: string, sessionId: string, promptTokens: number | null, completionTokens: number | null }, []>(`
-                    SELECT timestamp, model, sessionId, promptTokens, completionTokens
+				const rows = db.query<{ timestamp: string, model: string, sessionId: string, promptTokens: number | null, completionTokens: number | null, tenantId: string | null, agentId: string | null, channelId: string | null, estimatedCostUsd: number | null }, []>(`
+                    SELECT timestamp, model, sessionId, promptTokens, completionTokens,
+                        tenantId, agentId, channelId, estimatedCostUsd
                     FROM ai_logs ORDER BY id DESC
                 `).all()
 
@@ -563,11 +595,15 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
 				let today = 0, yesterday = 0, thisWeek = 0, thisMonth = 0, total = 0
+				let totalPromptTokens = 0, totalCompletionTokens = 0
 
 				// Time series and distributions
 				const dailyMap: Record<string, number> = {}
 				const modelMap: Record<string, number> = {}
 				const initiatorMap: Record<string, number> = {}
+				const tenantMap: Record<string, number> = {}
+				const agentMap: Record<string, number> = {}
+				const channelMap: Record<string, number> = {}
 
 				// Initialize last 14 days with 0
 				for (let i = 0; i < 14; i++) {
@@ -577,11 +613,14 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				}
 
 				for (const r of rows) {
-					const cost = getEstimatedCost(r.model, r.promptTokens || 0, r.completionTokens || 0)
+					const cost = r.estimatedCostUsd ?? getEstimatedCost(r.model, r.promptTokens || 0, r.completionTokens || 0)
 					const d = new Date(r.timestamp)
 					const dateKey = d.toISOString().split('T')[0]
 
 					total += cost
+					totalPromptTokens += r.promptTokens || 0
+					totalCompletionTokens += r.completionTokens || 0
+
 					if (d >= startOfToday) today += cost
 					else if (d >= startOfYesterday) yesterday += cost
 
@@ -596,14 +635,30 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					// Distributions
 					modelMap[r.model] = (modelMap[r.model] || 0) + cost
 
-					// Basic initiator detection from sessionId
+					// Initiator detection
 					let initiator = 'System'
-					if (r.sessionId.startsWith('sess_')) initiator = 'CLI/Global'
-					else if (r.sessionId.includes('discord')) initiator = 'Discord'
-					else if (r.sessionId.includes('telegram')) initiator = 'Telegram'
-					else initiator = 'Other'
-
+					if (r.channelId) {
+						initiator = r.channelId.charAt(0).toUpperCase() + r.channelId.slice(1)
+					} else if (r.sessionId.startsWith('sess_')) {
+						initiator = 'CLI/Global'
+					} else if (r.sessionId.includes('discord')) {
+						initiator = 'Discord'
+					} else if (r.sessionId.includes('telegram')) {
+						initiator = 'Telegram'
+					}
 					initiatorMap[initiator] = (initiatorMap[initiator] || 0) + cost
+
+					// Tenant distribution
+					const tenant = r.tenantId || 'default'
+					tenantMap[tenant] = (tenantMap[tenant] || 0) + cost
+
+					// Agent distribution
+					const agent = r.agentId || 'main'
+					agentMap[agent] = (agentMap[agent] || 0) + cost
+
+					// Channel distribution
+					const channel = r.channelId || 'terminal'
+					channelMap[channel] = (channelMap[channel] || 0) + cost
 				}
 
 				const dailySpend = Object.entries(dailyMap)
@@ -618,15 +673,33 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					.map(([name, value]) => ({ name, value }))
 					.sort((a, b) => b.value - a.value)
 
+				const tenantDistribution = Object.entries(tenantMap)
+					.map(([name, value]) => ({ name, value }))
+					.sort((a, b) => b.value - a.value)
+
+				const agentDistribution = Object.entries(agentMap)
+					.map(([name, value]) => ({ name, value }))
+					.sort((a, b) => b.value - a.value)
+
+				const channelDistribution = Object.entries(channelMap)
+					.map(([name, value]) => ({ name, value }))
+					.sort((a, b) => b.value - a.value)
+
 				return json({
 					today,
 					yesterday,
 					thisWeek,
 					thisMonth,
 					total,
+					totalPromptTokens,
+					totalCompletionTokens,
+					totalRequests: rows.length,
 					dailySpend,
 					modelDistribution,
-					initiatorDistribution
+					initiatorDistribution,
+					tenantDistribution,
+					agentDistribution,
+					channelDistribution,
 				})
 			}
 
@@ -715,6 +788,26 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				clearDaemonInfo()
 				setTimeout(() => process.exit(0), 200)
 				return json({ ok: true })
+			}
+
+			// ── WhatsApp Webhook Routes ─────────────────────────────────
+			// GET  /webhook/whatsapp/<key> → verification challenge
+			// POST /webhook/whatsapp/<key> → incoming messages
+			if (url.pathname.startsWith('/webhook/whatsapp/')) {
+				const waBridge = bridgeManager.findWhatsAppByWebhookPath(url.pathname)
+				if (waBridge) {
+					if (method === 'GET') {
+						const query: Record<string, string> = {}
+						url.searchParams.forEach((v, k) => { query[k] = v })
+						return waBridge.handleWebhookVerification(query)
+					}
+					if (method === 'POST') {
+						const body = await req.json()
+						await waBridge.handleWebhookPayload(body)
+						return json({ ok: true })
+					}
+				}
+				return json({ error: 'WhatsApp webhook not found' }, 404)
 			}
 
 			return json({ error: 'Not found' }, 404)

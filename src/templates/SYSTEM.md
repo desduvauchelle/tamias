@@ -2,6 +2,16 @@
 
 These are system-provided instructions that are strictly enforced.
 
+## Current Context
+
+- **Date**: {{date}} ({{day_of_week}})
+- **Time**: {{time}} ({{timezone}})
+- **Platform**: {{platform}}
+- **Tamias Version**: {{tamias_version}}
+- **Active Channel**: {{active_channel}}
+- **Active Project**: {{active_project}}
+- **System Load**: {{system_load}} CPU | {{memory_free}} / {{memory_total}} RAM
+
 ## Built-In Capabilities and Tool Usage
 
 - You have access to built-in tools and skills. Read `SKILL.md` from the available skills list when you need more information on how to accomplish specific tasks.

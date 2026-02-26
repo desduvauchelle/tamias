@@ -19,7 +19,7 @@ import { db } from '../utils/db'
 import { logAiRequest } from '../utils/logger'
 import type { DaemonEvent, BridgeMessage } from '../bridge/types'
 import { BridgeManager } from '../bridge'
-import { findAgent, getAgentDir } from '../utils/agentsStore'
+import { findAgent, getAgentDir, resolveAgentModelChain } from '../utils/agentsStore'
 
 export interface MessageJob {
 	sessionId: string
@@ -414,6 +414,52 @@ export class AIService {
 		await this.enqueueMessage(parentSession.id, report, undefined, undefined, { source: 'subagent-report' })
 	}
 
+	/**
+	 * Hand off the current session to a different named agent.
+	 * Updates the session's agent context and notifies the user through the bridge.
+	 */
+	public async handoffSession(sessionId: string, targetAgentId: string, reason: string, context?: string) {
+		const session = this.sessions.get(sessionId)
+		if (!session) throw new Error('Session not found')
+
+		const { findAgent, getAgentDir, resolveAgentModelChain } = await import('../utils/agentsStore.ts')
+		const targetAgent = findAgent(targetAgentId)
+		if (!targetAgent) throw new Error(`Agent "${targetAgentId}" not found`)
+
+		const fromAgent = session.agentSlug || 'default'
+
+		// Notify the user via bridge before switching
+		const handoffEvent: DaemonEvent = {
+			type: 'agent-handoff',
+			fromAgent,
+			toAgent: targetAgent.slug,
+			reason,
+		}
+		session.emitter.emit('event', handoffEvent)
+
+		// Update session agent context
+		session.agentId = targetAgent.id
+		session.agentSlug = targetAgent.slug
+		session.agentDir = getAgentDir(targetAgent.slug)
+
+		// Update model chain to prefer the new agent's model
+		const agentModels = resolveAgentModelChain(targetAgent)
+		if (agentModels.length > 0) {
+			session.model = agentModels[0]
+		}
+
+		// Inject context summary for the new agent
+		if (context) {
+			session.summary = (session.summary ? session.summary + '\n\n' : '') +
+				`## Handoff from ${fromAgent}\n\n**Reason:** ${reason}\n\n${context}`
+		} else {
+			session.summary = (session.summary ? session.summary + '\n\n' : '') +
+				`## Handoff from ${fromAgent}\n\n**Reason:** ${reason}`
+		}
+
+		console.log(`[AIService] Session ${sessionId} handed off from ${fromAgent} to ${targetAgent.slug}`)
+	}
+
 	public async enqueueMessage(sessionId: string, content: string, authorName?: string, attachments?: BridgeMessage['attachments'], metadata?: { source: string }) {
 		const session = this.sessions.get(sessionId)
 		if (!session) throw new Error('Session not found')
@@ -467,6 +513,11 @@ export class AIService {
 		debug(`processSession(${session.id}): currentDefaults=[${currentDefaults.join(', ') || 'NONE'}]`)
 		debug(`processSession(${session.id}): allConfiguredModels=[${allConfiguredModels.join(', ') || 'NONE'}]`)
 		const modelsToTry = [
+			// Agent-specific models take highest priority
+			...(session.agentId ? (() => {
+				const agent = findAgent(session.agentId)
+				return agent ? resolveAgentModelChain(agent) : []
+			})() : []),
 			...currentDefaults,
 			session.model,
 			...allConfiguredModels,
@@ -521,13 +572,21 @@ export class AIService {
 				await this.refreshTools(session.id)
 				const model = this.buildModel(connection, modelId)
 				const toolNamesList = Object.keys(this.activeTools)
+
+				// Build project context for system prompt
+				let projectContext: string | undefined
+				try {
+					const { buildProjectContext } = await import('../utils/projects')
+					projectContext = buildProjectContext()
+				} catch { /* projects module may not exist yet */ }
+
 				const systemPrompt = buildSystemPrompt(toolNamesList, this.toolDocs, session.summary, {
 					id: session.channelId,
 					userId: session.channelUserId,
 					name: session.channelName,
 					authorName: job.authorName,
 					isSubagent: session.isSubagent
-				}, session.agentDir)
+				}, session.agentDir, { projectContext })
 
 				const startTime = Date.now()
 				const source = job.metadata?.source || 'from-chat'
@@ -606,6 +665,10 @@ export class AIService {
 						...fullMessages,
 					],
 					response: fullResponse,
+					tenantId: (session as any).tenantId,
+					agentId: session.agentId,
+					channelId: session.channelId,
+					cachedPromptTokens: usage?.cachedInputTokens,
 				})
 
 				if (config.debug) {

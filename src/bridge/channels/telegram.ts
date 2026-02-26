@@ -36,7 +36,23 @@ export class TelegramBridge implements IBridge {
 
 		this.bot = new Bot(token)
 
+		const instanceCfg = config.bridges?.telegrams?.[this.instanceKey]
+		const mode: string = (instanceCfg as any)?.mode ?? 'full'
+
+		// Helper: check if message should be processed based on mode
+		const shouldProcess = (ctx: any): boolean => {
+			if (mode === 'listen-only') return false
+			if (mode === 'mention-only') {
+				// In Telegram, "mention" means the bot username is in the text
+				const botUsername = this.bot?.botInfo?.username
+				const text = ctx.message?.text ?? ctx.message?.caption ?? ''
+				if (botUsername && !text.includes(`@${botUsername}`)) return false
+			}
+			return true
+		}
+
 		this.bot.on(['message:voice', 'message:audio'], async (ctx) => {
+			if (!shouldProcess(ctx)) return
 			const chatId = ctx.chat.id
 			const messageId = ctx.message.message_id
 			const chatKey = String(chatId)
@@ -93,6 +109,7 @@ export class TelegramBridge implements IBridge {
 		})
 
 		this.bot.on('message:text', async (ctx) => {
+			if (!shouldProcess(ctx)) return
 			const chatId = ctx.chat.id
 			const messageId = ctx.message.message_id
 			const chatKey = String(chatId)
@@ -120,6 +137,7 @@ export class TelegramBridge implements IBridge {
 
 		// Handle photos
 		this.bot.on('message:photo', async (ctx) => {
+			if (!shouldProcess(ctx)) return
 			const chatId = ctx.chat.id
 			const messageId = ctx.message.message_id
 			const chatKey = String(chatId)
@@ -158,6 +176,7 @@ export class TelegramBridge implements IBridge {
 
 		// Handle documents / other files
 		this.bot.on('message:document', async (ctx) => {
+			if (!shouldProcess(ctx)) return
 			const chatId = ctx.chat.id
 			const messageId = ctx.message.message_id
 			const chatKey = String(chatId)
@@ -298,6 +317,24 @@ export class TelegramBridge implements IBridge {
 					await this.bot.api.sendMessage(Number(chatKey), text, { parse_mode: 'MarkdownV2' })
 				} catch (err) {
 					console.error(`[Telegram Bridge] Failed to send subagent-status to chat ${chatKey}:`, err)
+				}
+				break
+			}
+			case 'agent-handoff': {
+				const from = escapeMd(event.fromAgent)
+				const to = escapeMd(event.toAgent)
+				const reason = escapeMd(event.reason)
+				const handoffText = `🐝 *Agent Handoff*\n\n` +
+					`*From:* ${from}\n` +
+					`*To:* ${to}\n` +
+					`*Reason:* ${reason}\n\n` +
+					`_The conversation is now being handled by *${to}*\\._`
+				try {
+					await this.bot.api.sendMessage(Number(chatKey), handoffText, { parse_mode: 'MarkdownV2' })
+				} catch (err) {
+					// Fallback without markdown
+					const plain = `🐝 Agent Handoff\n\nFrom: ${event.fromAgent}\nTo: ${event.toAgent}\nReason: ${event.reason}\n\nThe conversation is now being handled by ${event.toAgent}.`
+					await this.bot.api.sendMessage(Number(chatKey), plain).catch(() => { })
 				}
 				break
 			}

@@ -1,4 +1,5 @@
 import { db } from './db'
+import { getEstimatedCost } from './pricing'
 
 export interface AiLogPayload {
 	timestamp: string
@@ -14,6 +15,14 @@ export interface AiLogPayload {
 	}
 	messages: unknown[]
 	response: string
+	/** Optional enriched fields from Phase 8 */
+	tenantId?: string
+	agentId?: string
+	channelId?: string
+	cachedPromptTokens?: number
+	systemTokens?: number
+	conversationTokens?: number
+	toolTokens?: number
 }
 
 /**
@@ -21,9 +30,17 @@ export interface AiLogPayload {
  */
 export function logAiRequest(payload: AiLogPayload): number | undefined {
 	try {
+		// Calculate estimated cost
+		let estimatedCostUsd: number | null = null
+		try {
+			if (payload.tokens?.prompt && payload.tokens?.completion) {
+				estimatedCostUsd = getEstimatedCost(payload.model, payload.tokens.prompt, payload.tokens.completion)
+			}
+		} catch { /* pricing may not have this model */ }
+
 		const result = db.prepare(`
-            INSERT INTO ai_logs (timestamp, sessionId, model, provider, action, durationMs, promptTokens, completionTokens, totalTokens, requestMessagesJson, response)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO ai_logs (timestamp, sessionId, model, provider, action, durationMs, promptTokens, completionTokens, totalTokens, requestMessagesJson, response, tenantId, agentId, channelId, cachedPromptTokens, systemTokens, conversationTokens, toolTokens, estimatedCostUsd)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
 			payload.timestamp,
 			payload.sessionId,
@@ -35,7 +52,15 @@ export function logAiRequest(payload: AiLogPayload): number | undefined {
 			payload.tokens?.completion || null,
 			payload.tokens?.total || null,
 			JSON.stringify(payload.messages),
-			payload.response
+			payload.response,
+			payload.tenantId || null,
+			payload.agentId || null,
+			payload.channelId || null,
+			payload.cachedPromptTokens || null,
+			payload.systemTokens || null,
+			payload.conversationTokens || null,
+			payload.toolTokens || null,
+			estimatedCostUsd,
 		)
 		return result.lastInsertRowid as number
 	} catch (err) {

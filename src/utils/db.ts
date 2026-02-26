@@ -63,6 +63,24 @@ const migrations = [
 	CREATE INDEX IF NOT EXISTS idx_ai_logs_sessionId ON ai_logs(sessionId);
 	CREATE INDEX IF NOT EXISTS idx_sessions_updatedAt ON sessions(updatedAt);
 	CREATE INDEX IF NOT EXISTS idx_sessions_bridge ON sessions(channelId, channelUserId);
+	`,
+	// Version 5: Enrich ai_logs with tenant/agent/cost breakdown + agent on sessions
+	`
+	ALTER TABLE ai_logs ADD COLUMN tenantId TEXT;
+	ALTER TABLE ai_logs ADD COLUMN agentId TEXT;
+	ALTER TABLE ai_logs ADD COLUMN channelId TEXT;
+	ALTER TABLE ai_logs ADD COLUMN cachedPromptTokens INTEGER;
+	ALTER TABLE ai_logs ADD COLUMN systemTokens INTEGER;
+	ALTER TABLE ai_logs ADD COLUMN conversationTokens INTEGER;
+	ALTER TABLE ai_logs ADD COLUMN toolTokens INTEGER;
+	ALTER TABLE ai_logs ADD COLUMN estimatedCostUsd REAL;
+	ALTER TABLE sessions ADD COLUMN agentId TEXT;
+	ALTER TABLE sessions ADD COLUMN projectSlug TEXT;
+	ALTER TABLE sessions ADD COLUMN tenantId TEXT;
+	CREATE INDEX IF NOT EXISTS idx_ai_logs_tenantId ON ai_logs(tenantId);
+	CREATE INDEX IF NOT EXISTS idx_ai_logs_agentId ON ai_logs(agentId);
+	CREATE INDEX IF NOT EXISTS idx_sessions_agentId ON sessions(agentId);
+	CREATE INDEX IF NOT EXISTS idx_sessions_projectSlug ON sessions(projectSlug);
 	`
 ]
 

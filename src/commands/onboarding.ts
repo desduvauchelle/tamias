@@ -119,9 +119,9 @@ export const runOnboarding = async (): Promise<void> => {
 		const memoryDir = join(defaultHome, 'memory')
 		try { mkdirSync(memoryDir, { recursive: true }) } catch { }
 
-		writePersonaFile('IDENTITY.md', ['# IDENTITY', '', '- **Name:** CIBot', '- **Creature:** AI assistant', '- **Vibe:** warm & friendly', '- **Emoji:** 🐿️', ''].join('\n'))
-		writePersonaFile('USER.md', ['# USER', '', '- **Name:** Tester', '- **What to call them:** Tester', '- **Timezone:** UTC', '', ''].join('\n'))
-		writePersonaFile('SOUL.md', ['# SOUL', '', '## Purpose', '', 'Testing CI onboarding', ''].join('\n'))
+		writePersonaFile('IDENTITY.md', ['# IDENTITY', '', '- **Name:** CIBot', '- **Archetype:** Friendly Assistant', '- **Creature:** AI assistant', '- **Vibe:** warm & friendly', '- **Emoji:** 🐿️', ''].join('\n'))
+		writePersonaFile('USER.md', ['# USER', '', '- **Name:** Tester', '- **Timezone:** UTC', '', ''].join('\n'))
+		writePersonaFile('SOUL.md', ['# SOUL', '', '## Default Rules', '', '- Never take irreversible actions (like deleting files or sending emails) without explicit confirmation first.', '- Never volunteer unsolicited tasks — only act when directly prompted or asked.', ''].join('\n'))
 		scaffoldFromTemplates()
 		// try to set default workspace
 		try { setWorkspacePath(getDefaultWorkspacePath()) } catch { }
@@ -162,53 +162,58 @@ export const runOnboarding = async (): Promise<void> => {
 
 	await dramatic(`\n  ${pc.green(`"${name}."`)} ${pc.dim('I like it.')}`, 600)
 
-	// Creature
-	const creature = await p.select({
-		message: `So I'm ${pc.bold(name as string)}. What kind of creature am I?`,
+	// Personality archetype (replaces creature + vibe)
+	const archetypeMap: Record<string, { creature: string; vibe: string }> = {
+		'Friendly Assistant': { creature: 'AI assistant', vibe: 'warm & friendly' },
+		'Sharp Advisor': { creature: 'tactical advisor', vibe: 'sharp & direct' },
+		'Playful Sidekick': { creature: 'sidekick', vibe: 'playful & chaotic' },
+		'Calm Sage': { creature: 'sage', vibe: 'calm & thoughtful' },
+		'Empathetic Listener': { creature: 'companion', vibe: 'patient & kind' },
+		'Steady Mentor': { creature: 'mentor', vibe: 'encouraging & grounded' },
+		'Loyal Butler': { creature: 'butler', vibe: 'formal & attentive' },
+		'Hype Friend': { creature: 'hype beast', vibe: 'enthusiastic & energetic' },
+	}
+
+	const archetype = await p.select({
+		message: `So I'm ${pc.bold(name as string)}. What's my personality?`,
 		options: [
-			{ value: 'AI assistant', label: '🤖 AI assistant — helpful and capable' },
-			{ value: 'familiar', label: '🦊 Familiar — a loyal companion spirit' },
-			{ value: 'ghost in the machine', label: '👻 Ghost in the machine — mysterious and ever-present' },
-			{ value: 'chipmunk', label: '🐿️ Chipmunk — small, fast, and resourceful' },
+			{ value: 'Friendly Assistant', label: '☀️ Friendly Assistant', hint: '"Hi! I\'m here to help with whatever you need today."' },
+			{ value: 'Sharp Advisor', label: '⚡ Sharp Advisor', hint: '"Understood. Task started. I\'ll alert you if issues arise."' },
+			{ value: 'Playful Sidekick', label: '🎪 Playful Sidekick', hint: '"Heck yeah! Let\'s get this show on the road! 🚀"' },
+			{ value: 'Calm Sage', label: '🌊 Calm Sage', hint: '"Take a breath. Let us examine the problem with patience."' },
+			{ value: 'Empathetic Listener', label: '💜 Empathetic Listener', hint: '"I\'m here for you. How are you feeling about your progress?"' },
+			{ value: 'Steady Mentor', label: '🧭 Steady Mentor', hint: '"You\'ve got this. Let\'s break it down into manageable steps."' },
+			{ value: 'Loyal Butler', label: '🎩 Loyal Butler', hint: '"At your service. I shall attend to those tasks immediately."' },
+			{ value: 'Hype Friend', label: '🔥 Hype Friend', hint: '"LET\'S GOOO! You\'re crushing it! What\'s next?"' },
 			{ value: 'custom', label: '✨ Something else entirely...' },
 		],
 	})
-	if (p.isCancel(creature)) { p.cancel('Maybe next time.'); process.exit(0) }
+	if (p.isCancel(archetype)) { p.cancel('Maybe next time.'); process.exit(0) }
 
-	let creatureStr = creature as string
-	if (creature === 'custom') {
-		const custom = await p.text({
-			message: 'What am I then?',
+	let archetypeLabel = archetype as string
+	let creatureStr: string
+	let vibeStr: string
+
+	if (archetype === 'custom') {
+		const customCreature = await p.text({
+			message: 'What kind of creature am I?',
 			placeholder: 'A sentient toaster, a digital druid, ...',
 			validate: (v) => { if (!v?.trim()) return 'Come on, give me something!' },
 		})
-		if (p.isCancel(custom)) { p.cancel('Maybe next time.'); process.exit(0) }
-		creatureStr = custom as string
-	}
-
-	// Vibe
-	const vibe = await p.select({
-		message: "And what's my vibe?",
-		options: [
-			{ value: 'warm & friendly', label: '☀️ Warm & friendly' },
-			{ value: 'sharp & direct', label: '⚡ Sharp & direct' },
-			{ value: 'playful & chaotic', label: '🎪 Playful & chaotic' },
-			{ value: 'calm & thoughtful', label: '🌊 Calm & thoughtful' },
-			{ value: 'snarky with a heart of gold', label: '💛 Snarky with a heart of gold' },
-			{ value: 'custom', label: '🎨 Custom...' },
-		],
-	})
-	if (p.isCancel(vibe)) { p.cancel('Maybe next time.'); process.exit(0) }
-
-	let vibeStr = vibe as string
-	if (vibe === 'custom') {
-		const custom = await p.text({
-			message: 'Describe my vibe:',
+		if (p.isCancel(customCreature)) { p.cancel('Maybe next time.'); process.exit(0) }
+		const customVibe = await p.text({
+			message: 'And what\'s my vibe?',
 			placeholder: 'Like a caffeinated librarian...',
 			validate: (v) => { if (!v?.trim()) return 'Give me a vibe!' },
 		})
-		if (p.isCancel(custom)) { p.cancel('Maybe next time.'); process.exit(0) }
-		vibeStr = custom as string
+		if (p.isCancel(customVibe)) { p.cancel('Maybe next time.'); process.exit(0) }
+		creatureStr = customCreature as string
+		vibeStr = customVibe as string
+		archetypeLabel = `Custom (${creatureStr})`
+	} else {
+		const mapped = archetypeMap[archetype as string]
+		creatureStr = mapped.creature
+		vibeStr = mapped.vibe
 	}
 
 	// Emoji
@@ -225,6 +230,7 @@ export const runOnboarding = async (): Promise<void> => {
 		'# IDENTITY.md - Who Am I?',
 		'',
 		`- **Name:** ${name}`,
+		`- **Archetype:** ${archetypeLabel}`,
 		`- **Creature:** ${creatureStr}`,
 		`- **Vibe:** ${vibeStr}`,
 		`- **Emoji:** ${emoji}`,
@@ -242,30 +248,17 @@ export const runOnboarding = async (): Promise<void> => {
 	p.note(`${emoji} I know who I am. Now let me learn about you.`, 'Phase 2')
 
 	const userName = await p.text({
-		message: 'Who are you?',
+		message: "What's your name? (I'll use this to address you)",
 		placeholder: 'Your name',
 		validate: (v) => { if (!v?.trim()) return "I need to know who I'm talking to!" },
 	})
 	if (p.isCancel(userName)) { p.cancel('Maybe next time.'); process.exit(0) }
 
-	const callThem = await p.text({
-		message: `What should I call you? (${userName}, a nickname, a title?)`,
-		placeholder: userName as string,
-		initialValue: userName as string,
-	})
-	if (p.isCancel(callThem)) { p.cancel('Maybe next time.'); process.exit(0) }
-
 	const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone
-	const timezone = await p.text({
-		message: 'What timezone are you in?',
-		placeholder: detectedTz,
-		initialValue: detectedTz,
-	})
-	if (p.isCancel(timezone)) { p.cancel('Maybe next time.'); process.exit(0) }
 
 	const context = await p.text({
-		message: 'Tell me a bit about yourself — what do you work on? What matters to you?',
-		placeholder: 'I build software, I love coffee, I have 2 cats...',
+		message: 'Tell me a bit about yourself — what do you work on? What do you need help with?',
+		placeholder: 'I build software, I love coffee, I need help managing projects...',
 	})
 	if (p.isCancel(context)) { p.cancel('Maybe next time.'); process.exit(0) }
 
@@ -274,8 +267,7 @@ export const runOnboarding = async (): Promise<void> => {
 		'# USER.md - About My Human',
 		'',
 		`- **Name:** ${userName}`,
-		`- **What to call them:** ${callThem}`,
-		`- **Timezone:** ${timezone}`,
+		`- **Timezone:** ${detectedTz}`,
 		'',
 		'## Context',
 		'',
@@ -287,23 +279,11 @@ export const runOnboarding = async (): Promise<void> => {
 		'',
 	].join('\n'))
 
-	await dramatic(`\n  ${emoji} Got it, ${callThem}.`, 600)
+	await dramatic(`\n  ${emoji} Got it, ${userName}.`, 600)
 
 	// ── Phase 3: The Soul Talk ──────────────────────────────────────────────
 
-	p.note(`${emoji} Last thing. Let's talk about what I'm for.`, 'Phase 3')
-
-	const purpose = await p.text({
-		message: "What's my main purpose? What should I focus on?",
-		placeholder: 'Help me code, manage my projects, be a thinking partner...',
-	})
-	if (p.isCancel(purpose)) { p.cancel('Maybe next time.'); process.exit(0) }
-
-	const rules = await p.text({
-		message: 'Any rules? Things I should never do, or always do?',
-		placeholder: 'Never delete files without asking, always be concise... (or press Enter to skip)',
-	})
-	if (p.isCancel(rules)) { p.cancel('Maybe next time.'); process.exit(0) }
+	p.note(`${emoji} Last thing — how should I talk to you?`, 'Phase 3')
 
 	const talkStyle = await p.select({
 		message: 'How should I talk?',
@@ -323,22 +303,16 @@ export const runOnboarding = async (): Promise<void> => {
 	const personalSections = [
 		baseSoul,
 		'',
-		'## Purpose',
+		'## Default Rules',
 		'',
-		(purpose as string)?.trim() || '_(To be defined.)_',
+		'- Never take irreversible actions (like deleting files or sending emails) without explicit confirmation first.',
+		'- Never volunteer unsolicited tasks — only act when directly prompted or asked.',
 		'',
-	]
-
-	if ((rules as string)?.trim()) {
-		personalSections.push('## Custom Rules', '', (rules as string).trim(), '')
-	}
-
-	personalSections.push(
 		'## Communication Style',
 		'',
 		`Style: **${talkStyle}**`,
 		'',
-	)
+	]
 
 	writePersonaFile('SOUL.md', personalSections.join('\n'))
 

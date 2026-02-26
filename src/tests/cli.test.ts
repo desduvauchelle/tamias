@@ -38,7 +38,10 @@ describe('CLI Structure', () => {
 			'channels',
 			'emails',
 			'workspace',
-			'doctor'
+			'doctor',
+			'migrate',
+			'project',
+			'tenant',
 		]
 
 		for (const cmd of commands) {

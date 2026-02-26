@@ -23,6 +23,7 @@
 - allow bridge `onMessage` to return a boolean to prevent AI processing and enhance Discord typing indicator reliability.
 
 ### Maintenance
+- bump version to 26.2.26.6 in package.json and dashboard package.json; update AGENTS.md formatting
 - bump version to 26.2.25.7 in package.json files
 - bump version to 26.2.25.5 in package.json files and improve code formatting
 - bump version to 26.2.25.2 in package.json files
@@ -125,6 +126,14 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.26.7] - 2026-02-26
+
+### Features
+- Enhance chat command with agent options and routing
+
+### Maintenance
+- bump version to 26.2.26.6 in package.json and dashboard package.json; update AGENTS.md formatting
 
 ## [v26.2.26.3] - 2026-02-26
 

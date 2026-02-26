@@ -1,6 +1,6 @@
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
-import { addConnection, ProviderEnum } from '../utils/config.ts'
+import { addConnection, ProviderEnum, loadConfig, getAllModelOptions, getDefaultModel, CONFIG_PATH } from '../utils/config.ts'
 import { fetchModels } from '../utils/models.ts'
 import { setEnv, generateSecureEnvKey } from '../utils/env.ts'
 
@@ -112,4 +112,71 @@ export const runConfigCommand = async () => {
 		p.cancel(pc.red(`❌ Failed to save configuration: ${error}`))
 		process.exit(1)
 	}
+}
+
+/**
+ * `tamias config show` — Display current configuration summary.
+ */
+export const runConfigShowCommand = async (opts: { json?: boolean } = {}) => {
+	const config = loadConfig()
+
+	if (opts.json) {
+		// Strip env key names from output for safety
+		const safe = { ...config }
+		for (const [k, c] of Object.entries(safe.connections)) {
+			safe.connections[k] = { ...c, envKeyName: c.envKeyName ? '***' : undefined }
+		}
+		console.log(JSON.stringify(safe, null, 2))
+		return
+	}
+
+	p.intro(pc.bgCyan(pc.black(' Tamias — Configuration ')))
+
+	// Connections
+	const connections = Object.entries(config.connections)
+	if (connections.length === 0) {
+		console.log(pc.yellow('  No connections configured. Run `tamias config` to add one.'))
+	} else {
+		console.log(pc.bold('\n  Connections:'))
+		for (const [nick, conn] of connections) {
+			const models = conn.selectedModels?.length ?? 0
+			console.log(`    ${pc.cyan(nick)} — ${conn.provider} (${models} model${models !== 1 ? 's' : ''})`)
+		}
+	}
+
+	// Default model
+	const defaultModel = getDefaultModel()
+	console.log(`\n  ${pc.bold('Default model:')} ${defaultModel ?? pc.dim('not set')}`)
+
+	// All models
+	const allModels = getAllModelOptions()
+	console.log(`  ${pc.bold('Available models:')} ${allModels.length}`)
+
+	// Bridges
+	const bridges = config.bridges
+	const discordCount = Object.keys(bridges?.discords ?? {}).length
+	const telegramCount = Object.keys(bridges?.telegrams ?? {}).length
+	const whatsappCount = Object.keys((bridges as any)?.whatsapps ?? {}).length
+	console.log(`\n  ${pc.bold('Channels:')}`)
+	console.log(`    Discord: ${discordCount} instance(s)`)
+	console.log(`    Telegram: ${telegramCount} instance(s)`)
+	console.log(`    WhatsApp: ${whatsappCount} instance(s)`)
+
+	// Tools
+	const tools = config.internalTools
+	const enabledTools = Object.entries(tools ?? {}).filter(([, t]) => (t as any)?.enabled !== false)
+	const mcpServers = Object.keys(config.mcpServers ?? {}).length
+	console.log(`\n  ${pc.bold('Tools:')} ${enabledTools.length} enabled, ${mcpServers} MCP server(s)`)
+
+	// Config path
+	console.log(`\n  ${pc.dim(`Config: ${CONFIG_PATH}`)}`)
+
+	p.outro('')
+}
+
+/**
+ * `tamias config path` — Print config file path.
+ */
+export const runConfigPathCommand = async () => {
+	console.log(CONFIG_PATH)
 }

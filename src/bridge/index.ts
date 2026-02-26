@@ -34,6 +34,15 @@ export class BridgeManager {
 			}
 		}
 
+		// Initialize all WhatsApp instances
+		for (const [key, cfg] of Object.entries((bridgesDef as any)?.whatsapps ?? {}) as [string, { enabled?: boolean }][]) {
+			if (cfg.enabled) {
+				const { WhatsAppBridge } = await import('./channels/whatsapp')
+				const whatsappBridge = new WhatsAppBridge(key)
+				await this.startBridge(whatsappBridge, config, onMessage)
+			}
+		}
+
 		// Terminal bridge logic is heavily coupled with HTTP SSE in `start.ts` currently,
 		// but eventually we can load it here.
 	}
@@ -82,6 +91,19 @@ export class BridgeManager {
 	 */
 	getActiveChannelIds(): string[] {
 		return Array.from(this.activeBridges.keys())
+	}
+
+	/**
+	 * Finds a WhatsApp bridge instance by its webhook path.
+	 * Returns undefined if no match or if bridge is not a WhatsApp bridge.
+	 */
+	findWhatsAppByWebhookPath(pathname: string): any | undefined {
+		for (const bridge of this.activeBridges.values()) {
+			if (bridge.name.startsWith('whatsapp:') && typeof (bridge as any).getWebhookPath === 'function') {
+				if ((bridge as any).getWebhookPath() === pathname) return bridge
+			}
+		}
+		return undefined
 	}
 
 	/**
