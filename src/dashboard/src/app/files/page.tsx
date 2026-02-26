@@ -156,8 +156,8 @@ function Column({
 								${isActive
 									? 'bg-primary text-primary-content'
 									: isSelectedUnfocused
-									? 'bg-base-300 text-base-content'
-									: 'hover:bg-base-200 text-base-content/80'}`}
+										? 'bg-base-300 text-base-content'
+										: 'hover:bg-base-200 text-base-content/80'}`}
 							onClick={e => {
 								if (isRenaming) return
 								e.stopPropagation()
@@ -433,7 +433,7 @@ export default function FilesPage() {
 
 	// Keep columnRefs in sync
 	while (columnRefs.current.length < columns.length) {
-		// eslint-disable-next-line react-hooks/rules-of-hooks
+
 		columnRefs.current.push({ current: null })
 	}
 	columnRefs.current = columnRefs.current.slice(0, columns.length)

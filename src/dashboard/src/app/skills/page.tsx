@@ -164,11 +164,10 @@ export default function SkillsPage() {
 							<button
 								key={tag}
 								onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
-								className={`text-[11px] px-2 py-0.5 rounded-full border transition-all ${
-									selectedTag === tag
+								className={`text-[11px] px-2 py-0.5 rounded-full border transition-all ${selectedTag === tag
 										? 'bg-primary text-primary-content border-primary'
 										: 'border-base-300 text-base-content/60 hover:border-primary/50 hover:text-primary'
-								}`}
+									}`}
 							>
 								#{tag}
 							</button>
@@ -183,59 +182,57 @@ export default function SkillsPage() {
 						<div className="p-4 text-center text-base-content/50">No skills found.</div>
 					) : (
 						<>
-						{topLevel.map(skill => {
-							const children = getChildren(skill.folder!)
-							const isParent = children.length > 0 || parentFolders.has(skill.folder)
-							return (
-								<div key={skill.folder}>
-									<button
-										onClick={() => { setActiveSkill(skill); setIsEditing(false) }}
-										className={`w-full text-left p-3 rounded-xl transition-all ${
-											activeSkill?.folder === skill.folder ? 'bg-primary/10 text-primary' : 'hover:bg-base-200'
-										}`}
-									>
-										<div className="flex items-center justify-between mb-1">
-											<div className="flex items-center gap-1.5 min-w-0">
-												{isParent && <span className="text-primary opacity-60 flex-shrink-0">◆</span>}
-												<span className="font-medium truncate">{skill.name}</span>
+							{topLevel.map(skill => {
+								const children = getChildren(skill.folder!)
+								const isParent = children.length > 0 || parentFolders.has(skill.folder)
+								return (
+									<div key={skill.folder}>
+										<button
+											onClick={() => { setActiveSkill(skill); setIsEditing(false) }}
+											className={`w-full text-left p-3 rounded-xl transition-all ${activeSkill?.folder === skill.folder ? 'bg-primary/10 text-primary' : 'hover:bg-base-200'
+												}`}
+										>
+											<div className="flex items-center justify-between mb-1">
+												<div className="flex items-center gap-1.5 min-w-0">
+													{isParent && <span className="text-primary opacity-60 flex-shrink-0">◆</span>}
+													<span className="font-medium truncate">{skill.name}</span>
+												</div>
+												{skill.isBuiltIn && (
+													<span className="text-[10px] uppercase font-bold text-accent/70 bg-accent/10 px-2 py-0.5 rounded-full flex-shrink-0">Built-in</span>
+												)}
 											</div>
-											{skill.isBuiltIn && (
-												<span className="text-[10px] uppercase font-bold text-accent/70 bg-accent/10 px-2 py-0.5 rounded-full flex-shrink-0">Built-in</span>
+											<div className="text-sm opacity-70 truncate" title={skill.description}>{skill.description}</div>
+											{(skill.tags || []).length > 0 && (
+												<div className="flex flex-wrap gap-1 mt-1.5">
+													{skill.tags!.map(t => (
+														<span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-base-300/70 text-base-content/50">#{t}</span>
+													))}
+												</div>
 											)}
-										</div>
-										<div className="text-sm opacity-70 truncate" title={skill.description}>{skill.description}</div>
-										{(skill.tags || []).length > 0 && (
-											<div className="flex flex-wrap gap-1 mt-1.5">
-												{skill.tags!.map(t => (
-													<span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-base-300/70 text-base-content/50">#{t}</span>
+										</button>
+										{/* Nested children */}
+										{children.length > 0 && (
+											<div className="ml-3 pl-3 border-l-2 border-base-300/60 space-y-0.5 mt-0.5 mb-1">
+												{children.map((child, idx) => (
+													<button
+														key={child.folder}
+														onClick={() => { setActiveSkill(child); setIsEditing(false) }}
+														className={`w-full text-left p-2.5 rounded-lg transition-all ${activeSkill?.folder === child.folder ? 'bg-primary/10 text-primary' : 'hover:bg-base-200'
+															}`}
+													>
+														<div className="flex items-center gap-1.5">
+															<span className="text-[10px] font-bold text-base-content/30 flex-shrink-0 w-4">{idx + 1}</span>
+															<span className="font-medium text-sm truncate">{child.name}</span>
+															{child.isBuiltIn && <span className="text-[10px] uppercase font-bold text-accent/70 bg-accent/10 px-1.5 py-0.5 rounded-full flex-shrink-0">Built-in</span>}
+														</div>
+														<div className="text-xs opacity-60 truncate pl-5" title={child.description}>{child.description}</div>
+													</button>
 												))}
 											</div>
 										)}
-									</button>
-									{/* Nested children */}
-									{children.length > 0 && (
-										<div className="ml-3 pl-3 border-l-2 border-base-300/60 space-y-0.5 mt-0.5 mb-1">
-											{children.map((child, idx) => (
-												<button
-													key={child.folder}
-													onClick={() => { setActiveSkill(child); setIsEditing(false) }}
-													className={`w-full text-left p-2.5 rounded-lg transition-all ${
-														activeSkill?.folder === child.folder ? 'bg-primary/10 text-primary' : 'hover:bg-base-200'
-													}`}
-												>
-													<div className="flex items-center gap-1.5">
-														<span className="text-[10px] font-bold text-base-content/30 flex-shrink-0 w-4">{idx + 1}</span>
-														<span className="font-medium text-sm truncate">{child.name}</span>
-														{child.isBuiltIn && <span className="text-[10px] uppercase font-bold text-accent/70 bg-accent/10 px-1.5 py-0.5 rounded-full flex-shrink-0">Built-in</span>}
-													</div>
-													<div className="text-xs opacity-60 truncate pl-5" title={child.description}>{child.description}</div>
-												</button>
-											))}
-										</div>
-									)}
-								</div>
-							)
-						})}
+									</div>
+								)
+							})}
 						</>
 					)}
 				</div>
@@ -307,17 +304,17 @@ export default function SkillsPage() {
 								<div className="text-xs font-mono text-base-content/40 mb-3 truncate max-w-lg" title={activeSkill.filePath}>
 									{activeSkill.filePath}
 								</div>
-							<p className="text-base-content/70 mb-2">{activeSkill.description}</p>
-							<div className="flex flex-wrap items-center gap-2">
-								{activeSkill.parent && (
-									<span className="text-xs px-2 py-0.5 rounded-full bg-secondary/10 text-secondary border border-secondary/20">
-										↑ {skills.find(s => s.folder === activeSkill.parent)?.name ?? activeSkill.parent}
-									</span>
-								)}
-								{(activeSkill.tags || []).map(tag => (
-									<span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-base-200 text-base-content/50 border border-base-300">#{tag}</span>
-								))}
-							</div>
+								<p className="text-base-content/70 mb-2">{activeSkill.description}</p>
+								<div className="flex flex-wrap items-center gap-2">
+									{activeSkill.parent && (
+										<span className="text-xs px-2 py-0.5 rounded-full bg-secondary/10 text-secondary border border-secondary/20">
+											↑ {skills.find(s => s.folder === activeSkill.parent)?.name ?? activeSkill.parent}
+										</span>
+									)}
+									{(activeSkill.tags || []).map(tag => (
+										<span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-base-200 text-base-content/50 border border-base-300">#{tag}</span>
+									))}
+								</div>
 							</div>
 							<div className="flex gap-2">
 								{!activeSkill.isBuiltIn && (

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- implement sub-agent lifecycle management in AIService
 - Enhance skills and usage pages with TypeScript types and error handling
 - integrate caffeinate process management and add token command for dashboard access
 - wrap HistoryContent in Suspense for improved loading state handling

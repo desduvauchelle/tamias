@@ -342,8 +342,8 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				for (const sub of subagents) {
 					const statusIcon = sub.subagentStatus === 'running' ? '⏳'
 						: sub.subagentStatus === 'completed' ? '✅'
-						: sub.subagentStatus === 'failed' ? '❌'
-						: '⌛'
+							: sub.subagentStatus === 'failed' ? '❌'
+								: '⌛'
 					const elapsed = sub.spawnedAt
 						? ` (${Math.round((Date.now() - sub.spawnedAt.getTime()) / 1000)}s)`
 						: ''

@@ -30,7 +30,7 @@ export const runStatusCommand = async () => {
 	try {
 		const res = await fetch(`${getDaemonUrl()}/sessions`)
 		const sessions = await res.json() as Array<{
-			id: string; name?: string; summary?: string; model: string; queueLength: number; updatedAt: string;
+			id: string; name?: string; summary?: string; model: string; queueLength: number; updatedAt: string
 			isSubagent: boolean; parentSessionId?: string; task?: string; subagentStatus?: string; spawnedAt?: string; progress?: string
 		}>
 
@@ -50,8 +50,8 @@ export const runStatusCommand = async () => {
 			for (const sub of children) {
 				const statusIcon = sub.subagentStatus === 'running' ? pc.yellow('⏳')
 					: sub.subagentStatus === 'completed' ? pc.green('✅')
-					: sub.subagentStatus === 'failed' ? pc.red('❌')
-					: pc.dim('⌛')
+						: sub.subagentStatus === 'failed' ? pc.red('❌')
+							: pc.dim('⌛')
 				const taskText = sub.task ? pc.white(`"${sub.task.slice(0, 50)}${sub.task.length > 50 ? '…' : ''}"`) : pc.dim(sub.id)
 				const elapsed = sub.spawnedAt ? pc.dim(` (${Math.round((Date.now() - new Date(sub.spawnedAt).getTime()) / 1000)}s)`) : ''
 				const progressText = sub.progress ? pc.dim(` · ${sub.progress.slice(0, 60)}`) : ''
@@ -76,8 +76,8 @@ export const runStatusCommand = async () => {
 	try {
 		const dbgRes = await fetch(`${getDaemonUrl()}/debug`)
 		const dbg = await dbgRes.json() as {
-			version: string; execPath: string; verboseMode: boolean;
-			connections: string[]; defaultModels: string[];
+			version: string; execPath: string; verboseMode: boolean
+			connections: string[]; defaultModels: string[]
 			sessions: Array<{ id: string; connectionNickname: string; connectionExistsInConfig: boolean }>
 		}
 		const staleSessions = dbg.sessions.filter(s => !s.connectionExistsInConfig)
