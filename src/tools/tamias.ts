@@ -504,17 +504,18 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 			},
 		}),
 		save_skill: tool({
-			description: 'Create or update a custom AI skill. Skills are Markdown files that live at ~/.tamias/skills/<folder>/SKILL.md and are injected into the system prompt. The `description` field is the ONLY thing the AI sees before deciding to read the full skill — write it as a trigger phrase: "Use this when the user asks to...". Use `tags` to categorise and `parent` (folder name) to mark a skill as a child step in a multi-step orchestrator sequence.',
+			description: 'Create or update a custom AI skill. Skills are Markdown files that live at ~/.tamias/skills/<folder>/SKILL.md and are injected into the system prompt. The `description` field is the ONLY thing the AI sees before deciding to read the full skill — write it as a trigger phrase: "Use this when the user asks to...". Use `tags` to categorise, `parent` (folder name) to mark a skill as a child step in a multi-step orchestrator sequence, and `model` to specify a preferred model (e.g. "xai/grok-3" for X/Twitter searches).',
 			inputSchema: z.object({
 				name: z.string().describe('Human-readable name of the skill, e.g. "React Expert"'),
 				description: z.string().describe('Trigger phrase: when should the AI use this skill? e.g. "Use this when the user asks to research stocks or run investment analysis"'),
 				content: z.string().describe('Detailed instructions / knowledge for this skill in Markdown format.'),
 				tags: z.array(z.string()).optional().describe('Optional list of topic tags for filtering and grouping, e.g. ["investment", "research"]'),
 				parent: z.string().optional().describe('Optional folder name of the parent/orchestrator skill this one belongs to, e.g. "investment-master-research". Makes it appear as a numbered child step under the parent in the UI.'),
+				model: z.string().optional().describe('Optional preferred model for this skill, in "nickname/modelId" format, e.g. "xai/grok-3". The AI will use this model when spawning sub-agents for this skill.'),
 			}),
-			execute: async ({ name, description, content, tags, parent }) => {
+			execute: async ({ name, description, content, tags, parent, model }) => {
 				try {
-					await saveSkill(name, description, content, tags, parent)
+					await saveSkill(name, description, content, tags, parent, model)
 					// Trigger a tool refresh since skills are injected into system prompt
 					return { success: true, message: `Skill '${name}' saved successfully. It will be available in future sessions.` }
 				} catch (err) {
@@ -523,7 +524,7 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 			},
 		}),
 		list_skills: tool({
-			description: 'List all available custom and built-in skills, including their tags and parent relationships.',
+			description: 'List all available custom and built-in skills, including their tags, parent relationships, and preferred models.',
 			inputSchema: z.object({}),
 			execute: async () => {
 				await loadSkills()
@@ -536,6 +537,7 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 						isBuiltIn: s.isBuiltIn,
 						tags: s.tags ?? [],
 						parent: s.parent ?? null,
+						model: s.model ?? null,
 					}))
 				}
 			},
@@ -552,6 +554,25 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 				} catch (err) {
 					return { success: false, error: String(err) }
 				}
+			},
+		}),
+		list_subagents: tool({
+			description: 'List all currently active sub-agents and named-agent sessions, showing their task slug, status, progress, and elapsed time.',
+			inputSchema: z.object({}),
+			execute: async () => {
+				const all = aiService.getAllSessions()
+				const now = Date.now()
+				const subagents = all
+					.filter(s => s.isSubagent && s.subagentStatus !== 'completed' && s.subagentStatus !== 'failed')
+					.map(s => ({
+						sessionId: s.id,
+						taskSlug: s.taskSlug ?? null,
+						task: s.task ? s.task.split('\n')[0].slice(0, 100) : null,
+						status: s.subagentStatus ?? 'unknown',
+						progress: s.progress ?? null,
+						elapsedSeconds: s.spawnedAt ? Math.round((now - s.spawnedAt.getTime()) / 1000) : null,
+					}))
+				return { subagents, count: subagents.length }
 			},
 		}),
 	}

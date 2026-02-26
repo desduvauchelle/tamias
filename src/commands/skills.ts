@@ -27,6 +27,9 @@ skillsCommand
 			const type = skill.isBuiltIn ? pc.dim('(built-in)') : pc.green('(user)')
 			console.log(`  ${pc.cyan(skill.name)} ${type}`)
 			console.log(`  ${pc.dim(skill.description)}`)
+			if (skill.model) {
+				console.log(`  ${pc.dim('Preferred model:')} ${pc.blue(skill.model)}`)
+			}
 			if (skill.tags && skill.tags.length > 0) {
 				console.log(`  ${pc.dim('Tags:')} ${skill.tags.map(t => pc.magenta('#' + t)).join(', ')}`)
 			}
@@ -46,6 +49,7 @@ skillsCommand
 	.option('-c, --content <content>', 'The detailed markdown instructions for the skill')
 	.option('-t, --tags <tags>', 'Comma-separated tags for grouping (e.g. investment,research)')
 	.option('-p, --parent <parent>', 'Folder name of the parent skill this belongs to')
+	.option('-m, --model <model>', 'Preferred model for this skill, e.g. xai/grok-3')
 	.action(async (opts) => {
 		try {
 			let name = opts.name
@@ -91,6 +95,7 @@ skillsCommand
 
 			// Build frontmatter
 			const frontmatterData: Record<string, unknown> = { name, description }
+			if (opts.model) frontmatterData.model = opts.model.trim()
 			const parsedTags = opts.tags ? opts.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : []
 			if (parsedTags.length > 0) frontmatterData.tags = parsedTags
 			if (opts.parent) frontmatterData.parent = opts.parent.trim()

@@ -26,10 +26,10 @@ export const createSubagentTools = (aiService: AIService, sessionId: string) => 
 
 			if (agentId) {
 				const agents = loadAgents()
-				const agent = agents.find(a => a.id === agentId || a.name.toLowerCase() === agentId.toLowerCase())
+				const agent = agents.find(a => a.id === agentId || a.slug === agentId.toLowerCase() || a.name.toLowerCase() === agentId.toLowerCase())
 				if (agent) {
 					if (agent.model) finalModel = agent.model
-					finalInstructions = `${agent.instructions}\n\n${finalInstructions}`.trim()
+					// Persona files in agentDir handle instructions; only append extra instructions if supplied
 				}
 			}
 
@@ -41,6 +41,7 @@ export const createSubagentTools = (aiService: AIService, sessionId: string) => 
 				parentSessionId: sessionId,
 				isSubagent: true,
 				task,
+				agentId,
 			})
 
 			const fullPrompt = finalInstructions
@@ -49,9 +50,12 @@ export const createSubagentTools = (aiService: AIService, sessionId: string) => 
 
 			await aiService.enqueueMessage(subSession.id, fullPrompt)
 
+			const label = subSession.taskSlug
+				? `[${subSession.taskSlug} / ${subSession.id}]`
+				: subSession.id
 			return {
 				success: true,
-				message: `Sub-agent ${subSession.id} spawned. Result will be posted back here when done.`
+				message: `Sub-agent ${label} spawned. Result will be posted back here when done.`
 			}
 		}
 	}),

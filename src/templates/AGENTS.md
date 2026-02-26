@@ -221,3 +221,29 @@ The goal: Be helpful without being annoying. Check in a few times a day, do usef
 ## Make It Yours
 
 This is a starting point. Add your own conventions, style, and rules as you figure out what works.
+
+## Named Agents vs Sub-agents
+
+There are two kinds of agents in this system:
+
+### Named Agents (persistent "employees")
+
+- Registered with `tamias agents add`
+- Have a stable slug (e.g. `researcher`, `coder`)
+- Own persona folder at `~/.tamias/agents/<slug>/` that can override `SOUL.md`, `IDENTITY.md`, `MEMORY.md`, `TOOLS.md`
+- Can be addressed directly in chat: `researcher: ...` or `@researcher ...`
+- Can be bound to a specific Discord/Telegram channel (`--channels`) so all messages there go to them
+- Persist across sessions — their memory lives in their persona folder
+- Managed via `tamias agents list/show/chat/add/rm/edit`
+
+### Sub-agents (disposable workers)
+
+- Spawned on demand via the `spawn` tool for one-off background tasks
+- Not registered; exist only for the duration of their task
+- Can optionally use a named agent's persona by passing `agentId` to `spawn`
+- Report back via the `callback` tool when done
+- Tracked via `list_subagents` tool or `!subagents` in chat
+
+**When to use each:**
+- Named agent: ongoing role, needs consistent identity/memory, should be addressable by name
+- Sub-agent: isolated task, throwaway worker, parallel research, anything that should not clutter main context

@@ -68,13 +68,15 @@ export function scaffoldFromTemplates(): void {
 		}
 	}
 
-	// SYSTEM.md is force-overwritten every time to ensure upstream updates propagate
-	const systemSrc = join(TEMPLATES_DIR, 'SYSTEM.md')
-	if (existsSync(systemSrc)) {
-		const dest = join(MEMORY_DIR, 'SYSTEM.md')
-		let content = readFileSync(systemSrc, 'utf-8')
-		content = stripFrontmatter(content)
-		writeFileSync(dest, content, 'utf-8')
+	// SYSTEM.md and SKILL-GUIDE.md are force-overwritten every time to ensure upstream updates propagate
+	for (const file of ['SYSTEM.md', 'SKILL-GUIDE.md']) {
+		const src = join(TEMPLATES_DIR, file)
+		if (existsSync(src)) {
+			const dest = join(MEMORY_DIR, file)
+			let content = readFileSync(src, 'utf-8')
+			content = stripFrontmatter(content)
+			writeFileSync(dest, content, 'utf-8')
+		}
 	}
 }
 
@@ -100,8 +102,19 @@ export function readAllPersonaFiles(): Record<string, string> {
 
 // ─── System prompt builder ────────────────────────────────────────────────────
 
-/** Build a full system prompt from persona files + tool list */
-export function buildSystemPrompt(toolNames: string[], toolDocs: string, summary?: string, channel?: { id: string, userId?: string, name?: string, authorName?: string, isSubagent?: boolean }): string {
+/** Build a full system prompt from persona files + tool list.
+ * When `agentDir` is provided, SOUL.md / IDENTITY.md / MEMORY.md / TOOLS.md
+ * are loaded from that directory first, falling back to global if absent. */
+export function buildSystemPrompt(toolNames: string[], toolDocs: string, summary?: string, channel?: { id: string, userId?: string, name?: string, authorName?: string, isSubagent?: boolean }, agentDir?: string): string {
+	// Helper: read from agentDir (if supplied) first, then global MEMORY_DIR
+	const readLayered = (name: string): string | null => {
+		if (agentDir) {
+			const agentPath = join(agentDir, name)
+			if (existsSync(agentPath)) return readFileSync(agentPath, 'utf-8')
+		}
+		return readPersonaFile(name)
+	}
+
 	const files = readAllPersonaFiles()
 	const sections: string[] = []
 
@@ -143,19 +156,27 @@ When reading or updating your memory, you can use either the absolute path or th
 	)
 
 
+	// Agent identity banner — shown when running as a named agent
+	if (agentDir) {
+		const agentSlug = agentDir.split('/').pop()
+		sections.push(`# Named Agent Context\n\nYou are running as the named agent **${agentSlug}**. Your persona files live at \`${agentDir}\`. Files found there override the global defaults.`)
+	}
+
 	// System framework overrides
 	if (files['SYSTEM.md']) {
 		sections.push(files['SYSTEM.md'])
 	}
 
-	// Soul first — defines core behaviour
-	if (files['SOUL.md']) {
-		sections.push(files['SOUL.md'])
+	// Soul first — defines core behaviour (agent-overrideable)
+	const soul = readLayered('SOUL.md')
+	if (soul) {
+		sections.push(soul)
 	}
 
-	// Identity — who the AI is
-	if (files['IDENTITY.md']) {
-		sections.push(files['IDENTITY.md'])
+	// Identity — who the AI is (agent-overrideable)
+	const identity = readLayered('IDENTITY.md')
+	if (identity) {
+		sections.push(identity)
 	}
 
 	// User — who the human is
@@ -168,9 +189,10 @@ When reading or updating your memory, you can use either the absolute path or th
 		sections.push(files['AGENTS.md'])
 	}
 
-	// User-provided tool notes & specifics
-	if (files['TOOLS.md']) {
-		sections.push(files['TOOLS.md'])
+	// User-provided tool notes & specifics (agent-overrideable)
+	const tools = readLayered('TOOLS.md')
+	if (tools) {
+		sections.push(tools)
 	}
 
 	// Heartbeat agenda — periodic tasks
@@ -178,9 +200,10 @@ When reading or updating your memory, you can use either the absolute path or th
 		sections.push(`# Periodic Tasks (HEARTBEAT.md)\n\n${files['HEARTBEAT.md']}`)
 	}
 
-	// Long-term memory
-	if (files['MEMORY.md']) {
-		sections.push('# Long-Term Memory\n\n' + files['MEMORY.md'])
+	// Long-term memory (agent-overrideable)
+	const memory = readLayered('MEMORY.md')
+	if (memory) {
+		sections.push('# Long-Term Memory\n\n' + memory)
 	}
 
 	// Recent activity — last 3 completed days (concise digests)
@@ -209,8 +232,11 @@ When reading or updating your memory, you can use either the absolute path or th
 	// Skills
 	const skills = getLoadedSkills()
 	if (skills.length > 0) {
-		const skillsList = skills.map(s => `- \`${s.name}\` (at \`${s.sourceDir}/SKILL.md\`): ${s.description}`).join('\n')
-		sections.push(`# Available Skills\n\nYou have access to the following skills. You can read their detailed instructions by reading their \`SKILL.md\` file using your file reading tools if you feel they are applicable to the task at hand.\n\n${skillsList}`)
+		const skillsList = skills.map(s => {
+			const modelHint = s.model ? ` [preferred model: ${s.model}]` : ''
+			return `- \`${s.name}\` (at \`${s.sourceDir}/SKILL.md\`)${modelHint}: ${s.description}`
+		}).join('\n')
+		sections.push(`# Available Skills\n\nYou have access to the following skills. You can read their detailed instructions by reading their \`SKILL.md\` file using your file reading tools if you feel they are applicable to the task at hand. When spawning a sub-agent for a skill that has a preferred model, pass that model to the sub-agent.\n\n${skillsList}`)
 	}
 
 	// Active Channels

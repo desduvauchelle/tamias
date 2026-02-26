@@ -40,13 +40,18 @@ async function* parseSseStream(res: Response): AsyncGenerator<SseEvent> {
 
 // ─── Main chat command ─────────────────────────────────────────────────────────
 
-export const runChatCommand = async () => {
+export interface ChatOptions {
+	agentId?: string
+	agentName?: string
+}
+
+export const runChatCommand = async (chatOpts: ChatOptions = {}) => {
 	// ── Onboarding gate ────────────────────────────────────────────────────────
 	if (!isOnboarded()) {
 		await runOnboarding()
 	}
 
-	p.intro(pc.bgMagenta(pc.black(' Tamias Chat ')))
+	p.intro(pc.bgMagenta(pc.black(chatOpts.agentName ? ` Tamias Chat — ${chatOpts.agentName} ` : ' Tamias Chat ')))
 
 	const connections = getAllConnections()
 	if (connections.length === 0) {
@@ -108,7 +113,7 @@ export const runChatCommand = async () => {
 		const res = await fetch(`${daemonUrl}/session`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ model: modelStr }),
+			body: JSON.stringify({ model: modelStr, agentId: chatOpts.agentId }),
 		})
 		const data = await res.json() as { sessionId?: string; error?: string }
 		if (!data.sessionId) throw new Error(data.error ?? 'Unknown error')

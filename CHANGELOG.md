@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- enhance memory management with structured templates and detailed responsibilities
 - implement version bumping and enhance skills documentation
 - refactor bot configuration to support multiple instances for Discord and Telegram
 - implement sub-agent lifecycle management in AIService
@@ -123,6 +124,11 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.26.3] - 2026-02-26
+
+### Features
+- enhance memory management with structured templates and detailed responsibilities
 
 ## [v26.2.26.2] - 2026-02-26
 

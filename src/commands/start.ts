@@ -13,6 +13,7 @@ import { watchSkills } from '../utils/skills.ts'
 import type { CronJob } from '../utils/cronStore.ts'
 import { loadCronJobs } from '../utils/cronStore.ts'
 import { scaffoldFromTemplates } from '../utils/memory.ts'
+import { loadAgents } from '../utils/agentsStore.ts'
 import { db } from '../utils/db.ts'
 import { getEstimatedCost } from '../utils/pricing.ts'
 import { runDatabaseMaintenance } from '../utils/maintenance.ts'
@@ -193,9 +194,9 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	const isBuilt = isStandalone || fs.existsSync(join(dashboardDir, '.next'))
 	const isDev = process.env.TAMIAS_DEV === 'true' || !isBuilt
 
-	// Generate a secure random token for dashboard authentication
-	const { randomBytes } = await import('crypto')
-	const dashboardToken = randomBytes(24).toString('hex')
+	// Load or create a persistent dashboard token (reused across restarts)
+	const { getOrCreateDashboardToken } = await import('../utils/token.ts')
+	const dashboardToken = await getOrCreateDashboardToken()
 
 	let dashboardProc: ReturnType<typeof Bun.spawn>
 	if (isStandalone) {
@@ -343,8 +344,8 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				for (const sub of subagents) {
 					const statusIcon = sub.subagentStatus === 'running' ? '⏳'
 						: sub.subagentStatus === 'completed' ? '✅'
-						: sub.subagentStatus === 'failed' ? '❌'
-						: '⌛'
+							: sub.subagentStatus === 'failed' ? '❌'
+								: '⌛'
 					const elapsed = sub.spawnedAt
 						? ` (${Math.round((Date.now() - sub.spawnedAt.getTime()) / 1000)}s)`
 						: ''
@@ -358,6 +359,59 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 		}
 
 		let session = aiService.getSessionForBridge(msg.channelId, msg.channelUserId)
+
+		// ── Named-agent routing ──────────────────────────────────────────────────
+		const namedAgents = loadAgents().filter(a => a.enabled)
+
+		// 1. Channel-binding: if this channel is dedicated to a specific agent, always route to it.
+		const boundAgent = namedAgents.find(a => a.channels?.includes(msg.channelId))
+		if (boundAgent) {
+			const virtualUserId = `agent:${boundAgent.slug}`
+			let agentSession = aiService.getSessionForBridge(msg.channelId, virtualUserId)
+			if (!agentSession) {
+				console.log(`[Bridge] Creating channel-bound session for agent "${boundAgent.slug}" in ${msg.channelId}`)
+				agentSession = aiService.createSession({
+					channelId: msg.channelId,
+					channelUserId: virtualUserId,
+					channelName: msg.channelName,
+					agentId: boundAgent.id,
+				})
+			}
+			await aiService.enqueueMessage(agentSession.id, msg.content, msg.authorName, msg.attachments, { source: 'from-chat' })
+			return true
+		}
+
+		// 2. Name-mention routing: message starts with @<slug> or <slug>: or <slug><space>
+		const contentTrimmed = msg.content.trimStart()
+		const mentionedAgent = namedAgents.find(a => {
+			const lower = contentTrimmed.toLowerCase()
+			return (
+				lower.startsWith(`@${a.slug} `) ||
+				lower.startsWith(`@${a.slug}:`) ||
+				lower.startsWith(`${a.slug}: `) ||
+				lower.startsWith(`${a.slug} `)
+			)
+		})
+		if (mentionedAgent) {
+			const stripped = contentTrimmed
+				.replace(new RegExp(`^@?${mentionedAgent.slug}[:\s]+`, 'i'), '')
+				.trimStart()
+			const virtualUserId = `agent:${mentionedAgent.slug}`
+			let agentSession = aiService.getSessionForBridge(msg.channelId, virtualUserId)
+			if (!agentSession) {
+				console.log(`[Bridge] Creating mention-routed session for agent "${mentionedAgent.slug}" in ${msg.channelId}`)
+				agentSession = aiService.createSession({
+					channelId: msg.channelId,
+					channelUserId: virtualUserId,
+					channelName: msg.channelName,
+					agentId: mentionedAgent.id,
+				})
+			}
+			await aiService.enqueueMessage(agentSession.id, stripped, msg.authorName, msg.attachments, { source: 'from-chat' })
+			return true
+		}
+		// ─────────────────────────────────────────────────────────────────────────
+
 		if (!session) {
 			console.log(`[Bridge] Creating new session for ${msg.channelId}:${msg.channelUserId}`)
 			session = aiService.createSession({
@@ -576,9 +630,9 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				})
 			}
 
-			if (method === 'GET' && url.pathname === '/session') {
+			if ((method === 'GET' || method === 'POST') && url.pathname === '/session') {
 				const body = await req.json() as any
-				const session = aiService.createSession({ id: body.id, model: body.model, channelId: body.channelId, channelUserId: body.channelUserId })
+				const session = aiService.createSession({ id: body.id, model: body.model, channelId: body.channelId, channelUserId: body.channelUserId, agentId: body.agentId })
 				return json({ sessionId: session.id, model: session.model })
 			}
 

@@ -10,6 +10,8 @@ export interface Skill {
 	isBuiltIn: boolean
 	tags?: string[]
 	parent?: string
+	/** Optional preferred model override, e.g. "xai/grok-3" */
+	model?: string
 }
 
 const BUILTIN_SKILLS_DIR = join(import.meta.dir, "../../src/skills")
@@ -51,7 +53,8 @@ export async function loadSkills(): Promise<void> {
 							content,
 							isBuiltIn,
 							tags: parsed.tags,
-							parent: parsed.parent
+							parent: parsed.parent,
+							model: parsed.model,
 						})
 					}
 				}
@@ -67,12 +70,13 @@ export async function loadSkills(): Promise<void> {
 	cachedSkills = loaded
 }
 
-/** Parses the simple YAML frontmatter to extract name, description, tags and parent */
-function parseSkillMetadata(content: string, directoryName: string): { name: string, description: string, tags: string[], parent?: string } {
+/** Parses the simple YAML frontmatter to extract name, description, tags, parent and model */
+function parseSkillMetadata(content: string, directoryName: string): { name: string, description: string, tags: string[], parent?: string, model?: string } {
 	let name = directoryName
 	let description = "No description provided."
 	let tags: string[] = []
 	let parent: string | undefined = undefined
+	let model: string | undefined = undefined
 
 	if (content.startsWith("---")) {
 		const endMatch = content.indexOf("---", 3)
@@ -90,6 +94,10 @@ function parseSkillMetadata(content: string, directoryName: string): { name: str
 					// simple handling for single line description, ignoring complex YAML multiline for now
 					description = line.replace("description:", "").trim()
 					if (description.startsWith('"') && description.endsWith('"')) description = description.slice(1, -1)
+				} else if (line.trim().startsWith("model:")) {
+					inTagsBlock = false
+					model = line.replace("model:", "").trim()
+					if (model.startsWith('"') && model.endsWith('"')) model = model.slice(1, -1)
 				} else if (line.trim().startsWith("parent:")) {
 					inTagsBlock = false
 					parent = line.replace("parent:", "").trim()
@@ -113,7 +121,7 @@ function parseSkillMetadata(content: string, directoryName: string): { name: str
 		}
 	}
 
-	return { name, description, tags, parent }
+	return { name, description, tags, parent, model }
 }
 
 export async function watchSkills(): Promise<void> {
@@ -140,7 +148,7 @@ export async function watchSkills(): Promise<void> {
 }
 
 /** Create or update a user skill */
-export async function saveSkill(name: string, description: string, content: string, tags?: string[], parent?: string): Promise<void> {
+export async function saveSkill(name: string, description: string, content: string, tags?: string[], parent?: string, model?: string): Promise<void> {
 	// ensure directory format (lowercase-no-space-no-weird-characters)
 	const safeDirName = name.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-")
 	const skillDir = join(USER_SKILLS_DIR, safeDirName)
@@ -153,6 +161,9 @@ export async function saveSkill(name: string, description: string, content: stri
 
 	// Build frontmatter
 	const frontmatterLines = [`name: "${name}"`, `description: "${description}"`]
+	if (model) {
+		frontmatterLines.push(`model: "${model}"`)
+	}
 	if (tags && tags.length > 0) {
 		frontmatterLines.push(`tags: [${tags.map(t => `"${t}"`).join(', ')}]`)
 	}

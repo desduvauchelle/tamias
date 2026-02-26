@@ -59,57 +59,12 @@ Append-only during the day. The long-term archive for anything that ages out of 
 
 ## How to Write a Skill
 
-Skills live at `~/.tamias/skills/<folder-name>/SKILL.md`. Always create them with `tamias__save_skill`, never by writing files manually.
+When the user asks to create, update, or improve a skill, **read `~/.tamias/memory/SKILL-GUIDE.md` first** before doing anything else. It contains the full authoring guide, frontmatter reference, and CLI commands.
 
-### The One Rule That Matters Most
+## Named Agents
 
-The `description` field is the ONLY thing visible in the system prompt before the AI decides whether to read the full skill. Write it as a **trigger phrase**, not a title.
+Named agents are persistent AI "employees" with their own persona files. They live at `~/.tamias/agents/<slug>/` and can override `SOUL.md`, `IDENTITY.md`, `MEMORY.md`, and `TOOLS.md`.
 
-- ❌ `"Investment research skill using Grok and web tools"` — describes implementation, not when to use it
-- ✅ `"Use this when the user asks to research stocks, run investment analysis, or evaluate companies"` — tells the AI when to reach for it
-
-### Suggested SKILL.md Structure
-
-This is a guide, not a rigid rule. Adapt to the skill's needs.
-
-```markdown
----
-name: "My Skill Name"
-description: "Use this when the user asks to [specific trigger scenario]."
-tags: ["tag1", "tag2"]
-parent: "parent-skill-folder"  # only for child steps in a multi-step sequence
----
-
-# My Skill Name
-
-## Purpose
-One sentence: what problem does this solve?
-
-## When to Use
-- Specific trigger 1
-- Specific trigger 2
-
-## Input
-What input does this skill expect? Format, examples, where it comes from.
-
-## Steps
-1. Step one — what to do, which tools to use
-2. Step two — ...
-
-## Output
-What should the final output look like? Format, file location, channel to post to.
-
-## Tools Needed
-List which tool groups this skill relies on (e.g., workspace, browser, subagent).
-
-## Notes
-Edge cases, gotchas, preferences Denis has expressed about this skill.
-```
-
-### Multi-Step / Agentic Skills
-
-For workflows with multiple steps (like `investment-master-research`):
-
-- Create one **orchestrator** skill that defines the sequence and spawns sub-agents but one after the other, not in parallel in case there is content dependence between steps.
-- Create each step as a **child** skill with `parent: "orchestrator-folder-name"`
-- Child descriptions should say: `"Step N of [orchestrator]: [what this step does]"`
+- Address a named agent by mentioning their slug (e.g. `researcher: find me ...`) or `@slug` in chat.
+- Spawn a named agent as a sub-agent by passing their `agentId` to the `spawn` tool.
+- Manage named agents with `tamias agents` (list / add / show / chat / rm / edit).

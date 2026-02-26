@@ -19,6 +19,7 @@ import { db } from '../utils/db'
 import { logAiRequest } from '../utils/logger'
 import type { DaemonEvent, BridgeMessage } from '../bridge/types'
 import { BridgeManager } from '../bridge'
+import { findAgent, getAgentDir } from '../utils/agentsStore'
 
 export interface MessageJob {
 	sessionId: string
@@ -51,11 +52,16 @@ export interface Session {
 	isSubagent?: boolean
 	// Sub-agent lifecycle tracking
 	task?: string
+	taskSlug?: string
 	subagentStatus?: 'pending' | 'running' | 'completed' | 'failed'
 	spawnedAt?: Date
 	completedAt?: Date
 	progress?: string
 	subagentCallbackCalled?: boolean
+	// Named agent fields
+	agentId?: string
+	agentSlug?: string
+	agentDir?: string
 }
 
 export interface CreateSessionOptions {
@@ -67,6 +73,7 @@ export interface CreateSessionOptions {
 	isSubagent?: boolean
 	id?: string
 	task?: string
+	agentId?: string
 }
 
 /** Truncate a task description to a readable one-liner for status messages. */
@@ -248,6 +255,29 @@ export class AIService {
 		const [nickname, ...rest] = modelStr.split('/')
 		const modelId = rest.join('/') || modelStr
 
+		// Resolve named agent dir
+		let agentSlug: string | undefined
+		let agentDir: string | undefined
+		if (options.agentId) {
+			const agent = findAgent(options.agentId)
+			if (agent) {
+				agentSlug = agent.slug
+				agentDir = getAgentDir(agent.slug)
+			}
+		}
+
+		// Derive a short task slug for sub-agents
+		let taskSlug: string | undefined
+		if (options.isSubagent && options.task) {
+			taskSlug = options.task
+				.toLowerCase()
+				.replace(/[^a-z0-9\s]/g, '')
+				.trim()
+				.split(/\s+/)
+				.slice(0, 4)
+				.join('-')
+		}
+
 		const session: Session = {
 			id: options.id ?? `sess_${Math.random().toString(36).slice(2, 10)}`,
 			model: modelStr,
@@ -266,8 +296,12 @@ export class AIService {
 			parentSessionId: options.parentSessionId,
 			isSubagent: options.isSubagent || false,
 			task: options.task,
+			taskSlug,
 			subagentStatus: options.isSubagent ? 'pending' : undefined,
 			spawnedAt: options.isSubagent ? new Date() : undefined,
+			agentId: options.agentId,
+			agentSlug,
+			agentDir,
 		}
 
 		// Sub-agents MUST NOT overwrite the parent's entry in bridgeSessionMap.
@@ -493,7 +527,7 @@ export class AIService {
 					name: session.channelName,
 					authorName: job.authorName,
 					isSubagent: session.isSubagent
-				})
+				}, session.agentDir)
 
 				const startTime = Date.now()
 				const source = job.metadata?.source || 'from-chat'
