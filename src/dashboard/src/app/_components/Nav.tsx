@@ -15,7 +15,8 @@ import {
 	CircleDollarSign,
 	FileText,
 	History,
-	Cpu
+	Cpu,
+	FolderOpen
 } from 'lucide-react'
 
 const navItems = [
@@ -64,6 +65,11 @@ const navItems = [
 		href: '/docs',
 		label: 'Docs',
 		icon: <FileText className="w-5 h-5" />,
+	},
+	{
+		href: '/files',
+		label: 'Files',
+		icon: <FolderOpen className="w-5 h-5" />,
 	},
 	{
 		href: '/changelog',

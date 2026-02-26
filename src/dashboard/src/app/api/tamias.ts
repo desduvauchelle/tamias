@@ -86,6 +86,8 @@ interface SkillEntry {
 	isBuiltIn: boolean
 	folder: string
 	filePath: string
+	tags?: string[]
+	parent?: string
 }
 
 export async function getTamiasSkills() {
@@ -105,6 +107,8 @@ export async function getTamiasSkills() {
 
 						const name = data.name || entry.name
 						const description = data.description || 'No description provided.'
+						const tags: string[] = Array.isArray(data.tags) ? data.tags.map(String) : (typeof data.tags === 'string' ? data.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [])
+						const parent: string | undefined = data.parent ? String(data.parent) : undefined
 
 						skills.push({
 							name,
@@ -112,7 +116,9 @@ export async function getTamiasSkills() {
 							content: rawContent,
 							isBuiltIn,
 							folder: entry.name,
-							filePath: skillFile
+							filePath: skillFile,
+							tags,
+							parent
 						})
 					} catch (e) { console.warn(`[tamias] Failed to load skill file '${skillFile}':`, e) }
 				}
@@ -129,20 +135,21 @@ export async function getTamiasSkills() {
 	return skills
 }
 
-export async function saveTamiasSkill(name: string, description: string, content: string) {
+export async function saveTamiasSkill(name: string, description: string, content: string, tags?: string[], parent?: string) {
 	const safeDirName = name.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-")
 	const skillDir = join(USER_SKILLS_DIR, safeDirName)
 
 	const { mkdir, writeFile } = await import('fs/promises')
 	await mkdir(skillDir, { recursive: true })
 
-	const { data, content: body } = (await import('gray-matter')).default(content)
+	const { content: body } = (await import('gray-matter')).default(content)
 	const matter = (await import('gray-matter')).default
 
-	const finalContent = matter.stringify(body, {
-		name,
-		description
-	})
+	const frontmatterData: Record<string, unknown> = { name, description }
+	if (tags && tags.length > 0) frontmatterData.tags = tags
+	if (parent) frontmatterData.parent = parent
+
+	const finalContent = matter.stringify(body, frontmatterData)
 
 	await writeFile(join(skillDir, 'SKILL.md'), finalContent, 'utf8')
 }

@@ -332,6 +332,29 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			return false // Returning false tells the bridge NOT to queue this message for AI (avoids desync)
 		}
 
+		if (trimmed === '!subagents' || trimmed === '!agents') {
+			const allSessions = aiService.getAllSessions()
+			const subagents = allSessions.filter(s => s.isSubagent)
+			if (subagents.length === 0) {
+				await bridgeManager.broadcastToChannel(msg.channelId, '🧠 No sub-agents currently active.').catch(console.error)
+			} else {
+				const lines = ['🧠 **Active Sub-agents**']
+				for (const sub of subagents) {
+					const statusIcon = sub.subagentStatus === 'running' ? '⏳'
+						: sub.subagentStatus === 'completed' ? '✅'
+						: sub.subagentStatus === 'failed' ? '❌'
+						: '⌛'
+					const elapsed = sub.spawnedAt
+						? ` (${Math.round((Date.now() - sub.spawnedAt.getTime()) / 1000)}s)`
+						: ''
+					const progressLine = sub.progress ? `\n  └ ${sub.progress}` : ''
+					lines.push(`${statusIcon} \`${sub.id}\`${elapsed}\n  Task: ${sub.task || 'unknown'}${progressLine}`)
+				}
+				await bridgeManager.broadcastToChannel(msg.channelId, lines.join('\n\n')).catch(console.error)
+			}
+			return false
+		}
+
 		let session = aiService.getSessionForBridge(msg.channelId, msg.channelUserId)
 		if (!session) {
 			console.log(`[Bridge] Creating new session for ${msg.channelId}:${msg.channelUserId}`)
@@ -407,6 +430,13 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					channelId: s.channelId,
 					channelUserId: s.channelUserId,
 					channelName: s.channelName,
+					isSubagent: s.isSubagent || false,
+					parentSessionId: s.parentSessionId,
+					task: s.task,
+					subagentStatus: s.subagentStatus,
+					spawnedAt: s.spawnedAt?.toISOString(),
+					completedAt: s.completedAt?.toISOString(),
+					progress: s.progress,
 				}))
 				return json(list)
 			}

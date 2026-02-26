@@ -29,13 +29,44 @@ export const runStatusCommand = async () => {
 
 	try {
 		const res = await fetch(`${getDaemonUrl()}/sessions`)
-		const sessions = await res.json() as Array<{ id: string; name?: string; summary?: string; model: string; queueLength: number, updatedAt: string }>
-		console.log(`\n  Sessions: ${pc.bold(String(sessions.length))}\n`)
-		for (const s of sessions) {
+		const sessions = await res.json() as Array<{
+			id: string; name?: string; summary?: string; model: string; queueLength: number; updatedAt: string;
+			isSubagent: boolean; parentSessionId?: string; task?: string; subagentStatus?: string; spawnedAt?: string; progress?: string
+		}>
+
+		const mainSessions = sessions.filter(s => !s.isSubagent)
+		const subagents = sessions.filter(s => s.isSubagent)
+
+		console.log(`\n  Sessions: ${pc.bold(String(mainSessions.length))}${subagents.length > 0 ? pc.dim(` (+${subagents.length} sub-agent${subagents.length > 1 ? 's' : ''})`) : ''}\n`)
+
+		for (const s of mainSessions) {
 			const name = s.name || s.id
 			const summarySnippet = s.summary ? pc.dim(` — ${s.summary.slice(0, 50)}...`) : ''
 			const updatedTime = new Date(s.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 			console.log(`    ${pc.cyan(name.padEnd(20))} ${pc.dim(s.model.padEnd(30))} ${pc.green(updatedTime)}${summarySnippet}`)
+
+			// Show sub-agents nested under their parent
+			const children = subagents.filter(a => a.parentSessionId === s.id)
+			for (const sub of children) {
+				const statusIcon = sub.subagentStatus === 'running' ? pc.yellow('⏳')
+					: sub.subagentStatus === 'completed' ? pc.green('✅')
+					: sub.subagentStatus === 'failed' ? pc.red('❌')
+					: pc.dim('⌛')
+				const taskText = sub.task ? pc.white(`"${sub.task.slice(0, 50)}${sub.task.length > 50 ? '…' : ''}"`) : pc.dim(sub.id)
+				const elapsed = sub.spawnedAt ? pc.dim(` (${Math.round((Date.now() - new Date(sub.spawnedAt).getTime()) / 1000)}s)`) : ''
+				const progressText = sub.progress ? pc.dim(` · ${sub.progress.slice(0, 60)}`) : ''
+				console.log(`       ${pc.dim('↳')} ${statusIcon} ${taskText}${elapsed}${progressText}`)
+			}
+		}
+
+		// Orphaned sub-agents (whose parent session is no longer in memory)
+		const orphans = subagents.filter(a => !sessions.find(s => s.id === a.parentSessionId))
+		if (orphans.length > 0) {
+			console.log(`\n  ${pc.dim('Orphaned sub-agents:')}`)
+			for (const sub of orphans) {
+				const statusIcon = sub.subagentStatus === 'running' ? pc.yellow('⏳') : sub.subagentStatus === 'completed' ? pc.green('✅') : pc.red('❌')
+				console.log(`    ${statusIcon} ${pc.dim(sub.id)} — ${sub.task || 'unknown task'}`)
+			}
 		}
 	} catch (err) {
 		console.log(pc.dim('\n  Could not fetch sessions: ' + err))

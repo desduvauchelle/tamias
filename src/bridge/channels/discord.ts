@@ -330,6 +330,24 @@ export class DiscordBridge implements IBridge {
 				}
 				break
 			}
+			case 'subagent-status': {
+				const statusMessages: Record<string, string> = {
+					started: `🧠 *Working on:* _${event.task}_…`,
+					progress: `⏳ ${event.message}`,
+					completed: `✅ _Sub-agent done — generating response…_`,
+					failed: `❌ _Sub-agent failed: ${event.message}_`,
+				}
+				const text = statusMessages[event.status] ?? `🔄 ${event.message}`
+				try {
+					const channel = await this.client!.channels.fetch(channelId)
+					if (channel && 'send' in channel) {
+						await (channel as any).send(text)
+					}
+				} catch (err) {
+					console.error(`[Discord Bridge] Failed to send subagent-status to ${channelId}:`, err)
+				}
+				break
+			}
 		}
 	}
 

@@ -39,7 +39,8 @@ export const createSubagentTools = (aiService: AIService, sessionId: string) => 
 				channelUserId: parentSession.channelUserId,
 				channelName: parentSession.channelName,
 				parentSessionId: sessionId,
-				isSubagent: true
+				isSubagent: true,
+				task,
 			})
 
 			const fullPrompt = finalInstructions
@@ -69,6 +70,10 @@ export const createSubagentTools = (aiService: AIService, sessionId: string) => 
 				return { success: false, error: 'The callback tool can only be used by sub-agents to report to their parent.' }
 			}
 
+			// Mark that the sub-agent used the explicit callback so processSession
+			// doesn't double-inject a fallback report
+			aiService.markSubagentCallbackCalled(sessionId)
+
 			await aiService.reportSubagentResult(sessionId, { task, status, reason, outcome, context })
 
 			return {
@@ -76,5 +81,24 @@ export const createSubagentTools = (aiService: AIService, sessionId: string) => 
 				message: 'Report sent to parent agent. You should now stop and let the parent continue.'
 			}
 		}
-	})
+	}),
+	progress: tool({
+		description: 'Send an intermediate progress update back to the user on the originating channel (Discord/Telegram). Use this for long-running tasks so the user knows you are still working.',
+		inputSchema: z.object({
+			message: z.string().describe('A brief status update, e.g. "Found 3 relevant files, now reading them…"'),
+		}),
+		execute: async ({ message }) => {
+			const session = aiService.getSession(sessionId)
+			if (!session?.isSubagent) {
+				return { success: false, error: 'The progress tool can only be used by sub-agents.' }
+			}
+
+			aiService.updateSubagentProgress(sessionId, message)
+
+			return {
+				success: true,
+				message: 'Progress update sent.',
+			}
+		}
+	}),
 })

@@ -27,6 +27,12 @@ skillsCommand
 			const type = skill.isBuiltIn ? pc.dim('(built-in)') : pc.green('(user)')
 			console.log(`  ${pc.cyan(skill.name)} ${type}`)
 			console.log(`  ${pc.dim(skill.description)}`)
+			if (skill.tags && skill.tags.length > 0) {
+				console.log(`  ${pc.dim('Tags:')} ${skill.tags.map(t => pc.magenta('#' + t)).join(', ')}`)
+			}
+			if (skill.parent) {
+				console.log(`  ${pc.dim('Parent:')} ${pc.yellow(skill.parent)}`)
+			}
 			console.log(`  ${pc.dim('Folder:')} ${pc.yellow(skill.sourceDir)}`)
 			console.log('')
 		})
@@ -38,6 +44,8 @@ skillsCommand
 	.option('-n, --name <name>', 'Name of the skill')
 	.option('-d, --description <desc>', 'Short description of what the skill does')
 	.option('-c, --content <content>', 'The detailed markdown instructions for the skill')
+	.option('-t, --tags <tags>', 'Comma-separated tags for grouping (e.g. investment,research)')
+	.option('-p, --parent <parent>', 'Folder name of the parent skill this belongs to')
 	.action(async (opts) => {
 		try {
 			let name = opts.name
@@ -81,11 +89,13 @@ skillsCommand
 
 			const skillFile = join(skillDir, 'SKILL.md')
 
-			// Use gray-matter to format correctly
-			const finalContent = matter.stringify(content, {
-				name,
-				description
-			})
+			// Build frontmatter
+			const frontmatterData: Record<string, unknown> = { name, description }
+			const parsedTags = opts.tags ? opts.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : []
+			if (parsedTags.length > 0) frontmatterData.tags = parsedTags
+			if (opts.parent) frontmatterData.parent = opts.parent.trim()
+
+			const finalContent = matter.stringify(content, frontmatterData)
 
 			await fsPromises.writeFile(skillFile, finalContent, 'utf-8')
 			await loadSkills()

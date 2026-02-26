@@ -277,6 +277,21 @@ export class TelegramBridge implements IBridge {
 				}
 				break
 			}
+			case 'subagent-status': {
+				const statusMessages: Record<string, string> = {
+					started: `🧠 *Working on:* _${event.task}_…`,
+					progress: `⏳ ${event.message}`,
+					completed: `✅ _Sub\\-agent done — generating response…_`,
+					failed: `❌ _Sub\\-agent failed: ${event.message}_`,
+				}
+				const text = statusMessages[event.status] ?? `🔄 ${event.message}`
+				try {
+					await this.bot.api.sendMessage(Number(chatKey), text, { parse_mode: 'MarkdownV2' })
+				} catch (err) {
+					console.error(`[Telegram Bridge] Failed to send subagent-status to chat ${chatKey}:`, err)
+				}
+				break
+			}
 		}
 	}
 

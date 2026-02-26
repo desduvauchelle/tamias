@@ -11,11 +11,11 @@ export async function GET() {
 export async function POST(req: Request) {
 	try {
 		const body = await req.json()
-		const { name, description, content } = body
+		const { name, description, content, tags, parent } = body
 		if (!name || !content) {
 			return NextResponse.json({ error: 'Missing name or content' }, { status: 400 })
 		}
-		await saveTamiasSkill(name, description || '', content)
+		await saveTamiasSkill(name, description || '', content, tags, parent)
 		return NextResponse.json({ success: true })
 	} catch (error: unknown) {
 		return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })

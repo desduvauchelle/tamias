@@ -3,6 +3,7 @@ import { Geist_Mono } from "next/font/google"
 import "./globals.css"
 import Nav from "./_components/Nav"
 import { ToastProvider } from "./_components/ToastProvider"
+import { QueryProvider } from "./_components/QueryProvider"
 
 const geistMono = Geist_Mono({
 	variable: "--font-geist-mono",
@@ -22,14 +23,16 @@ export default function RootLayout({
 	return (
 		<html lang="en" data-theme="dark">
 			<body className={`${geistMono.variable} antialiased`}>
-				<ToastProvider>
-					<div className="flex h-screen overflow-hidden">
-						<Nav />
-						<main className="flex-1 overflow-y-auto">
-							{children}
-						</main>
-					</div>
-				</ToastProvider>
+				<QueryProvider>
+					<ToastProvider>
+						<div className="flex h-screen overflow-hidden">
+							<Nav />
+							<main className="flex-1 overflow-y-auto">
+								{children}
+							</main>
+						</div>
+					</ToastProvider>
+				</QueryProvider>
 			</body>
 		</html>
 	)

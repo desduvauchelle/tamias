@@ -49,6 +49,13 @@ export interface Session {
 	channelName?: string
 	parentSessionId?: string
 	isSubagent?: boolean
+	// Sub-agent lifecycle tracking
+	task?: string
+	subagentStatus?: 'pending' | 'running' | 'completed' | 'failed'
+	spawnedAt?: Date
+	completedAt?: Date
+	progress?: string
+	subagentCallbackCalled?: boolean
 }
 
 export interface CreateSessionOptions {
@@ -59,6 +66,7 @@ export interface CreateSessionOptions {
 	parentSessionId?: string
 	isSubagent?: boolean
 	id?: string
+	task?: string
 }
 
 export class AIService {
@@ -250,6 +258,9 @@ export class AIService {
 			channelName: options.channelName,
 			parentSessionId: options.parentSessionId,
 			isSubagent: options.isSubagent || false,
+			task: options.task,
+			subagentStatus: options.isSubagent ? 'pending' : undefined,
+			spawnedAt: options.isSubagent ? new Date() : undefined,
 		}
 
 		if (session.channelId && session.channelUserId) {
@@ -263,6 +274,28 @@ export class AIService {
 
 	private attachBridgeListeners(session: Session) {
 		if (session.channelId === 'terminal') return
+
+		// Sub-agents: suppress raw output streaming to the channel.
+		// Instead, emit clean lifecycle status notifications so the user knows
+		// what's happening without seeing the sub-agent's entire working text.
+		if (session.isSubagent) {
+			session.emitter.on('event', (evt: DaemonEvent) => {
+				if (evt.type === 'start') {
+					session.subagentStatus = 'running'
+					this.bridgeManager.dispatchEvent(session.channelId, {
+						type: 'subagent-status',
+						subagentId: session.id,
+						task: session.task || 'sub-task',
+						status: 'started',
+						message: session.task || 'sub-task',
+					}, session).catch(console.error)
+				}
+				// All other event types (chunk, tool_call, tool_result, done, error)
+				// are intentionally suppressed here — lifecycle events are handled
+				// in processSession after the run finishes.
+			})
+			return
+		}
 
 		const buffer: string[] = []
 		session.emitter.on('event', (evt: DaemonEvent) => {
@@ -294,6 +327,28 @@ export class AIService {
 		}
 	}
 
+	/** Called by the sub-agent callback tool to mark that the sub-agent explicitly reported back. */
+	public markSubagentCallbackCalled(sessionId: string) {
+		const session = this.sessions.get(sessionId)
+		if (session) session.subagentCallbackCalled = true
+	}
+
+	/** Called by the sub-agent progress tool to broadcast a status update to the originating channel. */
+	public updateSubagentProgress(sessionId: string, message: string) {
+		const session = this.sessions.get(sessionId)
+		if (!session?.isSubagent) return
+		session.progress = message
+		if (session.channelId !== 'terminal') {
+			this.bridgeManager.dispatchEvent(session.channelId, {
+				type: 'subagent-status',
+				subagentId: session.id,
+				task: session.task || 'sub-task',
+				status: 'progress',
+				message,
+			}, session).catch(console.error)
+		}
+	}
+
 	public async reportSubagentResult(sessionId: string, data: { task: string; status: 'completed' | 'failed'; reason?: string; outcome?: string; context?: any }) {
 		const session = this.sessions.get(sessionId)
 		if (!session || !session.parentSessionId) return
@@ -309,8 +364,9 @@ export class AIService {
 		if (data.context) {
 			report += `\n**Context:**\n\`\`\`json\n${JSON.stringify(data.context, null, 2)}\n\`\`\`\n`
 		}
+		report += `\n_The sub-agent has finished. Please integrate its findings and continue the conversation naturally, summarising the outcome for the user._`
 
-		await this.enqueueMessage(parentSession.id, report)
+		await this.enqueueMessage(parentSession.id, report, undefined, undefined, { source: 'subagent-report' })
 	}
 
 	public async enqueueMessage(sessionId: string, content: string, authorName?: string, attachments?: BridgeMessage['attachments'], metadata?: { source: string }) {
@@ -538,12 +594,34 @@ export class AIService {
 				saveSessionToDisk(this.toPersist(session))
 				session.emitter.emit('event', { type: 'done', sessionId: session.id, suppressed } as DaemonEvent)
 
-				// If this is a subagent, report back to parent session if it exists
+				// If this is a subagent, report back to parent and notify the channel
 				if (session.isSubagent && session.parentSessionId) {
+					session.subagentStatus = 'completed'
+					session.completedAt = new Date()
+
 					const parentSession = this.sessions.get(session.parentSessionId)
 					if (parentSession) {
-						const report = `[Subagent finished: ${session.id}]\n${fullResponse}`
-						this.enqueueMessage(parentSession.id, report).catch(console.error)
+						// Send a clean "done" status notification to the channel so the user
+						// knows the sub-agent finished and the main AI is now processing
+						if (session.channelId !== 'terminal') {
+							this.bridgeManager.dispatchEvent(session.channelId, {
+								type: 'subagent-status',
+								subagentId: session.id,
+								task: session.task || 'sub-task',
+								status: 'completed',
+								message: session.task || 'sub-task',
+							}, session).catch(console.error)
+						}
+
+						// Only inject a fallback report if the sub-agent didn't explicitly
+						// call the callback tool (which already reported back properly)
+						if (!session.subagentCallbackCalled) {
+							await this.reportSubagentResult(session.id, {
+								task: session.task || 'sub-task',
+								status: 'completed',
+								outcome: fullResponse,
+							})
+						}
 					}
 				}
 
@@ -571,6 +649,29 @@ export class AIService {
 		const failureSummary = failures.map(f => `${f.model}: ${f.error}`).join(' | ')
 		console.error(`[AIService] All models failed for session ${session.id}: ${failureSummary}`)
 		session.emitter.emit('event', { type: 'error', message: `All AI models failed:\n${failures.map(f => `• ${f.model}: ${f.error}`).join('\n')}` } as DaemonEvent)
+
+		// If this is a sub-agent, report the failure back to the parent and notify the channel
+		if (session.isSubagent && session.parentSessionId) {
+			session.subagentStatus = 'failed'
+			session.completedAt = new Date()
+
+			if (session.channelId !== 'terminal') {
+				this.bridgeManager.dispatchEvent(session.channelId, {
+					type: 'subagent-status',
+					subagentId: session.id,
+					task: session.task || 'sub-task',
+					status: 'failed',
+					message: 'All AI models failed',
+				}, session).catch(console.error)
+			}
+
+			await this.reportSubagentResult(session.id, {
+				task: session.task || 'sub-task',
+				status: 'failed',
+				reason: failureSummary,
+			}).catch(console.error)
+		}
+
 		session.processing = false
 		if (session.queue.length > 0) {
 			setImmediate(() => this.processSession(session))

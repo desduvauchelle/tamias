@@ -8,6 +8,8 @@ export interface Skill {
 	sourceDir: string
 	content: string
 	isBuiltIn: boolean
+	tags?: string[]
+	parent?: string
 }
 
 const BUILTIN_SKILLS_DIR = join(import.meta.dir, "../../src/skills")
@@ -47,7 +49,9 @@ export async function loadSkills(): Promise<void> {
 							description: parsed.description,
 							sourceDir: skillDir,
 							content,
-							isBuiltIn
+							isBuiltIn,
+							tags: parsed.tags,
+							parent: parsed.parent
 						})
 					}
 				}
@@ -63,30 +67,53 @@ export async function loadSkills(): Promise<void> {
 	cachedSkills = loaded
 }
 
-/** Parses the simple YAML frontmatter to extract name and description */
-function parseSkillMetadata(content: string, directoryName: string): { name: string, description: string } {
+/** Parses the simple YAML frontmatter to extract name, description, tags and parent */
+function parseSkillMetadata(content: string, directoryName: string): { name: string, description: string, tags: string[], parent?: string } {
 	let name = directoryName
 	let description = "No description provided."
+	let tags: string[] = []
+	let parent: string | undefined = undefined
 
 	if (content.startsWith("---")) {
 		const endMatch = content.indexOf("---", 3)
 		if (endMatch !== -1) {
 			const frontmatter = content.substring(3, endMatch).trim()
 			const lines = frontmatter.split("\n")
+			let inTagsBlock = false
 			for (const line of lines) {
 				if (line.trim().startsWith("name:")) {
+					inTagsBlock = false
 					name = line.replace("name:", "").trim()
 					if (name.startsWith('"') && name.endsWith('"')) name = name.slice(1, -1)
 				} else if (line.trim().startsWith("description:")) {
+					inTagsBlock = false
 					// simple handling for single line description, ignoring complex YAML multiline for now
 					description = line.replace("description:", "").trim()
 					if (description.startsWith('"') && description.endsWith('"')) description = description.slice(1, -1)
+				} else if (line.trim().startsWith("parent:")) {
+					inTagsBlock = false
+					parent = line.replace("parent:", "").trim()
+					if (parent.startsWith('"') && parent.endsWith('"')) parent = parent.slice(1, -1)
+				} else if (line.trim().startsWith("tags:")) {
+					// Inline array: tags: [foo, bar]  OR start of block list
+					const raw = line.replace("tags:", "").trim()
+					if (raw.startsWith("[")) {
+						tags = raw.slice(1, raw.lastIndexOf("]")).split(",").map(t => t.trim().replace(/^["']|["']$/g, "")).filter(Boolean)
+						inTagsBlock = false
+					} else {
+						inTagsBlock = true
+					}
+				} else if (inTagsBlock && line.trim().startsWith("- ")) {
+					const tag = line.trim().slice(2).trim().replace(/^["']|["']$/g, "")
+					if (tag) tags.push(tag)
+				} else if (inTagsBlock && line.trim() !== "") {
+					inTagsBlock = false
 				}
 			}
 		}
 	}
 
-	return { name, description }
+	return { name, description, tags, parent }
 }
 
 export async function watchSkills(): Promise<void> {

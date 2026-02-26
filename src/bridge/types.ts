@@ -21,6 +21,7 @@ export type DaemonEvent =
 	| { type: 'done'; sessionId: string; suppressed?: boolean }
 	| { type: 'error'; message: string }
 	| { type: 'file'; name: string; buffer: Buffer; mimeType: string }
+	| { type: 'subagent-status'; subagentId: string; task: string; status: 'started' | 'progress' | 'completed' | 'failed'; message: string }
 
 export interface IBridge {
 	name: string
