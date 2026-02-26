@@ -1,6 +1,6 @@
 {
 	"name": "tamias",
-	"version": "26.2.25.7",
+	"version": "26.2.26.2",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
@@ -23,7 +23,8 @@
 		"typecheck": "bunx tsc --noEmit",
 		"typecheck:all": "bunx tsc --noEmit && bunx tsc --noEmit -p src/dashboard/tsconfig.json",
 		"prepare": "husky",
-		"changelog": "bun run src/utils/changelog.ts"
+		"changelog": "bun run src/utils/changelog.ts",
+		"bump-version": "bun run src/utils/bump-version.ts"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",

@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits, Events, type Message } from 'discord.js'
-import { getBotTokenForBridge, type TamiasConfig } from '../../utils/config.ts'
+import { getBotTokenForInstance, type TamiasConfig } from '../../utils/config.ts'
 import { VERSION } from '../../utils/version.ts'
 import type { BridgeMessage, DaemonEvent, IBridge } from '../types.ts'
 
@@ -15,12 +15,13 @@ interface DiscordChannelState {
 }
 
 export class DiscordBridge implements IBridge {
-	name: string
+	name = 'discord'
+	private instanceKey: string
 	private client?: Client
 	private onMessage?: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean
 
 	constructor(key = 'discord') {
-		this.name = key
+		this.instanceKey = key
 	}
 	/** Map of channelId → channel orchestration state (set when a Discord message arrives) */
 	private channelStates = new Map<string, DiscordChannelState>()
@@ -35,13 +36,14 @@ export class DiscordBridge implements IBridge {
 
 	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean): Promise<void> {
 		this.onMessage = onMessage
-		const token = getBotTokenForBridge('discord')
+		const token = getBotTokenForInstance('discords', this.instanceKey)
 		if (!token) {
-			console.error('[Discord Bridge] No bot token configured. Skipping.')
+			console.error(`[Discord Bridge] No bot token configured for instance '${this.instanceKey}'. Skipping.`)
 			return
 		}
 
-		const allowedChannels = config.bridges?.discord?.allowedChannels
+		const instanceCfg = config.bridges?.discords?.[this.instanceKey]
+		const allowedChannels = instanceCfg?.allowedChannels
 
 		this.client = new Client({
 			intents: [

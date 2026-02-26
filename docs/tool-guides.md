@@ -43,12 +43,28 @@ Managed via the `himalaya` CLI, this tool allows the AI to be your gatekeeper.
 
 ---
 
+---
+
 ## 🐿️ Sub-agent Tool
 The `subagent__spawn` tool is how Tamias orchestrates multiple brains.
 
 - **Task**: A clear, actionable description of what the sub-agent should do.
 - **Persona**: (Optional) Use a pre-defined agent like "Code Auditor" or "Expert Researcher."
 - **Return**: The sub-agent will return a `report` that summarizes its work.
+
+---
+
+## 🧩 Skills Tool
+The AI can manage its own skills using the `skills` tool.
+
+| Function | Description |
+|---|---|
+| `save_skill` | Create or update a skill (supports `tags` and `parent`). |
+| `list_skills` | List all available skills with their metadata. |
+| `delete_skill` | Delete a skill by its folder name. |
+
+> [!TIP]
+> You can ask the AI to "Learn this codebase and save it as a skill" so it can reference it later!
 
 ---
 

@@ -1,5 +1,5 @@
 import { Bot, InputFile } from 'grammy'
-import { getBotTokenForBridge, type TamiasConfig } from '../../utils/config.ts'
+import { getBotTokenForInstance, type TamiasConfig } from '../../utils/config.ts'
 import { VERSION } from '../../utils/version.ts'
 import type { BridgeMessage, DaemonEvent, IBridge } from '../types.ts'
 
@@ -13,12 +13,13 @@ interface TelegramContext {
 }
 
 export class TelegramBridge implements IBridge {
-	name: string
+	name = 'telegram'
+	private instanceKey: string
 	private bot?: Bot
 	private onMessage?: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean
 
 	constructor(key = 'telegram') {
-		this.name = key
+		this.instanceKey = key
 	}
 	/** Map of chatId → in-flight context */
 	private contexts = new Map<string, TelegramContext>()
@@ -27,9 +28,9 @@ export class TelegramBridge implements IBridge {
 
 	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean): Promise<void> {
 		this.onMessage = onMessage
-		const token = getBotTokenForBridge('telegram')
+		const token = getBotTokenForInstance('telegrams', this.instanceKey)
 		if (!token) {
-			console.error('[Telegram Bridge] No bot token configured. Skipping.')
+			console.error(`[Telegram Bridge] No bot token configured for instance '${this.instanceKey}'. Skipping.`)
 			return
 		}
 

@@ -112,32 +112,58 @@ Explore our in-depth guides to understand how Tamias works under the hood:
 
 ### Skills
 
-Skills are modular Markdown instruction sets stored in `~/.tamias/skills/<folder>/SKILL.md`. They are injected into the AI's system prompt and can be used to give it specialised knowledge or behaviour.
+Skills are modular Markdown instruction sets stored in `~/.tamias/skills/<folder>/SKILL.md`. They are injected into the AI's system prompt to provide specialised knowledge, coding standards, or automated workflows.
 
-- `tamias skills list`: Show all built-in and user-defined skills.
-- `tamias skills add`: Interactively create a new skill (name, description, content).
-- `tamias skills add -n <name> -d <desc> -c <content>`: Non-interactive creation.
-- `tamias skills add ... --tags <tags>`: Comma-separated tags for grouping, e.g. `--tags investment,research`.
-- `tamias skills add ... --parent <folder>`: Declare this as a child step of a parent skill (multi-step sequences), e.g. `--parent investment-master-research`.
-- `tamias skills rm <folder>`: Delete a skill by its folder name.
+#### CLI Commands
 
-#### Frontmatter reference
+| Command | Description |
+|---|---|
+| `tamias skills list` | List all available skills (names, descriptions, tags, and parents). |
+| `tamias skills add` | **Interactive mode**: Prompts for name, description, and Markdown content. |
+| `tamias skills rm <folder>` | Remove a custom skill by its folder name (e.g. `python-pro`). |
 
-Each `SKILL.md` supports the following YAML frontmatter fields:
+#### Detailed Examples
+
+**1. Create a skill interactively**
+```bash
+tamias skills add
+```
+
+**2. Create a skill in one shot**
+```bash
+tamias skills add \
+  --name "Python Expert" \
+  --description "Expert in high-performance Python" \
+  --content "# Instructions\n\nAlways use type hints and avoid global state..." \
+  --tags "python,coding"
+```
+
+**3. Create a child skill for a workflow**
+```bash
+tamias skills add \
+  --name "Security Audit Step" \
+  --description "Perform a secondary security check" \
+  --parent "code-review-workflow" \
+  --content "Check for SQL injection and XSS..."
+```
+
+#### Frontmatter Reference
+
+Each `SKILL.md` file contains YAML frontmatter used by the UI and the AI:
 
 ```yaml
 ---
 name: "Human-readable skill name"
 description: "One-line summary shown in the sidebar and skill list"
-tags: [investment, research]   # one or more tags — use for filtering/grouping
-parent: investment-master-research  # folder name of the parent skill (for sequences)
+tags: [investment, research]   # one or more tags for filtering
+parent: investment-master-research  # folder name of the parent skill
 ---
 
 Your detailed Markdown instructions here...
 ```
 
-**Tags** let you filter the sidebar by topic (`#investment`, `#research`, etc.).
-**Parent** makes this skill appear nested under the parent in the UI — ideal for multi-step orchestrated sequences where a parent skill calls child steps in order.
+- **Tags**: Used in the Dashboard to group skills (e.g., clicking `#research` filters the view).
+- **Parent**: Creates a hierarchy. In the Dashboard, child skills appear nested under their parent, making it easy to manage multi-step procedures.
 
 ### Maintenance & Data
 
