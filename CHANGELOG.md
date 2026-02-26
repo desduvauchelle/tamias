@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- Enhance chat command with agent options and routing
 - enhance memory management with structured templates and detailed responsibilities
 - implement version bumping and enhance skills documentation
 - refactor bot configuration to support multiple instances for Discord and Telegram
