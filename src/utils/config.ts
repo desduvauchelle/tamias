@@ -69,22 +69,35 @@ export type McpServerConfig = z.infer<typeof McpServerConfigSchema>
 
 // ─── Bridge Config Schemas ─────────────────────────────────────────────────────
 
+export const DiscordBotConfigSchema = z.object({
+	enabled: z.boolean().default(false),
+	envKeyName: z.string().optional(),
+	botToken: z.string().optional(), // legacy plaintext (migrated on load)
+	allowedChannels: z.array(z.string()).optional(),
+})
+
+export const TelegramBotConfigSchema = z.object({
+	enabled: z.boolean().default(false),
+	envKeyName: z.string().optional(),
+	botToken: z.string().optional(), // legacy plaintext (migrated on load)
+	allowedChats: z.array(z.string()).optional(),
+})
+
+export type DiscordBotConfig = z.infer<typeof DiscordBotConfigSchema>
+export type TelegramBotConfig = z.infer<typeof TelegramBotConfigSchema>
+
 export const BridgesConfigSchema = z.object({
 	terminal: z.object({
 		enabled: z.boolean().default(true),
 	}).default({ enabled: true }),
-	discord: z.object({
-		enabled: z.boolean().default(false),
-		envKeyName: z.string().optional(),
-		botToken: z.string().optional(), // legacy
-		allowedChannels: z.array(z.string()).optional(),
-	}).optional(),
-	telegram: z.object({
-		enabled: z.boolean().default(false),
-		envKeyName: z.string().optional(),
-		botToken: z.string().optional(), // legacy
-		allowedChats: z.array(z.string()).optional(),
-	}).optional(),
+	/** Multi-instance Discord bots, keyed by a user-chosen nickname */
+	discords: z.record(z.string(), DiscordBotConfigSchema).optional(),
+	/** Multi-instance Telegram bots, keyed by a user-chosen nickname */
+	telegrams: z.record(z.string(), TelegramBotConfigSchema).optional(),
+	/** @deprecated Use `discords` instead. Kept only for seamless migration. */
+	discord: DiscordBotConfigSchema.optional(),
+	/** @deprecated Use `telegrams` instead. Kept only for seamless migration. */
+	telegram: TelegramBotConfigSchema.optional(),
 })
 
 export type BridgesConfig = z.infer<typeof BridgesConfigSchema>
@@ -169,7 +182,7 @@ export const loadConfig = (): TamiasConfig => {
 			}
 		}
 
-		// Migrate Bridges
+		// Migrate Bridges — step 1: plaintext botToken → env var (legacy single-instance)
 		if (data.bridges.discord?.botToken) {
 			const envKey = generateSecureEnvKey('DISCORD')
 			setEnv(envKey, data.bridges.discord.botToken)
@@ -183,6 +196,45 @@ export const loadConfig = (): TamiasConfig => {
 			data.bridges.telegram.envKeyName = envKey
 			delete data.bridges.telegram.botToken
 			needsMigration = true
+		}
+
+		// Migrate Bridges — step 2: single-instance → multi-instance record
+		// Also handles botToken inside discords/telegrams entries
+		if (data.bridges.discord) {
+			if (!data.bridges.discords) data.bridges.discords = {}
+			if (!data.bridges.discords.default) {
+				data.bridges.discords.default = data.bridges.discord
+			}
+			delete (data.bridges as any).discord
+			needsMigration = true
+		}
+		if (data.bridges.telegram) {
+			if (!data.bridges.telegrams) data.bridges.telegrams = {}
+			if (!data.bridges.telegrams.default) {
+				data.bridges.telegrams.default = data.bridges.telegram
+			}
+			delete (data.bridges as any).telegram
+			needsMigration = true
+		}
+
+		// Migrate Bridges — step 3: plaintext botToken inside multi-instance entries
+		for (const [key, cfg] of Object.entries(data.bridges.discords ?? {})) {
+			if (cfg.botToken) {
+				const envKey = generateSecureEnvKey(`DISCORD_${key.toUpperCase()}`)
+				setEnv(envKey, cfg.botToken)
+				cfg.envKeyName = envKey
+				delete cfg.botToken
+				needsMigration = true
+			}
+		}
+		for (const [key, cfg] of Object.entries(data.bridges.telegrams ?? {})) {
+			if (cfg.botToken) {
+				const envKey = generateSecureEnvKey(`TELEGRAM_${key.toUpperCase()}`)
+				setEnv(envKey, cfg.botToken)
+				cfg.envKeyName = envKey
+				delete cfg.botToken
+				needsMigration = true
+			}
 		}
 
 		// Migrate legacy single email tool config
@@ -426,11 +478,25 @@ export const getBridgesConfig = (): BridgesConfig => {
 	return config.bridges ?? { terminal: { enabled: true } }
 }
 
-export const getBotTokenForBridge = (platform: 'discord' | 'telegram'): string | undefined => {
+/** Get the bot token for a specific named instance */
+export const getBotTokenForInstance = (platform: 'discords' | 'telegrams', key: string): string | undefined => {
 	const bridges = getBridgesConfig()
-	const config = bridges[platform]
-	if (!config || !config.envKeyName) return undefined
-	return getEnv(config.envKeyName)
+	const cfg = bridges[platform]?.[key]
+	if (!cfg?.envKeyName) return undefined
+	return getEnv(cfg.envKeyName)
+}
+
+/** @deprecated Use getBotTokenForInstance('discords'/'telegrams', key) — kept for backward compat */
+export const getBotTokenForBridge = (platform: 'discord' | 'telegram'): string | undefined => {
+	return getBotTokenForInstance(platform === 'discord' ? 'discords' : 'telegrams', 'default')
+}
+
+export const getAllDiscordInstances = (): Record<string, DiscordBotConfig> => {
+	return getBridgesConfig().discords ?? {}
+}
+
+export const getAllTelegramInstances = (): Record<string, TelegramBotConfig> => {
+	return getBridgesConfig().telegrams ?? {}
 }
 
 export const setBridgesConfig = (bridgesConfig: BridgesConfig): void => {

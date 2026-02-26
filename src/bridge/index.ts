@@ -16,16 +16,22 @@ export class BridgeManager {
 	) {
 		const bridgesDef = config.bridges
 
-		if (bridgesDef?.discord?.enabled) {
-			const { DiscordBridge } = await import('./channels/discord')
-			const discordBridge = new DiscordBridge()
-			await this.startBridge(discordBridge, config, onMessage)
+		// Initialize all Discord instances
+		for (const [key, cfg] of Object.entries(bridgesDef?.discords ?? {})) {
+			if (cfg.enabled) {
+				const { DiscordBridge } = await import('./channels/discord')
+				const discordBridge = new DiscordBridge(key)
+				await this.startBridge(discordBridge, config, onMessage)
+			}
 		}
 
-		if (bridgesDef?.telegram?.enabled) {
-			const { TelegramBridge } = await import('./channels/telegram')
-			const telegramBridge = new TelegramBridge()
-			await this.startBridge(telegramBridge, config, onMessage)
+		// Initialize all Telegram instances
+		for (const [key, cfg] of Object.entries(bridgesDef?.telegrams ?? {})) {
+			if (cfg.enabled) {
+				const { TelegramBridge } = await import('./channels/telegram')
+				const telegramBridge = new TelegramBridge(key)
+				await this.startBridge(telegramBridge, config, onMessage)
+			}
 		}
 
 		// Terminal bridge logic is heavily coupled with HTTP SSE in `start.ts` currently,

@@ -3,9 +3,9 @@ import pc from 'picocolors'
 import {
 	getBridgesConfig,
 	setBridgesConfig,
-	getBotTokenForBridge,
+	getBotTokenForInstance,
 } from '../utils/config.ts'
-import { setEnv, removeEnv, generateSecureEnvKey } from '../utils/env.ts'
+import { setEnv, removeEnv, generateSecureEnvKey, getEnv } from '../utils/env.ts'
 
 // ─── Health checks ─────────────────────────────────────────────────────────────
 
@@ -103,23 +103,33 @@ export const runChannelsListCommand = async () => {
 	const terminalStatus = bridges.terminal?.enabled !== false ? pc.green('enabled') : pc.red('disabled')
 	console.log(`  ${pc.bold(pc.cyan('terminal'))}  [${terminalStatus}]  ${pc.dim('Local CLI interface')}`)
 
-	// Discord
-	if (bridges.discord) {
-		const discordStatus = bridges.discord.enabled ? pc.green('enabled') : pc.red('disabled')
-		const tokenInfo = getBotTokenForBridge('discord') ? '(Token Configured)' : '(No Token)'
-		console.log(`  ${pc.bold(pc.cyan('discord'))}   [${discordStatus}]  ${pc.dim(tokenInfo)}`)
-		if (bridges.discord.allowedChannels?.length) {
-			console.log(`     ${pc.dim('↳')} Allowed channels: ${bridges.discord.allowedChannels.join(', ')}`)
+	// Discord instances
+	const discords = bridges.discords ?? {}
+	if (Object.keys(discords).length === 0) {
+		console.log(`  ${pc.bold(pc.cyan('discord'))}   ${pc.dim('(none configured)')}`)
+	} else {
+		for (const [key, cfg] of Object.entries(discords)) {
+			const status = cfg.enabled ? pc.green('enabled') : pc.red('disabled')
+			const tokenInfo = getBotTokenForInstance('discords', key) ? '(Token Configured)' : '(No Token)'
+			console.log(`  ${pc.bold(pc.cyan('discord'))}:${pc.bold(key)}  [${status}]  ${pc.dim(tokenInfo)}`)
+			if (cfg.allowedChannels?.length) {
+				console.log(`     ${pc.dim('↳')} Allowed channels: ${cfg.allowedChannels.join(', ')}`)
+			}
 		}
 	}
 
-	// Telegram
-	if (bridges.telegram) {
-		const telegramStatus = bridges.telegram.enabled ? pc.green('enabled') : pc.red('disabled')
-		const tokenInfo = getBotTokenForBridge('telegram') ? '(Token Configured)' : '(No Token)'
-		console.log(`  ${pc.bold(pc.cyan('telegram'))}  [${telegramStatus}]  ${pc.dim(tokenInfo)}`)
-		if (bridges.telegram.allowedChats?.length) {
-			console.log(`     ${pc.dim('↳')} Allowed chats: ${bridges.telegram.allowedChats.join(', ')}`)
+	// Telegram instances
+	const telegrams = bridges.telegrams ?? {}
+	if (Object.keys(telegrams).length === 0) {
+		console.log(`  ${pc.bold(pc.cyan('telegram'))}  ${pc.dim('(none configured)')}`)
+	} else {
+		for (const [key, cfg] of Object.entries(telegrams)) {
+			const status = cfg.enabled ? pc.green('enabled') : pc.red('disabled')
+			const tokenInfo = getBotTokenForInstance('telegrams', key) ? '(Token Configured)' : '(No Token)'
+			console.log(`  ${pc.bold(pc.cyan('telegram'))}:${pc.bold(key)}  [${status}]  ${pc.dim(tokenInfo)}`)
+			if (cfg.allowedChats?.length) {
+				console.log(`     ${pc.dim('↳')} Allowed chats: ${cfg.allowedChats.join(', ')}`)
+			}
 		}
 	}
 
@@ -128,8 +138,6 @@ export const runChannelsListCommand = async () => {
 }
 
 // ─── Add/Edit Logic ────────────────────────────────────────────────────────
-
-const AVAILABLE_CHANNELS = ['discord', 'telegram']
 
 export const runChannelsAddCommand = async () => {
 	await editChannelFlow(true)
@@ -168,11 +176,59 @@ async function editChannelFlow(isAdding: boolean) {
 	}
 
 	const platformName = platform as 'discord' | 'telegram'
-	const currentCfg = config[platformName] || { enabled: false }
-	const currentToken = getBotTokenForBridge(platformName)
+	const instancesKey = platformName === 'discord' ? 'discords' : 'telegrams'
+	const existingInstances = config[instancesKey] ?? {}
+	const existingKeys = Object.keys(existingInstances)
+
+	// Pick or create an instance key
+	let instanceKey: string
+
+	if (isAdding || existingKeys.length === 0) {
+		// Adding new instance — ask for a name
+		const keyInput = await p.text({
+			message: `Name for this ${platformName} bot (e.g. "default", "work", "community"):`,
+			placeholder: existingKeys.length === 0 ? 'default' : 'myserver',
+			validate: (v) => {
+				if (!v?.trim()) return 'Name is required.'
+				if (!/^[a-z0-9_-]+$/i.test(v.trim())) return 'Only letters, numbers, hyphens and underscores allowed.'
+				if (isAdding && existingKeys.includes(v.trim())) return `Instance "${v.trim()}" already exists.`
+			},
+		})
+		if (p.isCancel(keyInput)) { p.cancel('Cancelled.'); process.exit(0) }
+		instanceKey = (keyInput as string).trim()
+	} else {
+		// Editing — let user pick from existing instances or add a new one
+		const selection = await p.select({
+			message: `Which ${platformName} instance do you want to edit?`,
+			options: [
+				...existingKeys.map(k => ({ value: k, label: k })),
+				{ value: '__new__', label: '➕ Add a new instance' },
+			],
+		})
+		if (p.isCancel(selection)) { p.cancel('Cancelled.'); process.exit(0) }
+
+		if (selection === '__new__') {
+			const keyInput = await p.text({
+				message: `Name for this new ${platformName} bot:`,
+				placeholder: 'myserver',
+				validate: (v) => {
+					if (!v?.trim()) return 'Name is required.'
+					if (!/^[a-z0-9_-]+$/i.test(v.trim())) return 'Only letters, numbers, hyphens and underscores allowed.'
+					if (existingKeys.includes(v.trim())) return `Instance "${v.trim()}" already exists.`
+				},
+			})
+			if (p.isCancel(keyInput)) { p.cancel('Cancelled.'); process.exit(0) }
+			instanceKey = (keyInput as string).trim()
+		} else {
+			instanceKey = selection as string
+		}
+	}
+
+	const currentCfg = existingInstances[instanceKey] ?? { enabled: false }
+	const currentToken = currentCfg.envKeyName ? getEnv(currentCfg.envKeyName) : undefined
 
 	const enableOpts = await p.confirm({
-		message: `Enable ${platformName} channel?`,
+		message: `Enable ${platformName}:${instanceKey}?`,
 		initialValue: currentCfg.enabled,
 	})
 	if (p.isCancel(enableOpts)) { p.cancel('Cancelled.'); process.exit(0) }
@@ -193,18 +249,22 @@ async function editChannelFlow(isAdding: boolean) {
 
 		const tokenInput = await p.text({
 			message: 'Bot Token:',
-			placeholder: '...',
-			initialValue: currentToken ?? '',
+			placeholder: currentToken ? '(press Enter to keep existing)' : '...',
+			initialValue: '',
 			validate: (v) => { if (!v && !currentToken) return 'Token is required when enabling.' },
 		})
 		if (p.isCancel(tokenInput)) { p.cancel('Cancelled.'); process.exit(0) }
-		botToken = (tokenInput as string).trim()
+		const raw = (tokenInput as string).trim()
+		if (raw) botToken = raw
 	}
 
-	let restrictArr = platform === 'discord' ? config.discord?.allowedChannels : config.telegram?.allowedChats
+	const instanceCfg = existingInstances[instanceKey]
+	const restrictArr = platformName === 'discord'
+		? (instanceCfg as { allowedChannels?: string[] } | undefined)?.allowedChannels
+		: (instanceCfg as { allowedChats?: string[] } | undefined)?.allowedChats
 
 	const allowlistRaw = await p.text({
-		message: `Comma-separated allowed ${platform === 'discord' ? 'channel' : 'chat'} IDs (leave empty to allow all):`,
+		message: `Comma-separated allowed ${platformName === 'discord' ? 'channel' : 'chat'} IDs (leave empty to allow all):`,
 		placeholder: '12345678,98765432',
 		initialValue: restrictArr?.join(',') ?? '',
 	})
@@ -215,27 +275,30 @@ async function editChannelFlow(isAdding: boolean) {
 	let envKeyName = currentCfg.envKeyName
 	if (botToken && botToken !== currentToken) {
 		if (!envKeyName) {
-			envKeyName = generateSecureEnvKey(platformName)
+			envKeyName = generateSecureEnvKey(`${platformName.toUpperCase()}_${instanceKey.toUpperCase()}`)
 		}
 		setEnv(envKeyName, botToken)
 	}
 
+	if (!config.discords) config.discords = {}
+	if (!config.telegrams) config.telegrams = {}
+
 	if (platformName === 'discord') {
-		config.discord = {
+		config.discords[instanceKey] = {
 			enabled: enableOpts as boolean,
-			envKeyName: envKeyName,
+			envKeyName,
 			allowedChannels: allowlist.length ? allowlist : undefined,
 		}
 	} else if (platformName === 'telegram') {
-		config.telegram = {
+		config.telegrams[instanceKey] = {
 			enabled: enableOpts as boolean,
-			envKeyName: envKeyName,
+			envKeyName,
 			allowedChats: allowlist.length ? allowlist : undefined,
 		}
 	}
 
 	setBridgesConfig(config)
-	p.outro(pc.green(`✅ Channel '${platformName}' updated.`))
+	p.outro(pc.green(`✅ Channel '${platformName}:${instanceKey}' updated.`))
 
 	// Run health test if token was provided and channel is enabled
 	if (enableOpts && botToken) {
@@ -250,31 +313,58 @@ export const runChannelsRemoveCommand = async (platformArg?: string) => {
 	p.intro(pc.bgMagenta(pc.white(' Tamias — Remove Channel ')))
 	const config = getBridgesConfig()
 
-	let platform = platformArg
-	if (!platform || !AVAILABLE_CHANNELS.includes(platform.toLowerCase())) {
-		const selection = await p.select({
-			message: 'Which channel do you want to disable/remove configuration for?',
-			options: AVAILABLE_CHANNELS.map(c => ({ value: c, label: c.charAt(0).toUpperCase() + c.slice(1) })),
-		})
-		if (p.isCancel(selection)) { p.cancel('Cancelled.'); process.exit(0) }
-		platform = selection as string
+	// Build a flat list of all removable instances
+	const options: { value: string; label: string }[] = []
+	for (const key of Object.keys(config.discords ?? {})) {
+		options.push({ value: `discord:${key}`, label: `Discord — ${key}` })
+	}
+	for (const key of Object.keys(config.telegrams ?? {})) {
+		options.push({ value: `telegram:${key}`, label: `Telegram — ${key}` })
 	}
 
-	platform = platform.toLowerCase()
+	if (options.length === 0) {
+		p.outro(pc.yellow('No Discord or Telegram channels are configured.'))
+		return
+	}
 
-	const confirmed = await p.confirm({ message: `Really clear configuration for ${pc.red(platform as string)}?`, initialValue: false })
+	let target: string
+	if (platformArg) {
+		const exact = options.find(o => o.value === platformArg)
+		const prefix = options.find(o => o.value.startsWith(platformArg.toLowerCase() + ':'))
+		target = (exact ?? prefix)?.value ?? ''
+	} else {
+		target = ''
+	}
+
+	if (!target) {
+		const selection = await p.select({
+			message: 'Which instance do you want to remove?',
+			options,
+		})
+		if (p.isCancel(selection)) { p.cancel('Cancelled.'); process.exit(0) }
+		target = selection as string
+	}
+
+	const [plat, instanceKey] = target.split(':', 2)
+
+	const confirmed = await p.confirm({
+		message: `Really clear configuration for ${pc.red(`${plat}:${instanceKey}`)}?`,
+		initialValue: false,
+	})
 	if (p.isCancel(confirmed) || !confirmed) { p.cancel('Cancelled.'); process.exit(0) }
 
-	if (platform === 'discord') {
-		if (config.discord?.envKeyName) removeEnv(config.discord.envKeyName)
-		config.discord = undefined
-	} else if (platform === 'telegram') {
-		if (config.telegram?.envKeyName) removeEnv(config.telegram.envKeyName)
-		config.telegram = undefined
+	if (plat === 'discord' && config.discords?.[instanceKey]) {
+		const envKey = config.discords[instanceKey].envKeyName
+		if (envKey) removeEnv(envKey)
+		delete config.discords[instanceKey]
+	} else if (plat === 'telegram' && config.telegrams?.[instanceKey]) {
+		const envKey = config.telegrams[instanceKey].envKeyName
+		if (envKey) removeEnv(envKey)
+		delete config.telegrams[instanceKey]
 	}
 
 	setBridgesConfig(config)
-	p.outro(pc.green(`✅ Channel '${platform}' configuration removed.`))
+	p.outro(pc.green(`✅ Channel '${plat}:${instanceKey}' configuration removed.`))
 }
 
 // ─── Interactive Menu ───────────────────────────────────────────────────────

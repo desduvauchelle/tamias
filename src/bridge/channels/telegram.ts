@@ -13,9 +13,13 @@ interface TelegramContext {
 }
 
 export class TelegramBridge implements IBridge {
-	name = 'telegram'
+	name: string
 	private bot?: Bot
 	private onMessage?: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean
+
+	constructor(key = 'telegram') {
+		this.name = key
+	}
 	/** Map of chatId → in-flight context */
 	private contexts = new Map<string, TelegramContext>()
 	/** Map of chatId → sessionId */
@@ -278,13 +282,17 @@ export class TelegramBridge implements IBridge {
 				break
 			}
 			case 'subagent-status': {
+				// Escape session ID for MarkdownV2 (underscores in sess_xxx must be escaped)
+				const escapedId = escapeMd(event.subagentId)
+				const escapedTask = escapeMd(event.task)
+				const escapedMsg = escapeMd(event.message)
 				const statusMessages: Record<string, string> = {
-					started: `🧠 *Working on:* _${event.task}_…`,
-					progress: `⏳ ${event.message}`,
-					completed: `✅ _Sub\\-agent done — generating response…_`,
-					failed: `❌ _Sub\\-agent failed: ${event.message}_`,
+					started: `🧠 *Working on:* _${escapedTask}_…\n🔑 Session: \`${escapedId}\``,
+					progress: `⏳ ${escapedMsg}`,
+					completed: `✅ _Sub\-agent done — generating response…_`,
+					failed: `❌ _Sub\-agent failed: ${escapedMsg}_`,
 				}
-				const text = statusMessages[event.status] ?? `🔄 ${event.message}`
+				const text = statusMessages[event.status] ?? `🔄 ${escapedMsg}`
 				try {
 					await this.bot.api.sendMessage(Number(chatKey), text, { parse_mode: 'MarkdownV2' })
 				} catch (err) {
@@ -315,4 +323,9 @@ function splitText(text: string, maxLen: number): string[] {
 		remaining = remaining.slice(splitAt).trimStart()
 	}
 	return chunks
+}
+
+/** Escape all MarkdownV2 reserved characters. */
+function escapeMd(text: string): string {
+	return text.replace(/[_*[\]()~`>#+=|{}.!\-]/g, '\\$&')
 }

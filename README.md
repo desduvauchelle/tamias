@@ -110,6 +110,35 @@ Explore our in-depth guides to understand how Tamias works under the hood:
 - `tamias agents edit [id]`: Update an agent's name, model, or prompt.
 - `tamias agents rm [id]`: Delete a persona from the gallery.
 
+### Skills
+
+Skills are modular Markdown instruction sets stored in `~/.tamias/skills/<folder>/SKILL.md`. They are injected into the AI's system prompt and can be used to give it specialised knowledge or behaviour.
+
+- `tamias skills list`: Show all built-in and user-defined skills.
+- `tamias skills add`: Interactively create a new skill (name, description, content).
+- `tamias skills add -n <name> -d <desc> -c <content>`: Non-interactive creation.
+- `tamias skills add ... --tags <tags>`: Comma-separated tags for grouping, e.g. `--tags investment,research`.
+- `tamias skills add ... --parent <folder>`: Declare this as a child step of a parent skill (multi-step sequences), e.g. `--parent investment-master-research`.
+- `tamias skills rm <folder>`: Delete a skill by its folder name.
+
+#### Frontmatter reference
+
+Each `SKILL.md` supports the following YAML frontmatter fields:
+
+```yaml
+---
+name: "Human-readable skill name"
+description: "One-line summary shown in the sidebar and skill list"
+tags: [investment, research]   # one or more tags — use for filtering/grouping
+parent: investment-master-research  # folder name of the parent skill (for sequences)
+---
+
+Your detailed Markdown instructions here...
+```
+
+**Tags** let you filter the sidebar by topic (`#investment`, `#research`, etc.).
+**Parent** makes this skill appear nested under the parent in the UI — ideal for multi-step orchestrated sequences where a parent skill calls child steps in order.
+
 ### Maintenance & Data
 
 - `tamias workspace [path]`: Set a restricted directory for AI file operations.
@@ -169,6 +198,18 @@ AI-driven email management via the `himalaya` CLI.
 | `list_emails` | Fetch recent envelopes |
 | `read_email` | Get full message content |
 | `send_email` | Send to whitelisted recipients |
+
+### `skills`
+
+Manage and execute modular AI skill sets.
+
+| Function | Description |
+|---|---|
+| `save_skill` | Create or update a skill (supports `tags` and `parent` for grouping) |
+| `list_skills` | List all skills with their metadata, tags, and parent |
+| `delete_skill` | Remove a skill by its folder name |
+
+Skills that declare a `parent` folder are treated as sequential children of that parent — useful for orchestrated multi-step workflows.
 
 ### `image`
 

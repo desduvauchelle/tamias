@@ -19,6 +19,7 @@
 - allow bridge `onMessage` to return a boolean to prevent AI processing and enhance Discord typing indicator reliability.
 
 ### Maintenance
+- bump version to 26.2.25.5 in package.json files and improve code formatting
 - bump version to 26.2.25.2 in package.json files
 - bump tamias and dashboard package versions
 - update package versions and standardize CI test command.
@@ -119,6 +120,15 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.25.5] - 2026-02-25
+
+### Features
+- implement sub-agent lifecycle management in AIService
+- Enhance skills and usage pages with TypeScript types and error handling
+
+### Maintenance
+- bump version to 26.2.25.5 in package.json files and improve code formatting
 
 ## [v26.2.25.3] - 2026-02-25
 

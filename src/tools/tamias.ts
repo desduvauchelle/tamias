@@ -504,15 +504,17 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 			},
 		}),
 		save_skill: tool({
-			description: 'Create or update a custom AI skill. Use this to give yourself long-term specialized instructions.',
+			description: 'Create or update a custom AI skill. Skills are Markdown instruction sets injected into the system prompt. Use `tags` to categorise a skill and `parent` (folder name) to mark it as a child step in a multi-step sequence whose orchestrator skill has that folder name.',
 			inputSchema: z.object({
-				name: z.string().describe('Name of the skill, e.g. "React Expert"'),
-				description: z.string().describe('Short description of what this skill does'),
-				content: z.string().describe('The detailed instructions or knowledge for this skill in Markdown format.'),
+				name: z.string().describe('Human-readable name of the skill, e.g. "React Expert"'),
+				description: z.string().describe('Short one-line description of what this skill does'),
+				content: z.string().describe('Detailed instructions / knowledge for this skill in Markdown format.'),
+				tags: z.array(z.string()).optional().describe('Optional list of topic tags for filtering and grouping, e.g. ["investment", "research"]'),
+				parent: z.string().optional().describe('Optional folder name of the parent/orchestrator skill this one belongs to, e.g. "investment-master-research". Makes it appear as a numbered child step under the parent in the UI.'),
 			}),
-			execute: async ({ name, description, content }) => {
+			execute: async ({ name, description, content, tags, parent }) => {
 				try {
-					await saveSkill(name, description, content)
+					await saveSkill(name, description, content, tags, parent)
 					// Trigger a tool refresh since skills are injected into system prompt
 					return { success: true, message: `Skill '${name}' saved successfully. It will be available in future sessions.` }
 				} catch (err) {
@@ -521,7 +523,7 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 			},
 		}),
 		list_skills: tool({
-			description: 'List all available custom and built-in skills.',
+			description: 'List all available custom and built-in skills, including their tags and parent relationships.',
 			inputSchema: z.object({}),
 			execute: async () => {
 				await loadSkills()
@@ -531,7 +533,9 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 						name: s.name,
 						description: s.description,
 						folder: s.sourceDir.split('/').pop(),
-						isBuiltIn: s.isBuiltIn
+						isBuiltIn: s.isBuiltIn,
+						tags: s.tags ?? [],
+						parent: s.parent ?? null,
 					}))
 				}
 			},

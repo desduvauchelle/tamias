@@ -48,19 +48,19 @@ function makeAIService(responseText = 'sub-agent result text') {
 	const aiService = new AIService(bridgeManager)
 
 	const m = aiService as any
-	m.refreshTools = async () => { }
+	m.refreshTools = async () => {}
 	m.activeTools = {}
 	m.toolDocs = ''
 
 	// Track dispatched bridge events per channelId
 	const bridgeEvents: DaemonEvent[] = []
-		; (bridgeManager as any).dispatchEvent = async (
-			_channelId: string,
-			event: DaemonEvent,
-			_ctx: any
-		) => {
-			bridgeEvents.push(event)
-		}
+	;(bridgeManager as any).dispatchEvent = async (
+		_channelId: string,
+		event: DaemonEvent,
+		_ctx: any
+	) => {
+		bridgeEvents.push(event)
+	}
 
 	// Replace processSession with a lightweight simulation that emits start→chunk→done.
 	// For parent/non-sub-agent sessions we return early so queue items stay visible to tests.
@@ -190,9 +190,9 @@ describe('attachBridgeListeners — sub-agent output suppression', () => {
 		const { aiService, bridgeManager } = makeAIService()
 
 		const capturedEvents: DaemonEvent[] = []
-			; (bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
-				capturedEvents.push(evt)
-			}
+		;(bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
+			capturedEvents.push(evt)
+		}
 
 		const session = aiService.createSession({ channelId: 'discord', channelUserId: 'u2' })
 		session.emitter.emit('event', { type: 'start', sessionId: session.id })
@@ -349,9 +349,9 @@ describe('updateSubagentProgress', () => {
 	test('updates session.progress and emits subagent-status:progress to bridge', async () => {
 		const capturedEvents: DaemonEvent[] = []
 		const { aiService, bridgeManager } = makeAIService()
-			; (bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
-				capturedEvents.push(evt)
-			}
+		;(bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
+			capturedEvents.push(evt)
+		}
 
 		const parent = aiService.createSession({ channelId: 'discord', channelUserId: 'u3' })
 		const sub = aiService.createSession({
@@ -384,9 +384,9 @@ describe('updateSubagentProgress', () => {
 	test('does nothing for terminal sub-agents (no channel to notify)', async () => {
 		const capturedEvents: DaemonEvent[] = []
 		const { aiService, bridgeManager } = makeAIService()
-			; (bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
-				capturedEvents.push(evt)
-			}
+		;(bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
+			capturedEvents.push(evt)
+		}
 
 		const parent = aiService.createSession({ channelId: 'terminal' })
 		const sub = aiService.createSession({
@@ -407,9 +407,9 @@ describe('Auto-finish: sub-agent lifecycle via simulated processSession', () => 
 	test('sub-agent completes → subagent-status:completed sent to bridge + report queued in parent', async () => {
 		const capturedBridgeEvents: DaemonEvent[] = []
 		const { aiService, bridgeManager } = makeAIService('The answer is 42')
-			; (bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
-				capturedBridgeEvents.push(evt)
-			}
+		;(bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
+			capturedBridgeEvents.push(evt)
+		}
 
 		const parent = aiService.createSession({ channelId: 'discord', channelUserId: 'ux' })
 		const sub = aiService.createSession({
@@ -441,7 +441,7 @@ describe('Auto-finish: sub-agent lifecycle via simulated processSession', () => 
 
 	test('sub-agent callback already called → no auto-inject into parent', async () => {
 		const { aiService, bridgeManager } = makeAIService('result')
-			; (bridgeManager as any).dispatchEvent = async () => { }
+		;(bridgeManager as any).dispatchEvent = async () => {}
 
 		const parent = aiService.createSession({ channelId: 'discord', channelUserId: 'uy' })
 		const sub = aiService.createSession({
@@ -493,5 +493,113 @@ describe('DaemonEvent subagent-status type', () => {
 			}
 			expect(evt.type).toBe('subagent-status')
 		}
+	})
+})
+
+// ── 8. bridgeSessionMap — sub-agents must not overwrite parent entry ──────────
+
+describe('bridgeSessionMap isolation', () => {
+	test('parent session is registered in bridgeSessionMap', () => {
+		const { aiService } = makeAIService()
+		const parent = aiService.createSession({ channelId: 'discord', channelUserId: 'u99' })
+		const mapped = aiService.getSessionForBridge('discord', 'u99')
+		expect(mapped?.id).toBe(parent.id)
+	})
+
+	test('sub-agent does NOT overwrite parent session in bridgeSessionMap', () => {
+		const { aiService } = makeAIService()
+		const parent = aiService.createSession({ channelId: 'discord', channelUserId: 'u99' })
+
+		// Spawn a sub-agent with the same channelId/channelUserId
+		aiService.createSession({
+			channelId: 'discord',
+			channelUserId: 'u99',
+			parentSessionId: parent.id,
+			isSubagent: true,
+			task: 'Some task',
+		})
+
+		// The map must still point to the parent, not the sub-agent
+		const mapped = aiService.getSessionForBridge('discord', 'u99')
+		expect(mapped?.id).toBe(parent.id)
+		expect(mapped?.isSubagent).toBe(false)
+	})
+
+	test('multiple sub-agents with same channel do not break parent mapping', () => {
+		const { aiService } = makeAIService()
+		const parent = aiService.createSession({ channelId: 'telegram', channelUserId: 'tg-1' })
+
+		aiService.createSession({ channelId: 'telegram', channelUserId: 'tg-1', parentSessionId: parent.id, isSubagent: true, task: 'Task A' })
+		aiService.createSession({ channelId: 'telegram', channelUserId: 'tg-1', parentSessionId: parent.id, isSubagent: true, task: 'Task B' })
+
+		const mapped = aiService.getSessionForBridge('telegram', 'tg-1')
+		expect(mapped?.id).toBe(parent.id)
+	})
+})
+
+// ── 9. Task truncation ────────────────────────────────────────────────────────
+
+describe('Task truncation in sub-agent notifications', () => {
+	test('subagent-status started event shows truncated task (≤80 chars)', async () => {
+		const { aiService, bridgeEvents } = makeAIService()
+		const longTask = 'A'.repeat(200)
+
+		const parent = aiService.createSession({ channelId: 'discord', channelUserId: 'u-trunc' })
+		const sub = aiService.createSession({
+			channelId: 'discord',
+			channelUserId: 'u-trunc',
+			parentSessionId: parent.id,
+			isSubagent: true,
+			task: longTask,
+		})
+
+		sub.emitter.emit('event', { type: 'start', sessionId: sub.id } as DaemonEvent)
+		await new Promise(r => setTimeout(r, 10))
+
+		const started = bridgeEvents.find(e => e.type === 'subagent-status' && (e as any).status === 'started') as any
+		expect(started).toBeDefined()
+		expect(started.task.length).toBeLessThanOrEqual(81) // 80 chars + '…'
+		expect(started.task.endsWith('…')).toBe(true)
+	})
+
+	test('short task is not truncated', async () => {
+		const { aiService, bridgeEvents } = makeAIService()
+		const shortTask = 'Find the bug in auth.ts'
+
+		const parent = aiService.createSession({ channelId: 'discord', channelUserId: 'u-short' })
+		const sub = aiService.createSession({
+			channelId: 'discord',
+			channelUserId: 'u-short',
+			parentSessionId: parent.id,
+			isSubagent: true,
+			task: shortTask,
+		})
+
+		sub.emitter.emit('event', { type: 'start', sessionId: sub.id } as DaemonEvent)
+		await new Promise(r => setTimeout(r, 10))
+
+		const started = bridgeEvents.find(e => e.type === 'subagent-status' && (e as any).status === 'started') as any
+		expect(started?.task).toBe(shortTask)
+	})
+
+	test('multiline task shows only first line', async () => {
+		const { aiService, bridgeEvents } = makeAIService()
+		const multilineTask = 'First line of task\nSecond line\nThird line'
+
+		const parent = aiService.createSession({ channelId: 'discord', channelUserId: 'u-multi' })
+		const sub = aiService.createSession({
+			channelId: 'discord',
+			channelUserId: 'u-multi',
+			parentSessionId: parent.id,
+			isSubagent: true,
+			task: multilineTask,
+		})
+
+		sub.emitter.emit('event', { type: 'start', sessionId: sub.id } as DaemonEvent)
+		await new Promise(r => setTimeout(r, 10))
+
+		const started = bridgeEvents.find(e => e.type === 'subagent-status' && (e as any).status === 'started') as any
+		expect(started?.task).toBe('First line of task')
+		expect(started?.task).not.toContain('\n')
 	})
 })

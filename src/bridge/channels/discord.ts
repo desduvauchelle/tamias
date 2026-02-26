@@ -15,9 +15,13 @@ interface DiscordChannelState {
 }
 
 export class DiscordBridge implements IBridge {
-	name = 'discord'
+	name: string
 	private client?: Client
 	private onMessage?: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean
+
+	constructor(key = 'discord') {
+		this.name = key
+	}
 	/** Map of channelId → channel orchestration state (set when a Discord message arrives) */
 	private channelStates = new Map<string, DiscordChannelState>()
 	/** Map of channelId → sessionId */
@@ -26,6 +30,8 @@ export class DiscordBridge implements IBridge {
 	private cronBuffers = new Map<string, string>()
 	/** Deduplication guard: set of Discord message IDs already dispatched for processing */
 	private seenMessageIds = new Set<string>()
+	/** Threads created for sub-agents: subagentId → Discord ThreadChannel */
+	private subagentThreads = new Map<string, any>()
 
 	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean): Promise<void> {
 		this.onMessage = onMessage
@@ -331,20 +337,69 @@ export class DiscordBridge implements IBridge {
 				break
 			}
 			case 'subagent-status': {
-				const statusMessages: Record<string, string> = {
-					started: `🧠 *Working on:* _${event.task}_…`,
-					progress: `⏳ ${event.message}`,
-					completed: `✅ _Sub-agent done — generating response…_`,
-					failed: `❌ _Sub-agent failed: ${event.message}_`,
-				}
-				const text = statusMessages[event.status] ?? `🔄 ${event.message}`
-				try {
-					const channel = await this.client!.channels.fetch(channelId)
-					if (channel && 'send' in channel) {
-						await (channel as any).send(text)
+				if (event.status === 'started') {
+					// Try to create a Discord thread from the message that triggered the parent.
+					// state.currentMessage is still set because the parent is still streaming.
+					const triggeringMessage = state?.currentMessage
+					if (triggeringMessage && typeof (triggeringMessage as any).startThread === 'function') {
+						try {
+							const threadName = event.task.slice(0, 100)
+							const thread = await (triggeringMessage as any).startThread({
+								name: threadName,
+								autoArchiveDuration: 60,
+							})
+							this.subagentThreads.set(event.subagentId, thread)
+							await thread.send(`🧠 **Sub-agent started**\n📋 ${event.task}\n🔑 Session: \`${event.subagentId}\``)
+						} catch (err) {
+							console.warn(`[Discord Bridge] Could not create thread for sub-agent ${event.subagentId}:`, err)
+							// Fallback: post in-channel with session ID
+							try {
+								const channel = await this.client!.channels.fetch(channelId)
+								if (channel && 'send' in channel) {
+									await (channel as any).send(`🧠 *Working on:* _${event.task}_…\n🔑 Session: \`${event.subagentId}\``)
+								}
+							} catch { }
+						}
+					} else {
+						// DM or no current message — post to channel with session ID
+						try {
+							const channel = await this.client!.channels.fetch(channelId)
+							if (channel && 'send' in channel) {
+								await (channel as any).send(`🧠 *Working on:* _${event.task}_…\n🔑 Session: \`${event.subagentId}\``)
+							}
+						} catch (err) {
+							console.error(`[Discord Bridge] Failed to send subagent started to ${channelId}:`, err)
+						}
 					}
-				} catch (err) {
-					console.error(`[Discord Bridge] Failed to send subagent-status to ${channelId}:`, err)
+				} else if (event.status === 'progress') {
+					const thread = this.subagentThreads.get(event.subagentId)
+					const target = thread ?? await this.client!.channels.fetch(channelId).catch(() => null)
+					if (target && 'send' in target) {
+						await (target as any).send(`⏳ ${event.message}`).catch(console.error)
+					}
+				} else if (event.status === 'completed') {
+					const thread = this.subagentThreads.get(event.subagentId)
+					if (thread) {
+						await thread.send('✅ Done — main agent is processing the results.').catch(console.error)
+						this.subagentThreads.delete(event.subagentId)
+					} else {
+						const channel = await this.client!.channels.fetch(channelId).catch(() => null)
+						if (channel && 'send' in channel) {
+							await (channel as any).send('✅ _Sub-agent done — generating response…_').catch(console.error)
+						}
+					}
+				} else if (event.status === 'failed') {
+					const thread = this.subagentThreads.get(event.subagentId)
+					const msg = `❌ *Sub-agent failed:* ${event.message}`
+					if (thread) {
+						await thread.send(msg).catch(console.error)
+						this.subagentThreads.delete(event.subagentId)
+					} else {
+						const channel = await this.client!.channels.fetch(channelId).catch(() => null)
+						if (channel && 'send' in channel) {
+							await (channel as any).send(msg).catch(console.error)
+						}
+					}
 				}
 				break
 			}
@@ -359,6 +414,7 @@ export class DiscordBridge implements IBridge {
 			}
 			this.client.destroy()
 			this.seenMessageIds.clear()
+			this.subagentThreads.clear()
 			console.log('[Discord Bridge] Stopped.')
 		}
 	}

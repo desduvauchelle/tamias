@@ -69,6 +69,13 @@ export interface CreateSessionOptions {
 	task?: string
 }
 
+/** Truncate a task description to a readable one-liner for status messages. */
+function truncateTask(task: string | undefined, max = 80): string {
+	if (!task) return 'sub-task'
+	const first = task.split('\n')[0].trim()
+	return first.length > max ? first.slice(0, max - 1) + '…' : first
+}
+
 export class AIService {
 	private sessions = new Map<string, Session>()
 	private bridgeSessionMap = new Map<string, string>()
@@ -263,7 +270,11 @@ export class AIService {
 			spawnedAt: options.isSubagent ? new Date() : undefined,
 		}
 
-		if (session.channelId && session.channelUserId) {
+		// Sub-agents MUST NOT overwrite the parent's entry in bridgeSessionMap.
+		// They share the same channelId/channelUserId as their parent, so registering
+		// here would redirect every subsequent user message to the sub-agent instead
+		// of the parent session, causing the "🧠 Working on: <task>" loop.
+		if (session.channelId && session.channelUserId && !session.isSubagent) {
 			this.bridgeSessionMap.set(`${session.channelId}:${session.channelUserId}`, session.id)
 		}
 
@@ -285,9 +296,9 @@ export class AIService {
 					this.bridgeManager.dispatchEvent(session.channelId, {
 						type: 'subagent-status',
 						subagentId: session.id,
-						task: session.task || 'sub-task',
+						task: truncateTask(session.task),
 						status: 'started',
-						message: session.task || 'sub-task',
+						message: truncateTask(session.task),
 					}, session).catch(console.error)
 				}
 				// All other event types (chunk, tool_call, tool_result, done, error)
@@ -342,7 +353,7 @@ export class AIService {
 			this.bridgeManager.dispatchEvent(session.channelId, {
 				type: 'subagent-status',
 				subagentId: session.id,
-				task: session.task || 'sub-task',
+				task: truncateTask(session.task),
 				status: 'progress',
 				message,
 			}, session).catch(console.error)
@@ -591,7 +602,10 @@ export class AIService {
 					session.connectionNickname = nickname
 				}
 
-				saveSessionToDisk(this.toPersist(session))
+				// Sub-agent sessions are transient — skip persisting them
+				if (!session.isSubagent) {
+					saveSessionToDisk(this.toPersist(session))
+				}
 				session.emitter.emit('event', { type: 'done', sessionId: session.id, suppressed } as DaemonEvent)
 
 				// If this is a subagent, report back to parent and notify the channel
@@ -607,9 +621,9 @@ export class AIService {
 							this.bridgeManager.dispatchEvent(session.channelId, {
 								type: 'subagent-status',
 								subagentId: session.id,
-								task: session.task || 'sub-task',
+								task: truncateTask(session.task),
 								status: 'completed',
-								message: session.task || 'sub-task',
+								message: truncateTask(session.task),
 							}, session).catch(console.error)
 						}
 
@@ -617,12 +631,17 @@ export class AIService {
 						// call the callback tool (which already reported back properly)
 						if (!session.subagentCallbackCalled) {
 							await this.reportSubagentResult(session.id, {
-								task: session.task || 'sub-task',
+								task: truncateTask(session.task),
 								status: 'completed',
 								outcome: fullResponse,
 							})
 						}
 					}
+
+					// Sub-agent sessions are transient. Remove from memory now that the report
+					// has been sent so no subsequent user message can be routed here.
+					this.deleteSession(session.id)
+					return
 				}
 
 				if (session.messages.length >= 20) {
@@ -659,17 +678,21 @@ export class AIService {
 				this.bridgeManager.dispatchEvent(session.channelId, {
 					type: 'subagent-status',
 					subagentId: session.id,
-					task: session.task || 'sub-task',
+					task: truncateTask(session.task),
 					status: 'failed',
 					message: 'All AI models failed',
 				}, session).catch(console.error)
 			}
 
 			await this.reportSubagentResult(session.id, {
-				task: session.task || 'sub-task',
+				task: truncateTask(session.task),
 				status: 'failed',
 				reason: failureSummary,
 			}).catch(console.error)
+
+			// Sub-agent sessions are transient — remove from memory after reporting.
+			this.deleteSession(session.id)
+			return
 		}
 
 		session.processing = false

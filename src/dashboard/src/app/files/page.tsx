@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { RefreshCw, Folder, File, Image, FileText, FileCode, Download, Edit3, X, ChevronRight, FolderOpen, Pencil, Trash2 } from 'lucide-react'
+import { RefreshCw, Folder, File, Image, FileText, FileCode, Download, Edit3, X, ChevronRight, FolderOpen, Pencil, Trash2, Copy, Check } from 'lucide-react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
@@ -244,6 +244,16 @@ function FileModal({
 	const [editContent, setEditContent] = useState('')
 	const [saving, setSaving] = useState(false)
 	const [saveError, setSaveError] = useState<string | null>(null)
+	const [copied, setCopied] = useState(false)
+
+	const fullPath = `~/.tamias/${path}`
+
+	const handleCopyPath = useCallback(() => {
+		void navigator.clipboard.writeText(fullPath).then(() => {
+			setCopied(true)
+			setTimeout(() => setCopied(false), 2000)
+		})
+	}, [fullPath])
 
 	const { data, isLoading, isError } = useQuery<FileContent>({
 		queryKey,
@@ -411,6 +421,20 @@ function FileModal({
 							autoFocus
 						/>
 					)}
+				</div>
+
+				{/* Footer: file path + copy */}
+				<div className="flex items-center gap-2 px-4 py-2 border-t border-base-300 shrink-0 bg-base-300/40">
+					<span className="font-mono text-[11px] text-base-content/40 truncate flex-1">{fullPath}</span>
+					<button
+						className="btn btn-ghost btn-xs gap-1 shrink-0"
+						onClick={handleCopyPath}
+						title="Copy path"
+					>
+						{copied
+							? <><Check className="w-3 h-3 text-success" /> Copied!</>
+							: <><Copy className="w-3 h-3" /> Copy path</>}
+					</button>
 				</div>
 			</div>
 		</div>

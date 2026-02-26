@@ -140,7 +140,7 @@ export async function watchSkills(): Promise<void> {
 }
 
 /** Create or update a user skill */
-export async function saveSkill(name: string, description: string, content: string): Promise<void> {
+export async function saveSkill(name: string, description: string, content: string, tags?: string[], parent?: string): Promise<void> {
 	// ensure directory format (lowercase-no-space-no-weird-characters)
 	const safeDirName = name.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-")
 	const skillDir = join(USER_SKILLS_DIR, safeDirName)
@@ -151,10 +151,18 @@ export async function saveSkill(name: string, description: string, content: stri
 
 	const skillFile = join(skillDir, "SKILL.md")
 
-	// Create content with frontmatter if the user didn't include it
+	// Build frontmatter
+	const frontmatterLines = [`name: "${name}"`, `description: "${description}"`]
+	if (tags && tags.length > 0) {
+		frontmatterLines.push(`tags: [${tags.map(t => `"${t}"`).join(', ')}]`)
+	}
+	if (parent) {
+		frontmatterLines.push(`parent: "${parent}"`)
+	}
+
 	let finalContent = content
 	if (!content.startsWith("---")) {
-		finalContent = `---\nname: "${name}"\ndescription: "${description}"\n---\n\n${content}`
+		finalContent = `---\n${frontmatterLines.join('\n')}\n---\n\n${content}`
 	}
 
 	await fsPromises.writeFile(skillFile, finalContent, "utf-8")

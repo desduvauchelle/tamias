@@ -307,5 +307,6 @@ program.parse(process.argv)
 
 program
 	.command('token')
-	.description('Show the dashboard authentication token and URL')
-	.action(() => import('./commands/token.ts').then(m => m.runTokenCommand()))
+	.description('Show the dashboard authentication token and URL. The token persists across restarts.')
+	.option('--reset', 'Generate a new token (takes effect after tamias restart)')
+	.action((opts: { reset?: boolean }) => import('./commands/token.ts').then(m => m.runTokenCommand(opts)))

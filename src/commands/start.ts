@@ -334,21 +334,23 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 
 		if (trimmed === '!subagents' || trimmed === '!agents') {
 			const allSessions = aiService.getAllSessions()
-			const subagents = allSessions.filter(s => s.isSubagent)
+			// Only show sessions that are actively running (completed ones are cleaned up automatically)
+			const subagents = allSessions.filter(s => s.isSubagent && s.subagentStatus !== 'completed' && s.subagentStatus !== 'failed')
 			if (subagents.length === 0) {
-				await bridgeManager.broadcastToChannel(msg.channelId, '🧠 No sub-agents currently active.').catch(console.error)
+				await bridgeManager.broadcastToChannel(msg.channelId, '🧠 No sub-agents currently running.').catch(console.error)
 			} else {
 				const lines = ['🧠 **Active Sub-agents**']
 				for (const sub of subagents) {
 					const statusIcon = sub.subagentStatus === 'running' ? '⏳'
 						: sub.subagentStatus === 'completed' ? '✅'
-							: sub.subagentStatus === 'failed' ? '❌'
-								: '⌛'
+						: sub.subagentStatus === 'failed' ? '❌'
+						: '⌛'
 					const elapsed = sub.spawnedAt
 						? ` (${Math.round((Date.now() - sub.spawnedAt.getTime()) / 1000)}s)`
 						: ''
 					const progressLine = sub.progress ? `\n  └ ${sub.progress}` : ''
-					lines.push(`${statusIcon} \`${sub.id}\`${elapsed}\n  Task: ${sub.task || 'unknown'}${progressLine}`)
+					const taskDisplay = sub.task ? (sub.task.split('\n')[0].slice(0, 80) + (sub.task.length > 80 ? '…' : '')) : 'unknown'
+					lines.push(`${statusIcon} \`${sub.id}\`${elapsed}\n  Task: ${taskDisplay}${progressLine}`)
 				}
 				await bridgeManager.broadcastToChannel(msg.channelId, lines.join('\n\n')).catch(console.error)
 			}
