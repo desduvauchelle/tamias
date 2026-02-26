@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- implement Modal component and integrate it into various pages for improved UI
 - add tool provider preference system and vector store implementation
 - Enhance chat command with agent options and routing
 - enhance memory management with structured templates and detailed responsibilities

@@ -1,5 +1,11 @@
-import { describe, expect, test } from 'bun:test'
-import { getSandboxConfig, loadConfig } from '../utils/config.ts'
+import { describe, expect, test, beforeAll } from 'bun:test'
+import { mkdirSync } from 'fs'
+import { getSandboxConfig, loadConfig, TAMIAS_WORKSPACE_DIR } from '../utils/config.ts'
+
+// Ensure workspace directory exists (may not on a fresh CI runner)
+beforeAll(() => {
+	mkdirSync(TAMIAS_WORKSPACE_DIR, { recursive: true })
+})
 
 describe('Sandbox Configuration', () => {
 	test('getSandboxConfig returns default when not configured', () => {
@@ -32,7 +38,6 @@ describe('Sandbox Configuration', () => {
 describe('Sandbox - Terminal Tool Integration', () => {
 	test('run_command returns results with sandbox=none', async () => {
 		const { terminalTools } = await import('../tools/terminal.ts')
-		const { TAMIAS_WORKSPACE_DIR } = await import('../utils/config.ts')
 		const result = await (terminalTools.run_command.execute as any)({
 			command: 'echo "hello sandbox"',
 			cwd: TAMIAS_WORKSPACE_DIR,
@@ -45,7 +50,6 @@ describe('Sandbox - Terminal Tool Integration', () => {
 
 	test('run_command still blocks dangerous commands regardless of sandbox mode', async () => {
 		const { terminalTools } = await import('../tools/terminal.ts')
-		const { TAMIAS_WORKSPACE_DIR } = await import('../utils/config.ts')
 		const result = await (terminalTools.run_command.execute as any)({
 			command: 'sudo rm -rf /',
 			cwd: TAMIAS_WORKSPACE_DIR,
