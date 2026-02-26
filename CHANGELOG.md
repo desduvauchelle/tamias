@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- refactor bot configuration to support multiple instances for Discord and Telegram
 - implement sub-agent lifecycle management in AIService
 - Enhance skills and usage pages with TypeScript types and error handling
 - integrate caffeinate process management and add token command for dashboard access
