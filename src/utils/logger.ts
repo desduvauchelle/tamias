@@ -1,5 +1,6 @@
 import { db } from './db'
 import { getEstimatedCost } from './pricing'
+import { recordUsage } from './usageRolling'
 
 export interface AiLogPayload {
 	timestamp: string
@@ -62,6 +63,18 @@ export function logAiRequest(payload: AiLogPayload): number | undefined {
 			payload.toolTokens || null,
 			estimatedCostUsd,
 		)
+
+		// Increment rolling 30-day usage summary
+		recordUsage({
+			model: payload.model,
+			promptTokens: payload.tokens?.prompt || 0,
+			completionTokens: payload.tokens?.completion || 0,
+			estimatedCostUsd: estimatedCostUsd || 0,
+			channelId: payload.channelId,
+			tenantId: payload.tenantId,
+			agentId: payload.agentId,
+		})
+
 		return result.lastInsertRowid as number
 	} catch (err) {
 		console.error('⚠️  Failed to write AI request log:', err)

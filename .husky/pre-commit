@@ -1,5 +1,6 @@
 bun run bump-version
 git add package.json src/dashboard/package.json 2>/dev/null || true
 bun run changelog
-git add CHANGELOG.md README.md 2>/dev/null || true
+bun run docs:sync
+git add CHANGELOG.md README.md src/templates/AGENTS.md src/templates/SYSTEM.md docs/ 2>/dev/null || true
 bun run typecheck:all && bun run test

@@ -57,8 +57,8 @@ describe("Database Maintenance: Pruning & History", () => {
 	test("Case 3: Logs older than 30 days are archived to JSON and deleted from DB", async () => {
 		const fortyDaysAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString()
 		db.prepare(`
-            INSERT INTO ai_logs (timestamp, sessionId, model, provider, action, durationMs, promptTokens, completionTokens, totalTokens, requestMessagesJson, response)
-            VALUES (?, 'archive_sess', 'claude-3', 'anthropic', 'chat', 500, 100, 200, 300, '["archived text"]', "archived res")
+            INSERT INTO ai_logs (timestamp, sessionId, model, provider, action, durationMs, promptTokens, completionTokens, totalTokens, requestMessagesJson, response, estimatedCostUsd, tenantId, agentId, channelId)
+            VALUES (?, 'archive_sess', 'claude-3', 'anthropic', 'chat', 500, 100, 200, 300, '["archived text"]', "archived res", 0.0045, 'tenant1', 'agent1', 'discord')
         `).run(fortyDaysAgo)
 
 		await runDatabaseMaintenance()
@@ -75,6 +75,11 @@ describe("Database Maintenance: Pruning & History", () => {
 		expect(entry.totalTokens).toBe(300)
 		expect(entry.model).toBe('claude-3')
 		expect(entry.timestamp).toBe(fortyDaysAgo)
+		// Verify cost and dimension fields are archived
+		expect(entry.estimatedCostUsd).toBe(0.0045)
+		expect(entry.tenantId).toBe('tenant1')
+		expect(entry.agentId).toBe('agent1')
+		expect(entry.channelId).toBe('discord')
 		// Ensure detailed text was NOT archived (we prune text >24h before archiving >30d)
 		expect(entry.requestMessagesJson).toBeUndefined()
 		expect(entry.response).toBeUndefined()

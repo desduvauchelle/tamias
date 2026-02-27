@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- ensure workspace directory exists before tests and streamline imports in sandbox tests
 - implement Modal component and integrate it into various pages for improved UI
 - add tool provider preference system and vector store implementation
 - Enhance chat command with agent options and routing
@@ -128,6 +129,13 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.26.11] - 2026-02-26
+
+### Features
+- ensure workspace directory exists before tests and streamline imports in sandbox tests
+- implement Modal component and integrate it into various pages for improved UI
+- add tool provider preference system and vector store implementation
 
 ## [v26.2.26.7] - 2026-02-26
 

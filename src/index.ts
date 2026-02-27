@@ -31,7 +31,7 @@ import { runTenantCommand, runTenantListCommand, runTenantCreateCommand, runTena
 import { isOnboarded } from './utils/memory.ts'
 import { VERSION } from './utils/version.ts'
 
-const program = new Command()
+export const program = new Command()
 
 program
 	.name('tamias')
@@ -403,16 +403,20 @@ tenantCmd
 	.description('Switch active tenant')
 	.action(runTenantSwitchCommand)
 
-// First-run detection: if no subcommand given and not yet onboarded, launch chat (which triggers onboarding)
-if (process.argv.length <= 2 && !isOnboarded()) {
-	await runChatCommand()
-	process.exit(0)
-}
-
-program.parse(process.argv)
-
+// ─── tamias token ─────────────────────────────────────────────────────────────
 program
 	.command('token')
 	.description('Show the dashboard authentication token and URL. The token persists across restarts.')
 	.option('--reset', 'Generate a new token (takes effect after tamias restart)')
 	.action((opts: { reset?: boolean }) => import('./commands/token.ts').then(m => m.runTokenCommand(opts)))
+
+// Only execute when run directly (not when imported by scripts)
+if (import.meta.main) {
+	// First-run detection: if no subcommand given and not yet onboarded, launch chat (which triggers onboarding)
+	if (process.argv.length <= 2 && !isOnboarded()) {
+		await runChatCommand()
+		process.exit(0)
+	}
+
+	program.parse(process.argv)
+}

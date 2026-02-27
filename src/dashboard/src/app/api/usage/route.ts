@@ -7,19 +7,28 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
 	try {
+		// Try to proxy through the running daemon first (it computes the summary)
 		const daemonFile = join(homedir(), '.tamias', 'daemon.json')
-		if (!existsSync(daemonFile)) throw new Error('No daemon file')
+		if (existsSync(daemonFile)) {
+			const info = JSON.parse(readFileSync(daemonFile, 'utf-8'))
+			const port = info.port || 9001
+			const res = await fetch(`http://127.0.0.1:${port}/usage`, { cache: 'no-store' })
+			if (res.ok) {
+				const data = await res.json()
+				return NextResponse.json(data)
+			}
+		}
 
-		const info = JSON.parse(readFileSync(daemonFile, 'utf-8'))
-		const port = info.port || 9001
+		// Fallback: read usage.json directly (works even if daemon is down)
+		const usageFile = join(homedir(), '.tamias', 'usage.json')
+		if (existsSync(usageFile)) {
+			const { buildUsageSummary } = await import('../../../../../utils/usageRolling')
+			return NextResponse.json(buildUsageSummary())
+		}
 
-		const res = await fetch(`http://127.0.0.1:${port}/usage`, { cache: 'no-store' })
-		if (!res.ok) throw new Error('Daemon returned ' + res.status)
-
-		const data = await res.json()
-		return NextResponse.json(data)
+		throw new Error('No usage data available')
 	} catch (error) {
-		console.error('API /costs proxy error:', error)
+		console.error('API /usage error:', error)
 		return NextResponse.json({
 			today: 0,
 			yesterday: 0,

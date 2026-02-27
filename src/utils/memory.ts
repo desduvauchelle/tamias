@@ -57,7 +57,7 @@ export function scaffoldFromTemplates(): void {
 	ensureMemoryDir()
 
 	// These files are only copied once if they don't exist
-	const toScaffoldOnce = ['SOUL.md', 'AGENTS.md', 'TOOLS.md', 'HEARTBEAT.md', 'MEMORY.md']
+	const toScaffoldOnce = ['SOUL.md', 'TOOLS.md', 'HEARTBEAT.md', 'MEMORY.md']
 	for (const file of toScaffoldOnce) {
 		const dest = join(MEMORY_DIR, file)
 		if (!existsSync(dest)) {
@@ -70,8 +70,10 @@ export function scaffoldFromTemplates(): void {
 		}
 	}
 
-	// SYSTEM.md and SKILL-GUIDE.md are force-overwritten every time to ensure upstream updates propagate
-	for (const file of ['SYSTEM.md', 'SKILL-GUIDE.md']) {
+	// SYSTEM.md, SKILL-GUIDE.md, and AGENTS.md are force-overwritten every time so that
+	// upstream changes to CLI commands, agent management, and system capabilities always
+	// propagate to existing installs without needing a manual reset.
+	for (const file of ['SYSTEM.md', 'SKILL-GUIDE.md', 'AGENTS.md']) {
 		const src = join(TEMPLATES_DIR, file)
 		if (existsSync(src)) {
 			const dest = join(MEMORY_DIR, file)

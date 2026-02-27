@@ -17,6 +17,7 @@ import { loadAgents } from '../utils/agentsStore.ts'
 import { db } from '../utils/db.ts'
 import { getEstimatedCost } from '../utils/pricing.ts'
 import { runDatabaseMaintenance } from '../utils/maintenance.ts'
+import { buildUsageSummary } from '../utils/usageRolling.ts'
 import type { DaemonEvent, BridgeMessage } from '../bridge/types.ts'
 
 
@@ -579,128 +580,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			}
 
 			if (method === 'GET' && url.pathname === '/usage') {
-				const rows = db.query<{ timestamp: string, model: string, sessionId: string, promptTokens: number | null, completionTokens: number | null, tenantId: string | null, agentId: string | null, channelId: string | null, estimatedCostUsd: number | null }, []>(`
-                    SELECT timestamp, model, sessionId, promptTokens, completionTokens,
-                        tenantId, agentId, channelId, estimatedCostUsd
-                    FROM ai_logs ORDER BY id DESC
-                `).all()
-
-				const now = new Date()
-				const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-				const startOfYesterday = new Date(startOfToday.getTime() - 86400000)
-
-				const day = now.getDay()
-				const diff = now.getDate() - day + (day === 0 ? -6 : 1)
-				const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diff)
-				const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-
-				let today = 0, yesterday = 0, thisWeek = 0, thisMonth = 0, total = 0
-				let totalPromptTokens = 0, totalCompletionTokens = 0
-
-				// Time series and distributions
-				const dailyMap: Record<string, number> = {}
-				const modelMap: Record<string, number> = {}
-				const initiatorMap: Record<string, number> = {}
-				const tenantMap: Record<string, number> = {}
-				const agentMap: Record<string, number> = {}
-				const channelMap: Record<string, number> = {}
-
-				// Initialize last 14 days with 0
-				for (let i = 0; i < 14; i++) {
-					const d = new Date(startOfToday.getTime() - (i * 86400000))
-					const key = d.toISOString().split('T')[0]
-					dailyMap[key] = 0
-				}
-
-				for (const r of rows) {
-					const cost = r.estimatedCostUsd ?? getEstimatedCost(r.model, r.promptTokens || 0, r.completionTokens || 0)
-					const d = new Date(r.timestamp)
-					const dateKey = d.toISOString().split('T')[0]
-
-					total += cost
-					totalPromptTokens += r.promptTokens || 0
-					totalCompletionTokens += r.completionTokens || 0
-
-					if (d >= startOfToday) today += cost
-					else if (d >= startOfYesterday) yesterday += cost
-
-					if (d >= startOfWeek) thisWeek += cost
-					if (d >= startOfMonth) thisMonth += cost
-
-					// Time series (last 14 days)
-					if (dailyMap[dateKey] !== undefined) {
-						dailyMap[dateKey] += cost
-					}
-
-					// Distributions
-					modelMap[r.model] = (modelMap[r.model] || 0) + cost
-
-					// Initiator detection
-					let initiator = 'System'
-					if (r.channelId) {
-						initiator = r.channelId.charAt(0).toUpperCase() + r.channelId.slice(1)
-					} else if (r.sessionId.startsWith('sess_')) {
-						initiator = 'CLI/Global'
-					} else if (r.sessionId.includes('discord')) {
-						initiator = 'Discord'
-					} else if (r.sessionId.includes('telegram')) {
-						initiator = 'Telegram'
-					}
-					initiatorMap[initiator] = (initiatorMap[initiator] || 0) + cost
-
-					// Tenant distribution
-					const tenant = r.tenantId || 'default'
-					tenantMap[tenant] = (tenantMap[tenant] || 0) + cost
-
-					// Agent distribution
-					const agent = r.agentId || 'main'
-					agentMap[agent] = (agentMap[agent] || 0) + cost
-
-					// Channel distribution
-					const channel = r.channelId || 'terminal'
-					channelMap[channel] = (channelMap[channel] || 0) + cost
-				}
-
-				const dailySpend = Object.entries(dailyMap)
-					.map(([date, cost]) => ({ date, cost }))
-					.sort((a, b) => a.date.localeCompare(b.date))
-
-				const modelDistribution = Object.entries(modelMap)
-					.map(([name, value]) => ({ name, value }))
-					.sort((a, b) => b.value - a.value)
-
-				const initiatorDistribution = Object.entries(initiatorMap)
-					.map(([name, value]) => ({ name, value }))
-					.sort((a, b) => b.value - a.value)
-
-				const tenantDistribution = Object.entries(tenantMap)
-					.map(([name, value]) => ({ name, value }))
-					.sort((a, b) => b.value - a.value)
-
-				const agentDistribution = Object.entries(agentMap)
-					.map(([name, value]) => ({ name, value }))
-					.sort((a, b) => b.value - a.value)
-
-				const channelDistribution = Object.entries(channelMap)
-					.map(([name, value]) => ({ name, value }))
-					.sort((a, b) => b.value - a.value)
-
-				return json({
-					today,
-					yesterday,
-					thisWeek,
-					thisMonth,
-					total,
-					totalPromptTokens,
-					totalCompletionTokens,
-					totalRequests: rows.length,
-					dailySpend,
-					modelDistribution,
-					initiatorDistribution,
-					tenantDistribution,
-					agentDistribution,
-					channelDistribution,
-				})
+				return json(buildUsageSummary())
 			}
 
 			if ((method === 'GET' || method === 'POST') && url.pathname === '/session') {

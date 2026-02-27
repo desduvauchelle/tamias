@@ -43,9 +43,15 @@ export async function runDatabaseMaintenance(): Promise<void> {
 			durationMs: number,
 			promptTokens: number | null,
 			completionTokens: number | null,
-			totalTokens: number | null
+			totalTokens: number | null,
+			estimatedCostUsd: number | null,
+			tenantId: string | null,
+			agentId: string | null,
+			channelId: string | null
 		}, [string]>(`
-            SELECT timestamp, sessionId, model, provider, action, durationMs, promptTokens, completionTokens, totalTokens
+            SELECT timestamp, sessionId, model, provider, action, durationMs,
+                promptTokens, completionTokens, totalTokens,
+                estimatedCostUsd, tenantId, agentId, channelId
             FROM ai_logs
             WHERE timestamp < ?
         `).all(thirtyDaysAgo)
