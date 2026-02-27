@@ -460,6 +460,12 @@ describe('Legacy: DB migrations', () => {
 			ALTER TABLE ai_logs ADD COLUMN conversationTokens INTEGER;
 			ALTER TABLE ai_logs ADD COLUMN toolTokens INTEGER;
 			ALTER TABLE ai_logs ADD COLUMN estimatedCostUsd REAL;
+			ALTER TABLE ai_logs ADD COLUMN providerCostUsd REAL;
+			ALTER TABLE ai_logs ADD COLUMN systemPromptText TEXT;
+			ALTER TABLE ai_logs ADD COLUMN requestInputMessagesJson TEXT;
+			ALTER TABLE ai_logs ADD COLUMN toolCallsJson TEXT;
+			ALTER TABLE ai_logs ADD COLUMN toolResultsJson TEXT;
+			ALTER TABLE ai_logs ADD COLUMN usageJson TEXT;
 			ALTER TABLE sessions ADD COLUMN agentId TEXT;
 			ALTER TABLE sessions ADD COLUMN projectSlug TEXT;
 			ALTER TABLE sessions ADD COLUMN tenantId TEXT;
@@ -467,6 +473,7 @@ describe('Legacy: DB migrations', () => {
 			CREATE INDEX IF NOT EXISTS idx_ai_logs_agentId ON ai_logs(agentId);
 			CREATE INDEX IF NOT EXISTS idx_sessions_agentId ON sessions(agentId);
 			CREATE INDEX IF NOT EXISTS idx_sessions_tenantId ON sessions(tenantId);`,
+			`CREATE INDEX IF NOT EXISTS idx_ai_logs_providerCostUsd ON ai_logs(providerCostUsd);`,
 		]
 
 		db.transaction(() => {
@@ -484,7 +491,7 @@ describe('Legacy: DB migrations', () => {
 
 		// Verify final schema
 		const ver = db.query<{ user_version: number }, []>('PRAGMA user_version').get()
-		expect(ver!.user_version).toBe(5)
+		expect(ver!.user_version).toBe(6)
 
 		// Verify all expected columns exist
 		const sessionCols = db.query<{ name: string }, []>('PRAGMA table_info(sessions)').all().map(r => r.name)
@@ -502,6 +509,12 @@ describe('Legacy: DB migrations', () => {
 		expect(logCols).toContain('cachedPromptTokens')
 		expect(logCols).toContain('systemTokens')
 		expect(logCols).toContain('estimatedCostUsd')
+		expect(logCols).toContain('providerCostUsd')
+		expect(logCols).toContain('systemPromptText')
+		expect(logCols).toContain('requestInputMessagesJson')
+		expect(logCols).toContain('toolCallsJson')
+		expect(logCols).toContain('toolResultsJson')
+		expect(logCols).toContain('usageJson')
 
 		db.close()
 		rmSync(dbPath, { force: true })
@@ -518,6 +531,7 @@ describe('Legacy: DB migrations', () => {
 				`ALTER TABLE sessions ADD COLUMN channelName TEXT;`,
 				`CREATE INDEX IF NOT EXISTS idx_sessions_updatedAt ON sessions(id);`,
 				`ALTER TABLE ai_logs ADD COLUMN tenantId TEXT; ALTER TABLE sessions ADD COLUMN agentId TEXT;`,
+				`ALTER TABLE ai_logs ADD COLUMN providerCostUsd REAL; ALTER TABLE ai_logs ADD COLUMN systemPromptText TEXT; ALTER TABLE ai_logs ADD COLUMN requestInputMessagesJson TEXT; ALTER TABLE ai_logs ADD COLUMN toolCallsJson TEXT; ALTER TABLE ai_logs ADD COLUMN toolResultsJson TEXT; ALTER TABLE ai_logs ADD COLUMN usageJson TEXT;`,
 			]
 			const result = db.query<{ user_version: number }, []>('PRAGMA user_version').get()
 			const cv = result?.user_version || 0
@@ -538,7 +552,7 @@ describe('Legacy: DB migrations', () => {
 		applyAll()
 
 		const ver = db.query<{ user_version: number }, []>('PRAGMA user_version').get()
-		expect(ver!.user_version).toBe(5)
+		expect(ver!.user_version).toBe(6)
 
 		db.close()
 		rmSync(dbPath, { force: true })

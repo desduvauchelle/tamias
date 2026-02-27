@@ -45,6 +45,11 @@ const migrations = [
 		completionTokens INTEGER,
 		totalTokens INTEGER,
 		requestMessagesJson TEXT,
+		systemPromptText TEXT,
+		requestInputMessagesJson TEXT,
+		toolCallsJson TEXT,
+		toolResultsJson TEXT,
+		usageJson TEXT,
 		response TEXT
 	);
 	`,
@@ -74,6 +79,12 @@ const migrations = [
 	ALTER TABLE ai_logs ADD COLUMN conversationTokens INTEGER;
 	ALTER TABLE ai_logs ADD COLUMN toolTokens INTEGER;
 	ALTER TABLE ai_logs ADD COLUMN estimatedCostUsd REAL;
+	ALTER TABLE ai_logs ADD COLUMN providerCostUsd REAL;
+	ALTER TABLE ai_logs ADD COLUMN systemPromptText TEXT;
+	ALTER TABLE ai_logs ADD COLUMN requestInputMessagesJson TEXT;
+	ALTER TABLE ai_logs ADD COLUMN toolCallsJson TEXT;
+	ALTER TABLE ai_logs ADD COLUMN toolResultsJson TEXT;
+	ALTER TABLE ai_logs ADD COLUMN usageJson TEXT;
 	ALTER TABLE sessions ADD COLUMN agentId TEXT;
 	ALTER TABLE sessions ADD COLUMN projectSlug TEXT;
 	ALTER TABLE sessions ADD COLUMN tenantId TEXT;
@@ -81,6 +92,17 @@ const migrations = [
 	CREATE INDEX IF NOT EXISTS idx_ai_logs_agentId ON ai_logs(agentId);
 	CREATE INDEX IF NOT EXISTS idx_sessions_agentId ON sessions(agentId);
 	CREATE INDEX IF NOT EXISTS idx_sessions_projectSlug ON sessions(projectSlug);
+	`,
+	// Version 6: Add explicit rich tracing fields to ai_logs for dashboard/audit views
+	`
+	ALTER TABLE ai_logs ADD COLUMN providerCostUsd REAL;
+	ALTER TABLE ai_logs ADD COLUMN systemPromptText TEXT;
+	ALTER TABLE ai_logs ADD COLUMN requestInputMessagesJson TEXT;
+	ALTER TABLE ai_logs ADD COLUMN toolCallsJson TEXT;
+	ALTER TABLE ai_logs ADD COLUMN toolResultsJson TEXT;
+	ALTER TABLE ai_logs ADD COLUMN usageJson TEXT;
+	CREATE INDEX IF NOT EXISTS idx_ai_logs_provider ON ai_logs(provider);
+	CREATE INDEX IF NOT EXISTS idx_ai_logs_model ON ai_logs(model);
 	`
 ]
 

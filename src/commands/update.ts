@@ -2,7 +2,6 @@ import * as p from '@clack/prompts'
 import pc from 'picocolors'
 import { VERSION } from '../utils/version.ts'
 import { checkForUpdate, performUpdate, type UpdateProgress } from '../utils/update.ts'
-import { isDaemonRunning } from '../utils/daemon.ts'
 import { runRestartCommand } from './restart.ts'
 import { readDaemonInfo } from '../utils/daemon.ts'
 
@@ -55,11 +54,9 @@ export const runUpdateCommand = async () => {
 		if (result.success) {
 			s.stop(`Successfully updated to v${result.latestVersion || result.currentVersion}!`)
 
-			// Restart the daemon so the new binary and dashboard take effect immediately.
-			if (await isDaemonRunning()) {
-				p.log.info('Restarting daemon to apply update...')
-				await runRestartCommand()
-			}
+			// Always restart daemon + dashboard so updated binaries/UI take effect immediately.
+			p.log.info('Applying update by restarting daemon and dashboard...')
+			await runRestartCommand()
 
 			// Print dashboard URL with token if available
 			const info = readDaemonInfo()

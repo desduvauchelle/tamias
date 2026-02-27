@@ -23,7 +23,13 @@ describe("Logger", () => {
 				completion: mockVercelUsage.outputTokens,
 				total: mockVercelUsage.totalTokens
 			},
-			messages: [],
+			messages: [{ role: 'system', content: 'SYSTEM_PROMPT' }, { role: 'user', content: 'hello' }],
+			systemPromptText: 'SYSTEM_PROMPT',
+			requestInputMessages: [{ role: 'user', content: 'hello' }],
+			toolCalls: [{ toolName: 'memory__write_file', input: { path: 'MEMORY.md' } }],
+			toolResults: [{ toolName: 'memory__write_file', result: { ok: true } }],
+			usageRaw: { inputTokens: 120, outputTokens: 45, totalTokens: 165, costUsd: 0.000321 },
+			providerCostUsd: 0.000321,
 			response: "test response"
 		}
 
@@ -43,6 +49,13 @@ describe("Logger", () => {
 		expect(lastLog.promptTokens).toBe(120)
 		expect(lastLog.completionTokens).toBe(45)
 		expect(lastLog.durationMs).toBe(150)
+		expect(lastLog.systemPromptText).toBe('SYSTEM_PROMPT')
+		expect(lastLog.requestInputMessagesJson).toContain('hello')
+		expect(lastLog.toolCallsJson).toContain('memory__write_file')
+		expect(lastLog.toolResultsJson).toContain('"ok":true')
+		expect(lastLog.usageJson).toContain('costUsd')
+		expect(lastLog.providerCostUsd).toBe(0.000321)
+		expect(lastLog.estimatedCostUsd).toBe(0.000321)
 
 		// Cleanup: remove the test row we just inserted
 		db.prepare('DELETE FROM ai_logs WHERE id = ?').run(lastLog.id)

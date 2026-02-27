@@ -46,6 +46,14 @@ interface LogEntry {
 	}
 	prompt: string
 	response: string
+	systemPrompt?: string
+	sentMessages?: unknown[]
+	toolCalls?: Array<{ toolName?: string; name?: string; args?: unknown; input?: unknown }>
+	toolResults?: Array<{ toolName?: string; name?: string; result?: unknown; output?: unknown }>
+	usage?: Record<string, unknown>
+	estimatedCostUsd?: number
+	providerCostUsd?: number
+	finalCostUsd?: number
 	fullHistory: HistoryRecord[]
 }
 
@@ -98,15 +106,34 @@ function HistoryContent() {
 		setIsModalOpen(true)
 	}
 
-	const systemPrompt = extractText(selectedLog?.fullHistory?.find(m => m.role === 'system')?.content || '')
+	const systemPrompt = selectedLog?.systemPrompt || extractText(selectedLog?.fullHistory?.find(m => m.role === 'system')?.content || '')
+	const sentMessages = selectedLog?.sentMessages ?? []
+	const modelOutput = extractText(selectedLog?.response)
 	const chatConversation = selectedLog?.fullHistory?.filter(m => m.role !== 'system') || []
-	const toolCalls = selectedLog?.fullHistory?.flatMap(m =>
+	const fallbackToolCalls = selectedLog?.fullHistory?.flatMap(m =>
 		m.toolCalls ? m.toolCalls.map(tc => ({
+			toolName: tc.toolName,
 			name: tc.toolName,
 			input: tc.args,
 			output: selectedLog.fullHistory.find(r => r.role === 'tool' && r.toolCallId === tc.toolCallId)?.content
 		})) : []
 	) || []
+	const explicitToolCalls = (selectedLog?.toolCalls ?? []).map(tc => ({
+		toolName: tc.toolName,
+		name: tc.name ?? tc.toolName,
+		input: tc.input ?? tc.args,
+		output: undefined as unknown
+	}))
+	const baseToolCalls = explicitToolCalls.length > 0 ? explicitToolCalls : fallbackToolCalls
+	const toolCalls = baseToolCalls.map((tc, i) => {
+		const matchingResult = (selectedLog?.toolResults ?? [])[i]
+		return {
+			toolName: tc.toolName,
+			name: tc.name,
+			input: tc.input,
+			output: matchingResult ? (matchingResult.output ?? matchingResult.result) : tc.output
+		}
+	})
 
 	return (
 		<div className="h-full flex flex-col p-6 gap-6 overflow-hidden">
@@ -140,10 +167,10 @@ function HistoryContent() {
 						{/* Table Header */}
 						<div className="grid grid-cols-[180px_120px_1fr_100px_80px] px-6 py-3 border-b border-base-300 bg-base-300/30 text-[10px] uppercase font-bold tracking-widest text-base-content/50 font-mono items-center shrink-0">
 							<div className="flex items-center gap-2"><Clock className="w-3 h-3" /> Timestamp</div>
-							<div className="flex items-center gap-2"><Cpu className="w-3 h-3" /> Model</div>
+							<div className="flex items-center gap-2"><Cpu className="w-3 h-3" /> Model / Action</div>
 							<div className="flex items-center gap-2"><Terminal className="w-3 h-3" /> Input Prompt Snippet</div>
 							<div className="flex items-center gap-2 justify-end text-right"><Database className="w-3 h-3" /> Tokens</div>
-							<div className="text-right pr-2">Dur.</div>
+							<div className="text-right pr-2">Dur. / Cost</div>
 						</div>
 
 						{/* Table Content */}
@@ -164,10 +191,11 @@ function HistoryContent() {
 											onClick={() => openModal(log)}
 										>
 											<div className="text-base-content/60">{new Date(log.timestamp).toLocaleString()}</div>
-											<div>
-												<span className="px-1.5 py-0.5 rounded bg-base-300 text-[9px] uppercase font-bold text-base-content/70">
+											<div className="flex flex-col gap-1">
+												<span className="px-1.5 py-0.5 rounded bg-base-300 text-[9px] uppercase font-bold text-base-content/70 w-fit">
 													{log.model.split('/').pop()}
 												</span>
+												<span className="text-[9px] uppercase text-base-content/50">{log.provider} / {log.action}</span>
 											</div>
 											<div className="truncate pr-4 text-success/80">
 												{extractText(log.prompt as unknown) || <span className="opacity-30 italic">No prompt</span>}
@@ -175,8 +203,9 @@ function HistoryContent() {
 											<div className="text-right text-base-content/40 tabular-nums">
 												{log.tokens.total || 0}
 											</div>
-											<div className="text-right text-base-content/40 tabular-nums pr-2">
-												{log.durationMs}ms
+											<div className="text-right text-base-content/40 tabular-nums pr-2 flex flex-col gap-1">
+												<span>{log.durationMs}ms</span>
+												<span className="text-[9px]">${(log.finalCostUsd ?? log.providerCostUsd ?? log.estimatedCostUsd ?? 0).toFixed(6)}</span>
 											</div>
 										</div>
 									</div>
@@ -228,16 +257,24 @@ function HistoryContent() {
 							<span className="text-success text-xs font-mono">{selectedLog?.sessionId}</span>
 						</div>
 						<div className="flex flex-col gap-1">
+							<span className="opacity-50">Action</span>
+							<span className="text-success text-xs font-mono">{selectedLog?.action}</span>
+						</div>
+						<div className="flex flex-col gap-1">
 							<span className="opacity-50">Provider</span>
 							<span className="text-success text-xs font-mono">{selectedLog?.provider}</span>
 						</div>
 						<div className="flex flex-col gap-1">
-							<span className="opacity-50">Tokens (In/Out)</span>
-							<span className="text-success text-xs font-mono">{selectedLog?.tokens.prompt} / {selectedLog?.tokens.completion}</span>
+							<span className="opacity-50">Tokens (In/Out/Total)</span>
+							<span className="text-success text-xs font-mono">{selectedLog?.tokens.prompt} / {selectedLog?.tokens.completion} / {selectedLog?.tokens.total}</span>
 						</div>
 						<div className="flex flex-col gap-1">
 							<span className="opacity-50">Duration</span>
 							<span className="text-success text-xs font-mono">{selectedLog?.durationMs}ms</span>
+						</div>
+						<div className="flex flex-col gap-1">
+							<span className="opacity-50">Cost (Final)</span>
+							<span className="text-success text-xs font-mono">${(selectedLog?.finalCostUsd ?? selectedLog?.providerCostUsd ?? selectedLog?.estimatedCostUsd ?? 0).toFixed(6)}</span>
 						</div>
 					</div>
 
@@ -246,8 +283,30 @@ function HistoryContent() {
 						<div className="text-xs uppercase font-bold text-primary/60 flex items-center gap-2">
 							<div className="w-1.5 h-1.5 rounded-full bg-primary/60" /> System Prompt
 						</div>
-						<div className="bg-base-300/40 p-4 rounded-lg border border-base-300 text-[11px] font-mono whitespace-pre-wrap text-base-content/70 max-h-[200px] overflow-y-auto">
+						<div className="bg-base-300/40 p-4 rounded-lg border border-base-300 text-[11px] font-mono whitespace-pre-wrap text-base-content/70 max-h-50 overflow-y-auto">
 							{systemPrompt || <span className="opacity-30 italic font-sans">No system prompt provided.</span>}
+						</div>
+					</div>
+
+					{/* Messages Sent to Model Section */}
+					<div className="space-y-3">
+						<div className="text-xs uppercase font-bold text-info/60 flex items-center gap-2">
+							<div className="w-1.5 h-1.5 rounded-full bg-info/60" /> Messages Sent to Model
+						</div>
+						<div className="bg-base-300/40 p-4 rounded-lg border border-base-300 text-[11px] font-mono whitespace-pre-wrap text-base-content/70 max-h-55 overflow-y-auto">
+							{sentMessages.length === 0
+								? <span className="opacity-30 italic font-sans">No sent messages payload captured.</span>
+								: JSON.stringify(sentMessages, null, 2)}
+						</div>
+					</div>
+
+					{/* Model Output Section */}
+					<div className="space-y-3">
+						<div className="text-xs uppercase font-bold text-accent/60 flex items-center gap-2">
+							<div className="w-1.5 h-1.5 rounded-full bg-accent/60" /> Model Output
+						</div>
+						<div className="bg-base-300/40 p-4 rounded-lg border border-base-300 text-[11px] font-mono whitespace-pre-wrap text-base-content/70 max-h-55 overflow-y-auto">
+							{modelOutput || <span className="opacity-30 italic font-sans">No model output captured.</span>}
 						</div>
 					</div>
 
@@ -306,6 +365,16 @@ function HistoryContent() {
 								))}
 							</div>
 						)}
+					</div>
+
+					{/* Provider Usage Payload Section */}
+					<div className="space-y-3 pb-4">
+						<div className="text-xs uppercase font-bold text-secondary/60 flex items-center gap-2">
+							<div className="w-1.5 h-1.5 rounded-full bg-secondary/60" /> Provider Usage Payload
+						</div>
+						<div className="bg-base-300/40 p-4 rounded-lg border border-base-300 text-[11px] font-mono whitespace-pre-wrap text-base-content/70 max-h-55 overflow-y-auto">
+							{JSON.stringify(selectedLog?.usage ?? {}, null, 2)}
+						</div>
 					</div>
 				</div>
 			</Modal>

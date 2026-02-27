@@ -1,7 +1,54 @@
 import { NextResponse } from 'next/server'
+import { join } from 'path'
+import { homedir } from 'os'
+import { readFile } from 'fs/promises'
+import { existsSync } from 'fs'
+import { spawn } from 'child_process'
 import { getTamiasConfig, saveTamiasConfig, getTamiasEnv, setTamiasEnvVar } from '../tamias'
 
 export const dynamic = 'force-dynamic'
+const DAEMON_FILE = join(homedir(), '.tamias', 'daemon.json')
+
+async function restartDaemonIfRunning(): Promise<boolean> {
+	try {
+		const daemonRaw = await readFile(DAEMON_FILE, 'utf-8')
+		const daemonInfo = JSON.parse(daemonRaw) as { port?: number }
+		if (!daemonInfo.port) return false
+
+		const health = await fetch(`http://127.0.0.1:${daemonInfo.port}/health`, {
+			signal: AbortSignal.timeout(1000),
+		})
+		if (!health.ok) return false
+
+		await fetch(`http://127.0.0.1:${daemonInfo.port}/daemon`, {
+			method: 'DELETE',
+			signal: AbortSignal.timeout(3000),
+		}).catch(() => { })
+
+		const projectRoot = join(process.cwd(), '..', '..', '..')
+		const cliEntry = join(projectRoot, 'src', 'index.ts')
+		if (existsSync(cliEntry)) {
+			const proc = spawn('bun', ['run', cliEntry, 'start'], {
+				cwd: projectRoot,
+				detached: true,
+				stdio: 'ignore',
+				env: process.env,
+			})
+			proc.unref()
+		} else {
+			const proc = spawn('tamias', ['start'], {
+				detached: true,
+				stdio: 'ignore',
+				env: process.env,
+			})
+			proc.unref()
+		}
+
+		return true
+	} catch {
+		return false
+	}
+}
 
 /** Migrate legacy single-instance config to multi-instance on read */
 function migrateToMulti(bridges: any) {
@@ -105,7 +152,8 @@ export async function POST(request: Request) {
 		delete config.bridges.telegram
 
 		await saveTamiasConfig(config)
-		return NextResponse.json({ success: true })
+		const restartTriggered = await restartDaemonIfRunning()
+		return NextResponse.json({ success: true, restartTriggered })
 	} catch (error) {
 		console.error(error)
 		return NextResponse.json({ error: 'Failed to update channels configuration' }, { status: 500 })

@@ -14,14 +14,22 @@ interface DaemonLogEntry {
 	provider?: string
 	action?: string
 	durationMs?: number
+	systemPrompt?: string
+	sentMessages?: unknown[]
+	toolCalls?: unknown[]
+	toolResults?: unknown[]
+	usage?: Record<string, unknown>
 	tokensPrompt?: number
 	tokensCompletion?: number
+	tokensTotal?: number
 	tokens?: { prompt?: number; completion?: number }
 	inputSnippet?: string
 	prompt?: string
 	outputSnippet?: string
 	response?: string
 	estimatedCostUsd?: number
+	providerCostUsd?: number
+	finalCostUsd?: number
 	fullHistory?: unknown[]
 }
 
@@ -41,6 +49,13 @@ interface DashboardLogEntry {
 	prompt?: string
 	response?: string
 	estimatedCostUsd: number
+	providerCostUsd?: number
+	finalCostUsd?: number
+	systemPrompt?: string
+	sentMessages?: unknown[]
+	toolCalls?: unknown[]
+	toolResults?: unknown[]
+	usage?: Record<string, unknown>
 	fullHistory: unknown[]
 }
 
@@ -86,11 +101,18 @@ export async function GET(request: Request) {
 			tokens: {
 				prompt: l.tokensPrompt ?? l.tokens?.prompt ?? 0,
 				completion: l.tokensCompletion ?? l.tokens?.completion ?? 0,
-				total: (l.tokensPrompt ?? l.tokens?.prompt ?? 0) + (l.tokensCompletion ?? l.tokens?.completion ?? 0)
+				total: l.tokensTotal ?? ((l.tokensPrompt ?? l.tokens?.prompt ?? 0) + (l.tokensCompletion ?? l.tokens?.completion ?? 0))
 			},
 			prompt: l.inputSnippet ?? l.prompt,
 			response: l.outputSnippet ?? l.response,
 			estimatedCostUsd: l.estimatedCostUsd ?? 0,
+			providerCostUsd: l.providerCostUsd,
+			finalCostUsd: l.finalCostUsd ?? l.providerCostUsd ?? l.estimatedCostUsd ?? 0,
+			systemPrompt: l.systemPrompt,
+			sentMessages: l.sentMessages,
+			toolCalls: l.toolCalls,
+			toolResults: l.toolResults,
+			usage: l.usage,
 			fullHistory: l.fullHistory ?? []
 		}))
 

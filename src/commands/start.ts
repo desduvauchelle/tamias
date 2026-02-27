@@ -530,9 +530,31 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			}
 
 			if (method === 'GET' && url.pathname === '/history') {
-				const rawLogs = db.query<{ id: number, timestamp: string, sessionId: string, model: string, provider: string, action: string, durationMs: number, promptTokens: number | null, completionTokens: number | null, totalTokens: number | null, requestMessagesJson: string, response: string }, []>(`
+				const rawLogs = db.query<{
+					id: number
+					timestamp: string
+					sessionId: string
+					model: string
+					provider: string | null
+					action: string | null
+					durationMs: number | null
+					promptTokens: number | null
+					completionTokens: number | null
+					totalTokens: number | null
+					requestMessagesJson: string | null
+					systemPromptText: string | null
+					requestInputMessagesJson: string | null
+					toolCallsJson: string | null
+					toolResultsJson: string | null
+					usageJson: string | null
+					response: string | null
+					estimatedCostUsd: number | null
+					providerCostUsd: number | null
+				}, []>(`
                     SELECT id, timestamp, sessionId, model, provider, action, durationMs,
-                        promptTokens, completionTokens, totalTokens, requestMessagesJson, response
+                        promptTokens, completionTokens, totalTokens, requestMessagesJson,
+						systemPromptText, requestInputMessagesJson, toolCallsJson, toolResultsJson, usageJson,
+						response, estimatedCostUsd, providerCostUsd
                     FROM ai_logs ORDER BY id DESC LIMIT 100
                 `).all()
 
@@ -548,6 +570,15 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					return String(content ?? '')
 				}
 
+				const parseJson = <T = any>(value: string | null, fallback: T): T => {
+					if (!value) return fallback
+					try {
+						return JSON.parse(value) as T
+					} catch {
+						return fallback
+					}
+				}
+
 				const logs = rawLogs.map((r) => {
 					let msgs: any[] = []
 					try {
@@ -555,23 +586,42 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					} catch (e) {
 						console.error('Failed to parse logs messages:', e)
 					}
-					const systemMsg = extractMsgText(msgs.find(m => m.role === 'system')?.content || '')
+					const systemMsg = r.systemPromptText || extractMsgText(msgs.find(m => m.role === 'system')?.content || '')
+					const sentMessages = parseJson<any[]>(r.requestInputMessagesJson, [])
+					const toolCalls = parseJson<any[]>(r.toolCallsJson, [])
+					const toolResults = parseJson<any[]>(r.toolResultsJson, [])
+					const usage = parseJson<Record<string, unknown>>(r.usageJson, {})
 					const userMsgs = msgs.filter(m => m.role === 'user').map(m => extractMsgText(m.content))
 
 					const inputSnippet = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1] : ''
-					const cost = getEstimatedCost(r.model, r.promptTokens || 0, r.completionTokens || 0)
+					const estimatedFallbackCost = getEstimatedCost(r.model, r.promptTokens || 0, r.completionTokens || 0)
+					const estimatedCostUsd = r.estimatedCostUsd ?? estimatedFallbackCost
+					const providerCostUsd = r.providerCostUsd ?? null
+					const finalCostUsd = providerCostUsd ?? estimatedCostUsd
 
 					return {
 						id: r.id,
 						timestamp: r.timestamp,
 						initiator: r.sessionId,
 						model: r.model,
+						provider: r.provider,
+						action: r.action,
+						durationMs: r.durationMs,
 						systemPromptSnippet: systemMsg,
+						systemPrompt: systemMsg,
+						sentMessages,
+						toolCalls,
+						toolResults,
+						usage,
 						inputSnippet: inputSnippet,
 						outputSnippet: r.response,
-						estimatedCostUsd: cost,
+						response: r.response,
+						estimatedCostUsd,
+						providerCostUsd,
+						finalCostUsd,
 						tokensPrompt: r.promptTokens || 0,
 						tokensCompletion: r.completionTokens || 0,
+						tokensTotal: r.totalTokens || 0,
 						fullHistory: msgs
 					}
 				})

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- enhance agent form with model fallback functionality and improve data fetching
 - add comprehensive tests for channels API and Discord bridge modes
 - implement progress update feature in DiscordBridge and enhance project context handling
 - Enhance CLI documentation and add usage tracking
@@ -135,6 +136,11 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.26.18] - 2026-02-26
+
+### Features
+- enhance agent form with model fallback functionality and improve data fetching
 
 ## [v26.2.26.17] - 2026-02-26
 

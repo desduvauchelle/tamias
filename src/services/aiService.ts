@@ -597,7 +597,7 @@ export class AIService {
 					if (parts.length > 0) projectContext = parts.join('\n\n---\n\n')
 				} catch { /* projects module may not exist yet */ }
 
-				const systemPrompt = buildSystemPrompt(this.toolNames, session.summary, {
+				const systemPrompt = buildSystemPrompt(this.toolNames, '', session.summary, {
 					id: session.channelId,
 					userId: session.channelUserId,
 					name: session.channelName,
@@ -626,6 +626,27 @@ export class AIService {
 					'X-Tamias-Source': source,
 				}
 
+				const collectedToolCalls: Array<{ toolName: string; input: unknown }> = []
+				const collectedToolResults: Array<{ toolName: string; result: unknown }> = []
+
+				const sanitizeForLog = (value: any): any => {
+					if (value == null) return value
+					if (Buffer.isBuffer(value)) return { __type: 'Buffer', length: value.length }
+					if (Array.isArray(value)) return value.map(sanitizeForLog)
+					if (typeof value === 'object') {
+						const out: Record<string, any> = {}
+						for (const [key, v] of Object.entries(value)) {
+							if (key === 'buffer' && (Buffer.isBuffer(v) || typeof v === 'string')) {
+								out[key] = Buffer.isBuffer(v) ? { __type: 'Buffer', length: (v as Buffer).length } : { __type: 'StringBuffer', length: String(v).length }
+								continue
+							}
+							out[key] = sanitizeForLog(v)
+						}
+						return out
+					}
+					return value
+				}
+
 				const result = streamText({
 					model,
 					system: systemPrompt,
@@ -636,11 +657,13 @@ export class AIService {
 					onStepFinish: async ({ toolCalls, toolResults }) => {
 						if (toolCalls?.length) {
 							for (const tc of toolCalls) {
+								collectedToolCalls.push({ toolName: tc.toolName, input: sanitizeForLog((tc as any).input ?? {}) })
 								session.emitter.emit('event', { type: 'tool_call', name: tc.toolName, input: (tc as any).input ?? {} } as DaemonEvent)
 							}
 						}
 						if (toolResults?.length) {
 							for (const tr of (toolResults as any)) {
+								collectedToolResults.push({ toolName: tr.toolName, result: sanitizeForLog(tr.result) })
 								// Emit tool_result event
 								session.emitter.emit('event', { type: 'tool_result', name: tr.toolName, result: tr.result } as DaemonEvent)
 
@@ -676,6 +699,13 @@ export class AIService {
 					new Promise(resolve => setTimeout(() => resolve({}), 2000))
 				]).catch((err) => { console.warn('[AIService] Failed to retrieve usage stats:', err); return {} }) as any
 
+				const providerCostUsd =
+					typeof usage?.cost === 'number' ? usage.cost
+						: typeof usage?.totalCost === 'number' ? usage.totalCost
+							: typeof usage?.estimatedCost === 'number' ? usage.estimatedCost
+								: typeof usage?.costUsd === 'number' ? usage.costUsd
+									: undefined
+
 				const response = await Promise.resolve(result.response).catch(() => null)
 				const fullMessages = response?.messages ?? []
 
@@ -695,11 +725,17 @@ export class AIService {
 						{ role: 'system', content: systemPrompt },
 						...fullMessages,
 					],
+					systemPromptText: systemPrompt,
+					requestInputMessages: messagesForSend as any,
+					toolCalls: collectedToolCalls,
+					toolResults: collectedToolResults,
+					usageRaw: usage,
 					response: fullResponse,
 					tenantId: (session as any).tenantId,
 					agentId: session.agentId,
 					channelId: session.channelId,
 					cachedPromptTokens: usage?.cachedInputTokens,
+					providerCostUsd,
 				})
 
 				if (config.debug) {

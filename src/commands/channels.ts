@@ -6,6 +6,8 @@ import {
 	getBotTokenForInstance,
 } from '../utils/config.ts'
 import { setEnv, removeEnv, generateSecureEnvKey, getEnv } from '../utils/env.ts'
+import { runRestartCommand } from './restart.ts'
+import { isDaemonRunning } from '../utils/daemon.ts'
 
 // ─── Health checks ─────────────────────────────────────────────────────────────
 
@@ -48,8 +50,7 @@ async function testDiscordToken(token: string): Promise<void> {
 			`3. Under "Privileged Gateway Intents" enable:\n` +
 			`   ${pc.cyan('• MESSAGE CONTENT INTENT')}  ← most common cause of no response\n` +
 			`   ${pc.dim('• SERVER MEMBERS INTENT')} (optional)\n` +
-			`4. Save Changes\n\n` +
-			`Then run: ${pc.bold('tamias stop && tamias start')}`,
+			`4. Save Changes`,
 			'Next Steps'
 		)
 	} catch (err: any) {
@@ -81,8 +82,7 @@ async function testTelegramToken(token: string): Promise<void> {
 		spinner.stop(pc.green(`✅ Token valid — bot is ${pc.bold(name)} (@${data.result?.username})`))
 		p.note(
 			`Your Telegram bot is configured!\n\n` +
-			`To start chatting, open Telegram and find your bot: ${pc.cyan('@' + data.result?.username)}\n` +
-			`Then restart the daemon: ${pc.bold('tamias stop && tamias start')}`,
+			`To start chatting, open Telegram and find your bot: ${pc.cyan('@' + data.result?.username)}`,
 			'Next Steps'
 		)
 	} catch (err: any) {
@@ -299,6 +299,13 @@ async function editChannelFlow(isAdding: boolean) {
 
 	setBridgesConfig(config)
 	p.outro(pc.green(`✅ Channel '${platformName}:${instanceKey}' updated.`))
+
+	if (await isDaemonRunning()) {
+		p.note('Applying channel changes by restarting daemon...', 'Apply Changes')
+		await runRestartCommand()
+	} else {
+		p.note('Daemon is not running. Changes will apply on next `tamias start`.', 'Apply Changes')
+	}
 
 	// Run health test if token was provided and channel is enabled
 	if (enableOpts && botToken) {
