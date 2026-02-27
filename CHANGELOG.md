@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- add comprehensive tests for channels API and Discord bridge modes
 - implement progress update feature in DiscordBridge and enhance project context handling
 - Enhance CLI documentation and add usage tracking
 - ensure workspace directory exists before tests and streamline imports in sandbox tests
@@ -131,6 +132,11 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.26.16] - 2026-02-26
+
+### Features
+- add comprehensive tests for channels API and Discord bridge modes
 
 ## [v26.2.26.15] - 2026-02-26
 
