@@ -4,6 +4,17 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { NextRequest } from 'next/server'
 
+interface ChannelBridgeInstance {
+	mode?: string
+}
+
+interface ChannelsGetResponse {
+	bridges: {
+		discords: Record<string, ChannelBridgeInstance>
+		telegrams: Record<string, ChannelBridgeInstance>
+	}
+}
+
 const fakeHome = await mkdtemp(join(tmpdir(), 'tamias-channels-test-'))
 const fakeTamiasDir = join(fakeHome, '.tamias')
 const configPath = join(fakeTamiasDir, 'config.json')
@@ -19,8 +30,7 @@ await mkdir(fakeTamiasDir, { recursive: true })
 const { GET, POST } = await import('../app/api/channels/route')
 
 function req(url: string, init?: ConstructorParameters<typeof NextRequest>[1]) {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	return new NextRequest(new URL(url, 'http://localhost:3000'), init as any)
+	return new NextRequest(new URL(url, 'http://localhost:3000'), init)
 }
 
 async function readConfig() {
@@ -61,7 +71,7 @@ describe('Channels API mode handling', () => {
 	test('GET returns instance mode values', async () => {
 		const res = await GET()
 		expect(res.status).toBe(200)
-		const body = await res.json() as { bridges: any }
+		const body = await res.json() as ChannelsGetResponse
 		expect(body.bridges.discords.existing.mode).toBe('mention-only')
 		expect(body.bridges.telegrams.existing.mode).toBe('listen-only')
 	})

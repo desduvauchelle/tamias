@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useToast } from '../_components/ToastProvider'
 import { Modal } from '../_components/Modal'
-import { Bot, Plus, HelpCircle, Pencil, Trash2, Power, PowerOff } from 'lucide-react'
+import { Bot, Plus, HelpCircle, Pencil, Trash2, Power, PowerOff, X } from 'lucide-react'
 
 interface AgentDefinition {
 	id: string
@@ -19,16 +19,20 @@ interface AgentDefinition {
 	allowedMcpServers?: string[]
 }
 
-const EMPTY_FORM = {
+interface AgentForm {
+	name: string
+	slug: string
+	model: string
+	modelFallbacks: string[]
+	instructions: string
+}
+
+const EMPTY_FORM: AgentForm = {
 	name: '',
 	slug: '',
 	model: '',
-	modelFallbacks: '',
+	modelFallbacks: [],
 	instructions: '',
-	channels: '',
-	extraSkills: '',
-	allowedTools: '',
-	allowedMcpServers: '',
 }
 
 export default function AgentsPage() {
@@ -37,8 +41,11 @@ export default function AgentsPage() {
 	const [selected, setSelected] = useState<AgentDefinition | null>(null)
 	const [isModalOpen, setIsModalOpen] = useState(false)
 	const [editingAgent, setEditingAgent] = useState<AgentDefinition | null>(null)
-	const [form, setForm] = useState(EMPTY_FORM)
+	const [form, setForm] = useState<AgentForm>(EMPTY_FORM)
 	const [saving, setSaving] = useState(false)
+	const [availableModels, setAvailableModels] = useState<string[]>([])
+	const [loadingModels, setLoadingModels] = useState(true)
+	const [fallbackModelToAdd, setFallbackModelToAdd] = useState('')
 	const { success, error } = useToast()
 
 	const fetchAgents = useCallback(async () => {
@@ -55,9 +62,34 @@ export default function AgentsPage() {
 		}
 	}, [])
 
+	const fetchAvailableModels = useCallback(async () => {
+		setLoadingModels(true)
+		try {
+			const res = await fetch('/api/models')
+			if (!res.ok) return
+
+			const data = await res.json()
+			const fromConnections = (data.connections || []).flatMap((conn: { models?: string }) =>
+				typeof conn.models === 'string'
+					? conn.models.split(',').map(model => model.trim()).filter(Boolean)
+					: []
+			)
+			const fromDefaults = Array.isArray(data.defaultModels)
+				? data.defaultModels.map((model: string) => model.trim()).filter(Boolean)
+				: []
+
+			setAvailableModels([...new Set([...fromConnections, ...fromDefaults])])
+		} catch (err) {
+			console.error('Failed to fetch available models', err)
+		} finally {
+			setLoadingModels(false)
+		}
+	}, [])
+
 	useEffect(() => {
 		fetchAgents()
-	}, [fetchAgents])
+		fetchAvailableModels()
+	}, [fetchAgents, fetchAvailableModels])
 
 	const slugify = (name: string) =>
 		name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
@@ -65,6 +97,7 @@ export default function AgentsPage() {
 	const openCreate = () => {
 		setEditingAgent(null)
 		setForm(EMPTY_FORM)
+		setFallbackModelToAdd('')
 		setIsModalOpen(true)
 	}
 
@@ -74,13 +107,10 @@ export default function AgentsPage() {
 			name: agent.name,
 			slug: agent.slug,
 			model: agent.model || '',
-			modelFallbacks: (agent.modelFallbacks || []).join(', '),
+			modelFallbacks: agent.modelFallbacks || [],
 			instructions: agent.instructions,
-			channels: (agent.channels || []).join(', '),
-			extraSkills: (agent.extraSkills || []).join(', '),
-			allowedTools: (agent.allowedTools || []).join(', '),
-			allowedMcpServers: (agent.allowedMcpServers || []).join(', '),
 		})
+		setFallbackModelToAdd('')
 		setIsModalOpen(true)
 	}
 
@@ -93,8 +123,17 @@ export default function AgentsPage() {
 		}))
 	}
 
-	const splitCSV = (val: string) =>
-		val.split(',').map(s => s.trim()).filter(Boolean)
+	const fallbackOptions = availableModels.filter(model => model !== form.model && !form.modelFallbacks.includes(model))
+
+	const addFallbackModel = () => {
+		if (!fallbackModelToAdd) return
+		setForm(prev => ({ ...prev, modelFallbacks: [...prev.modelFallbacks, fallbackModelToAdd] }))
+		setFallbackModelToAdd('')
+	}
+
+	const removeFallbackModel = (model: string) => {
+		setForm(prev => ({ ...prev, modelFallbacks: prev.modelFallbacks.filter(m => m !== model) }))
+	}
 
 	const handleSave = async () => {
 		if (!form.name.trim() || !form.instructions.trim()) {
@@ -108,12 +147,8 @@ export default function AgentsPage() {
 				name: form.name.trim(),
 				slug: form.slug.trim() || slugify(form.name),
 				model: form.model.trim() || undefined,
-				modelFallbacks: splitCSV(form.modelFallbacks),
+				modelFallbacks: form.modelFallbacks,
 				instructions: form.instructions.trim(),
-				channels: splitCSV(form.channels),
-				extraSkills: splitCSV(form.extraSkills),
-				allowedTools: splitCSV(form.allowedTools),
-				allowedMcpServers: splitCSV(form.allowedMcpServers),
 			}
 
 			let res: Response
@@ -220,7 +255,7 @@ export default function AgentsPage() {
 								<div className="flex items-center gap-2">
 									<span className="text-xs font-mono text-base-content/40">{agent.slug}</span>
 									{agent.model && (
-										<span className="text-[10px] px-1.5 py-0.5 rounded-full bg-base-300/70 text-base-content/50 truncate max-w-[120px]">
+										<span className="text-[10px] px-1.5 py-0.5 rounded-full bg-base-300/70 text-base-content/50 truncate max-w-30">
 											{agent.model}
 										</span>
 									)}
@@ -296,54 +331,6 @@ export default function AgentsPage() {
 								</pre>
 							</div>
 
-							{/* Channels */}
-							{selected.channels && selected.channels.length > 0 && (
-								<div>
-									<h4 className="text-xs uppercase font-bold text-base-content/50 mb-2 tracking-wider">Bound Channels</h4>
-									<div className="flex flex-wrap gap-1.5">
-										{selected.channels.map(ch => (
-											<span key={ch} className="text-xs px-2 py-1 rounded-full bg-base-200 text-base-content/60 border border-base-300 font-mono">{ch}</span>
-										))}
-									</div>
-								</div>
-							)}
-
-							{/* Extra Skills */}
-							{selected.extraSkills && selected.extraSkills.length > 0 && (
-								<div>
-									<h4 className="text-xs uppercase font-bold text-base-content/50 mb-2 tracking-wider">Extra Skills</h4>
-									<div className="flex flex-wrap gap-1.5">
-										{selected.extraSkills.map(sk => (
-											<span key={sk} className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">{sk}</span>
-										))}
-									</div>
-								</div>
-							)}
-
-							{/* Allowed Tools */}
-							{selected.allowedTools && selected.allowedTools.length > 0 && (
-								<div>
-									<h4 className="text-xs uppercase font-bold text-base-content/50 mb-2 tracking-wider">Allowed Tools</h4>
-									<div className="flex flex-wrap gap-1.5">
-										{selected.allowedTools.map(t => (
-											<span key={t} className="text-xs px-2 py-1 rounded-full bg-info/10 text-info border border-info/20">{t}</span>
-										))}
-									</div>
-								</div>
-							)}
-
-							{/* Allowed MCP Servers */}
-							{selected.allowedMcpServers && selected.allowedMcpServers.length > 0 && (
-								<div>
-									<h4 className="text-xs uppercase font-bold text-base-content/50 mb-2 tracking-wider">Allowed MCP Servers</h4>
-									<div className="flex flex-wrap gap-1.5">
-										{selected.allowedMcpServers.map(m => (
-											<span key={m} className="text-xs px-2 py-1 rounded-full bg-secondary/10 text-secondary border border-secondary/20">{m}</span>
-										))}
-									</div>
-								</div>
-							)}
-
 							{/* Persona Dir */}
 							<div>
 								<h4 className="text-xs uppercase font-bold text-base-content/50 mb-2 tracking-wider">Persona Directory</h4>
@@ -417,13 +404,13 @@ export default function AgentsPage() {
 					</div>
 				}
 			>
-				<div className="space-y-4">
+				<div className="space-y-5">
 					{/* Name */}
-					<div className="form-control">
-						<label className="label"><span className="label-text font-medium">Name *</span></label>
+					<div className="space-y-2">
+						<label className="block text-sm font-medium">Name *</label>
 						<input
 							type="text"
-							className="input input-bordered focus:input-primary transition-colors"
+							className="input input-bordered w-full focus:input-primary transition-colors"
 							placeholder="e.g. Researcher, Customer Support"
 							value={form.name}
 							onChange={e => handleNameChange(e.target.value)}
@@ -431,14 +418,14 @@ export default function AgentsPage() {
 					</div>
 
 					{/* Slug */}
-					<div className="form-control">
-						<label className="label">
-							<span className="label-text font-medium">Slug</span>
-							<span className="label-text-alt text-base-content/40">auto-derived from name</span>
-						</label>
+					<div className="space-y-2">
+						<div className="flex items-center justify-between gap-3">
+							<label className="block text-sm font-medium">Slug</label>
+							<span className="text-xs text-base-content/40">auto-derived from name</span>
+						</div>
 						<input
 							type="text"
-							className="input input-bordered input-sm font-mono focus:input-primary transition-colors"
+							className="input input-bordered input-sm w-full font-mono focus:input-primary transition-colors"
 							placeholder="my-agent"
 							value={form.slug}
 							onChange={e => setForm(prev => ({ ...prev, slug: e.target.value }))}
@@ -447,103 +434,87 @@ export default function AgentsPage() {
 					</div>
 
 					{/* Model */}
-					<div className="form-control">
-						<label className="label">
-							<span className="label-text font-medium">Model</span>
-							<span className="label-text-alt text-base-content/40">leave empty for default</span>
-						</label>
-						<input
-							type="text"
-							className="input input-bordered input-sm font-mono focus:input-primary transition-colors"
-							placeholder="e.g. openai/gpt-4o, anthropic/claude-sonnet-4-20250514"
+					<div className="space-y-2">
+						<div className="flex items-center justify-between gap-3">
+							<label className="block text-sm font-medium">Model</label>
+							<span className="text-xs text-base-content/40">leave empty for default</span>
+						</div>
+						<select
+							className="select select-bordered select-sm w-full font-mono"
 							value={form.model}
-							onChange={e => setForm(prev => ({ ...prev, model: e.target.value }))}
-						/>
+							onChange={e => {
+								const nextModel = e.target.value
+								setForm(prev => ({
+									...prev,
+									model: nextModel,
+									modelFallbacks: prev.modelFallbacks.filter(model => model !== nextModel),
+								}))
+							}}
+							disabled={loadingModels || availableModels.length === 0}
+						>
+							<option value="">(default)</option>
+							{availableModels.map(model => (
+								<option key={model} value={model}>{model}</option>
+							))}
+						</select>
+						{!loadingModels && availableModels.length === 0 && (
+							<p className="text-xs text-base-content/50">No configured models found. Add models in the Models page first.</p>
+						)}
 					</div>
 
 					{/* Model Fallbacks */}
-					<div className="form-control">
-						<label className="label">
-							<span className="label-text font-medium">Model Fallbacks</span>
-							<span className="label-text-alt text-base-content/40">comma-separated</span>
-						</label>
-						<input
-							type="text"
-							className="input input-bordered input-sm font-mono focus:input-primary transition-colors"
-							placeholder="e.g. openai/gpt-4o-mini, anthropic/claude-sonnet-4-20250514"
-							value={form.modelFallbacks}
-							onChange={e => setForm(prev => ({ ...prev, modelFallbacks: e.target.value }))}
-						/>
+					<div className="space-y-2">
+						<label className="block text-sm font-medium">Model Fallbacks</label>
+						<div className="flex gap-2">
+							<select
+								className="select select-bordered select-sm w-full font-mono"
+								value={fallbackModelToAdd}
+								onChange={e => setFallbackModelToAdd(e.target.value)}
+								disabled={loadingModels || fallbackOptions.length === 0}
+							>
+								<option value="">Select model</option>
+								{fallbackOptions.map(model => (
+									<option key={model} value={model}>{model}</option>
+								))}
+							</select>
+							<button
+								type="button"
+								className="btn btn-sm btn-ghost"
+								onClick={addFallbackModel}
+								disabled={!fallbackModelToAdd}
+							>
+								Add
+							</button>
+						</div>
+						{form.modelFallbacks.length > 0 ? (
+							<div className="flex flex-wrap gap-1.5">
+								{form.modelFallbacks.map(model => (
+									<span key={model} className="badge badge-ghost gap-1 font-mono">
+										{model}
+										<button
+											type="button"
+											onClick={() => removeFallbackModel(model)}
+											className="btn btn-ghost btn-xs btn-square"
+											title={`Remove ${model}`}
+										>
+											<X className="w-3 h-3" />
+										</button>
+									</span>
+								))}
+							</div>
+						) : (
+							<p className="text-xs text-base-content/50">No fallbacks configured.</p>
+						)}
 					</div>
 
 					{/* Instructions */}
-					<div className="form-control">
-						<label className="label"><span className="label-text font-medium">Instructions *</span></label>
+					<div className="space-y-2">
+						<label className="block text-sm font-medium">Instructions *</label>
 						<textarea
-							className="textarea textarea-bordered font-mono text-sm leading-relaxed min-h-[160px] focus:textarea-primary transition-colors resize-none"
+							className="textarea textarea-bordered w-full font-mono text-sm leading-relaxed min-h-45 focus:textarea-primary transition-colors resize-none"
 							placeholder="You are a research assistant specializing in..."
 							value={form.instructions}
 							onChange={e => setForm(prev => ({ ...prev, instructions: e.target.value }))}
-						/>
-					</div>
-
-					{/* Channels */}
-					<div className="form-control">
-						<label className="label">
-							<span className="label-text font-medium">Bound Channels</span>
-							<span className="label-text-alt text-base-content/40">comma-separated channel IDs</span>
-						</label>
-						<input
-							type="text"
-							className="input input-bordered input-sm font-mono focus:input-primary transition-colors"
-							placeholder="e.g. 123456789, 987654321"
-							value={form.channels}
-							onChange={e => setForm(prev => ({ ...prev, channels: e.target.value }))}
-						/>
-					</div>
-
-					{/* Extra Skills */}
-					<div className="form-control">
-						<label className="label">
-							<span className="label-text font-medium">Extra Skills</span>
-							<span className="label-text-alt text-base-content/40">comma-separated skill folder names</span>
-						</label>
-						<input
-							type="text"
-							className="input input-bordered input-sm font-mono focus:input-primary transition-colors"
-							placeholder="e.g. lookup-larry, code-review"
-							value={form.extraSkills}
-							onChange={e => setForm(prev => ({ ...prev, extraSkills: e.target.value }))}
-						/>
-					</div>
-
-					{/* Allowed Tools */}
-					<div className="form-control">
-						<label className="label">
-							<span className="label-text font-medium">Allowed Tools</span>
-							<span className="label-text-alt text-base-content/40">empty = all tools</span>
-						</label>
-						<input
-							type="text"
-							className="input input-bordered input-sm font-mono focus:input-primary transition-colors"
-							placeholder="e.g. browser, terminal, github"
-							value={form.allowedTools}
-							onChange={e => setForm(prev => ({ ...prev, allowedTools: e.target.value }))}
-						/>
-					</div>
-
-					{/* Allowed MCP Servers */}
-					<div className="form-control">
-						<label className="label">
-							<span className="label-text font-medium">Allowed MCP Servers</span>
-							<span className="label-text-alt text-base-content/40">empty = all servers</span>
-						</label>
-						<input
-							type="text"
-							className="input input-bordered input-sm font-mono focus:input-primary transition-colors"
-							placeholder="e.g. my-mcp-server"
-							value={form.allowedMcpServers}
-							onChange={e => setForm(prev => ({ ...prev, allowedMcpServers: e.target.value }))}
 						/>
 					</div>
 				</div>

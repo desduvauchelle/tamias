@@ -28,6 +28,9 @@
 - display version '1' next to TamiasOS in the navigation bar.
 - allow bridge `onMessage` to return a boolean to prevent AI processing and enhance Discord typing indicator reliability.
 
+### Bug Fixes
+- update version display from '3' to 'i4' in the navigation component
+
 ### Maintenance
 - bump version to 26.2.26.6 in package.json and dashboard package.json; update AGENTS.md formatting
 - bump version to 26.2.25.7 in package.json files
@@ -132,6 +135,11 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.26.17] - 2026-02-26
+
+### Bug Fixes
+- update version display from '3' to 'i4' in the navigation component
 
 ## [v26.2.26.16] - 2026-02-26
 
