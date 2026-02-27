@@ -163,3 +163,65 @@ export async function deleteTamiasSkill(folder: string) {
 		} catch (e) { console.error(`[tamias] Failed to delete skill directory '${skillDir}':`, e) }
 	}
 }
+
+// --- Agents ---
+
+const AGENTS_PATH = join(TAMIAS_DIR, 'agents.json')
+const AGENTS_PERSONAS_DIR = join(TAMIAS_DIR, 'agents')
+
+export interface AgentDefinition {
+	id: string
+	slug: string
+	name: string
+	model?: string
+	modelFallbacks?: string[]
+	instructions: string
+	enabled: boolean
+	channels?: string[]
+	extraSkills?: string[]
+	allowedTools?: string[]
+	allowedMcpServers?: string[]
+}
+
+export async function getTamiasAgents(): Promise<AgentDefinition[]> {
+	try {
+		const content = await readFile(AGENTS_PATH, 'utf8')
+		const raw = JSON.parse(content)
+		return raw.map((a: AgentDefinition) => ({
+			...a,
+			slug: a.slug || slugifyAgent(a.name),
+		}))
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+			console.error('[tamias] Failed to read agents file:', err)
+		}
+		return []
+	}
+}
+
+export async function saveTamiasAgents(agents: AgentDefinition[]) {
+	await mkdir(TAMIAS_DIR, { recursive: true })
+	await writeFile(AGENTS_PATH, JSON.stringify(agents, null, 2), 'utf8')
+}
+
+export async function scaffoldAgentDir(slug: string) {
+	const dir = join(AGENTS_PERSONAS_DIR, slug)
+	await mkdir(dir, { recursive: true })
+	// Create starter SOUL.md and IDENTITY.md if they don't exist
+	const { access, writeFile: wf } = await import('fs/promises')
+	for (const file of ['SOUL.md', 'IDENTITY.md']) {
+		const dest = join(dir, file)
+		try {
+			await access(dest)
+		} catch {
+			const content = file === 'SOUL.md'
+				? `# Soul\n\nDefine the personality and voice of the ${slug} agent here.\n`
+				: `# Identity\n\nDefine who the ${slug} agent is and what it does.\n`
+			await wf(dest, content, 'utf8')
+		}
+	}
+}
+
+function slugifyAgent(name: string): string {
+	return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}

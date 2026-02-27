@@ -1,14 +1,21 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useChat, type UIMessage } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 
-interface LogHistoryEntry {
-	timestamp: string
+interface SessionSummary {
+	id: string
+	name?: string
+	channelName?: string
+	model?: string
+	summary?: string
+	messageCount?: number
+	queueLength?: number
+}
+
+interface HistoryMatchEntry {
 	sessionId?: string
-	prompt?: string
-	response?: string
 }
 
 interface RawMessage {
@@ -36,35 +43,18 @@ interface UIMessageWithImages extends UIMessage {
 }
 
 export default function ChatPage() {
-	const [logs, setLogs] = useState('')
-	const [sessions, setSessions] = useState<{ id: string; messageCount: number }[]>([])
+	const [sessions, setSessions] = useState<SessionSummary[]>([])
 	const [selectedSession, setSelectedSession] = useState('')
 	const [history, setHistory] = useState<UIMessage[]>([])
 	const [loadingHistory, setLoadingHistory] = useState(false)
+	const [sessionSearch, setSessionSearch] = useState('')
+	const [mentionMatchedSessionIds, setMentionMatchedSessionIds] = useState<Set<string>>(new Set())
 	const [showNewSessionModal, setShowNewSessionModal] = useState(false)
 	const [newSessionName, setNewSessionName] = useState('')
 	const [newSessionModel, setNewSessionModel] = useState('')
 	const [availableModels, setAvailableModels] = useState<string[]>([])
 	const [tokenRequired, setTokenRequired] = useState(false)
 	const [tokenInput, setTokenInput] = useState('')
-
-	// Fetch logs
-	useEffect(() => {
-		const interval = setInterval(() => {
-			fetch('/api/history')
-				.then(res => res.json())
-				.then(data => {
-					if (data.logs) {
-						const logText = data.logs.slice(0, 50).map((l: LogHistoryEntry) => {
-							const time = new Date(l.timestamp).toLocaleTimeString()
-							return `[${time}] ${l.sessionId}: ${l.prompt}\n -> ${l.response}`
-						}).join('\n\n')
-						setLogs(logText)
-					}
-				})
-		}, 3000)
-		return () => clearInterval(interval)
-	}, [])
 
 	// Fetch sessions list
 	useEffect(() => {
@@ -93,6 +83,56 @@ export default function ChatPage() {
 	useEffect(() => {
 		loadSessionHistory(selectedSession)
 	}, [selectedSession])
+
+	useEffect(() => {
+		const query = sessionSearch.trim()
+		if (!query) {
+			setMentionMatchedSessionIds(new Set())
+			return
+		}
+
+		const controller = new AbortController()
+		const timeout = setTimeout(async () => {
+			try {
+				const res = await fetch(`/api/history?q=${encodeURIComponent(query)}`, { signal: controller.signal })
+				const data = await res.json()
+				const ids = new Set<string>(
+					((data.logs ?? []) as HistoryMatchEntry[])
+						.map((entry: HistoryMatchEntry) => entry.sessionId)
+						.filter((id: string | undefined): id is string => typeof id === 'string' && id.length > 0)
+				)
+				setMentionMatchedSessionIds(ids)
+			} catch (error) {
+				if (!(error instanceof DOMException && error.name === 'AbortError')) {
+					console.error('Failed to search history mentions:', error)
+					setMentionMatchedSessionIds(new Set())
+				}
+			}
+		}, 250)
+
+		return () => {
+			controller.abort()
+			clearTimeout(timeout)
+		}
+	}, [sessionSearch])
+
+	const filteredSessions = useMemo(() => {
+		const query = sessionSearch.trim().toLowerCase()
+		if (!query) return sessions
+
+		return sessions.filter((session) => {
+			const metadata = [
+				session.id,
+				session.name,
+				session.channelName,
+				session.model,
+				session.summary,
+			]
+			const metadataMatch = metadata.some(value => value?.toLowerCase().includes(query))
+			const mentionMatch = mentionMatchedSessionIds.has(session.id)
+			return metadataMatch || mentionMatch
+		})
+	}, [sessions, sessionSearch, mentionMatchedSessionIds])
 
 	const fetchSessions = async () => {
 		try {
@@ -153,6 +193,14 @@ export default function ChatPage() {
 		setNewSessionName('')
 	}
 
+	const getSessionPrimaryLabel = (session: SessionSummary) => session.name || session.channelName || session.id
+
+	const getSessionSecondaryLabel = (session: SessionSummary) => {
+		const contextBits = [session.channelName, session.model].filter(Boolean)
+		contextBits.push(session.id)
+		return contextBits.join(' • ')
+	}
+
 	if (tokenRequired) {
 		return (
 			<div className="flex flex-col items-center justify-center h-full">
@@ -209,30 +257,48 @@ export default function ChatPage() {
 								<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
 							</button>
 						</div>
+						<div className="px-3 py-2 border-b border-base-300 shrink-0 bg-base-300/10">
+							<input
+								type="text"
+								placeholder="Search sessions & mentions..."
+								className="input input-bordered input-xs w-full font-mono"
+								value={sessionSearch}
+								onChange={e => setSessionSearch(e.target.value)}
+							/>
+						</div>
 						<div className="flex-1 overflow-y-auto p-2">
 							<ul className="menu menu-sm gap-1">
 								{/* Ensure selected session is visible if not in list yet */}
-								{!sessions.find(s => s.id === selectedSession) && (
+								{selectedSession && !filteredSessions.find(s => s.id === selectedSession) && (
 									<li key={selectedSession}>
-										<button className="active flex items-center justify-between transition-all">
-											<span className="truncate max-w-30">{selectedSession}</span>
+										<button className="active flex items-center justify-between transition-all gap-2">
+											<div className="min-w-0 text-left">
+												<div className="truncate max-w-32 font-medium">{selectedSession}</div>
+												<div className="truncate max-w-32 text-[10px] opacity-60">{selectedSession}</div>
+											</div>
 											<span className="badge badge-xs bg-base-300 border-none opacity-50">0</span>
 										</button>
 									</li>
 								)}
-								{sessions.map(s => (
+								{filteredSessions.map(s => (
 									<li key={s.id}>
 										<button
-											className={`${selectedSession === s.id ? 'active' : ''} flex items-center justify-between transition-all`}
+											className={`${selectedSession === s.id ? 'active' : ''} flex items-center justify-between transition-all gap-2`}
 											onClick={() => setSelectedSession(s.id)}
 										>
-											<span className="truncate max-w-30">{s.id}</span>
-											<span className="badge badge-xs bg-base-300 border-none opacity-50">{s.messageCount}</span>
+											<div className="min-w-0 text-left">
+												<div className="truncate max-w-32 font-medium">{getSessionPrimaryLabel(s)}</div>
+												<div className="truncate max-w-32 text-[10px] opacity-60">{getSessionSecondaryLabel(s)}</div>
+											</div>
+											<span className="badge badge-xs bg-base-300 border-none opacity-50">{s.messageCount ?? s.queueLength ?? 0}</span>
 										</button>
 									</li>
 								))}
 								{sessions.length === 0 && !selectedSession && (
 									<div className="text-[10px] text-base-content/30 p-4 text-center italic">No active sessions</div>
+								)}
+								{sessions.length > 0 && filteredSessions.length === 0 && (
+									<div className="text-[10px] text-base-content/30 p-4 text-center italic">No sessions match search</div>
 								)}
 							</ul>
 						</div>
@@ -240,7 +306,7 @@ export default function ChatPage() {
 				</div>
 
 				{/* Main Content Area */}
-				<div className="flex-1 flex gap-4 min-w-0">
+				<div className="flex-1 min-w-0">
 					{!selectedSession ? (
 						<div className="flex-1 card bg-base-200 border border-base-300 border-dashed flex flex-col items-center justify-center p-12 text-center shadow-inner">
 							<div className="w-16 h-16 rounded-2xl bg-base-300 flex items-center justify-center mb-6 opacity-50">
@@ -258,30 +324,15 @@ export default function ChatPage() {
 							</button>
 						</div>
 					) : (
-						<>
-							{/* Chat Loop - Re-keyed on session switch to ensure hook reset */}
-							<div className="flex-1 min-w-0 h-full">
-								{loadingHistory ? (
-									<div className="card h-full bg-base-200 border border-base-300 flex items-center justify-center">
-										<span className="loading loading-spinner text-success" />
-									</div>
-								) : (
-									<ChatTerminal key={selectedSession} sessionId={selectedSession} initialHistory={history} />
-								)}
-							</div>
-
-							{/* Log Panel */}
-							<div className="card w-80 bg-base-200 border border-base-300 flex flex-col shrink-0 overflow-hidden shadow-xl">
-								<div className="card-body flex flex-col p-0 min-h-0">
-									<div className="px-5 py-3 border-b border-base-300 shrink-0 text-center bg-base-300/30">
-										<h2 className="card-title text-sm text-base-content/50 uppercase tracking-wider font-mono inline-block">Episodic History</h2>
-									</div>
-									<div className="flex-1 overflow-y-auto bg-base-300/50 p-4 text-[10px] text-success font-mono whitespace-pre-wrap leading-relaxed animate-in fade-in duration-500">
-										{logs || 'Waiting for agent activity...'}
-									</div>
+						<div className="flex-1 min-w-0 h-full">
+							{loadingHistory ? (
+								<div className="card h-full bg-base-200 border border-base-300 flex items-center justify-center">
+									<span className="loading loading-spinner text-success" />
 								</div>
-							</div>
-						</>
+							) : (
+								<ChatTerminal key={selectedSession} sessionId={selectedSession} initialHistory={history} />
+							)}
+						</div>
 					)}
 				</div>
 			</div>

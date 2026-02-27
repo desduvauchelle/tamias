@@ -7,6 +7,7 @@ export type BotInstanceConfig = {
 	botToken?: string
 	allowedChannels?: string[]
 	allowedChats?: string[]
+	mode?: 'full' | 'mention-only' | 'listen-only'
 }
 
 export type BridgesConfig = {
@@ -50,6 +51,7 @@ function BotCard({
 	const allowValue = isDiscord
 		? (config.allowedChannels ?? []).join('\n')
 		: (config.allowedChats ?? []).join('\n')
+	const modeValue = config.mode ?? 'full'
 
 	const handleAllowChange = (raw: string) => {
 		const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
@@ -114,6 +116,18 @@ function BotCard({
 							<p className="text-[10px] text-base-content/40 mt-1">{allowHint}</p>
 						</div>
 					</div>
+					<div className="flex items-center gap-4">
+						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-32 shrink-0">Reply Mode</span>
+						<select
+							className="select select-sm select-bordered w-full"
+							value={modeValue}
+							onChange={e => onChange({ ...config, mode: e.target.value as BotInstanceConfig['mode'] })}
+						>
+							<option value="full">Reply to all</option>
+							<option value="mention-only">Mentions only</option>
+							<option value="listen-only">Listen only</option>
+						</select>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -172,10 +186,22 @@ export default function ChannelsPage() {
 			.then(r => r.json())
 			.then(d => {
 				const b = d.bridges || DEFAULT_BRIDGES
+				const discords = Object.fromEntries(
+					Object.entries(b.discords ?? {}).map(([key, cfg]) => [
+						key,
+						{ ...(cfg as BotInstanceConfig), mode: (cfg as BotInstanceConfig).mode ?? 'full' },
+					])
+				)
+				const telegrams = Object.fromEntries(
+					Object.entries(b.telegrams ?? {}).map(([key, cfg]) => [
+						key,
+						{ ...(cfg as BotInstanceConfig), mode: (cfg as BotInstanceConfig).mode ?? 'full' },
+					])
+				)
 				setBridges({
 					terminal: b.terminal ?? { enabled: true },
-					discords: b.discords ?? {},
-					telegrams: b.telegrams ?? {},
+					discords,
+					telegrams,
 				})
 			})
 	}, [])
@@ -193,11 +219,11 @@ export default function ChannelsPage() {
 	}
 
 	const addDiscord = (key: string) => {
-		setBridges(b => ({ ...b, discords: { ...b.discords, [key]: { enabled: true, botToken: '', allowedChannels: [] } } }))
+		setBridges(b => ({ ...b, discords: { ...b.discords, [key]: { enabled: true, botToken: '', allowedChannels: [], mode: 'full' } } }))
 	}
 
 	const addTelegram = (key: string) => {
-		setBridges(b => ({ ...b, telegrams: { ...b.telegrams, [key]: { enabled: true, botToken: '', allowedChats: [] } } }))
+		setBridges(b => ({ ...b, telegrams: { ...b.telegrams, [key]: { enabled: true, botToken: '', allowedChats: [], mode: 'full' } } }))
 	}
 
 	const removeDiscord = (key: string) => {

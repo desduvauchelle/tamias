@@ -122,10 +122,120 @@ export function assembleSystemPrompt(
 
 /**
  * Calculate the max system prompt token budget based on model context window.
- * Default: 35% of context window, minimum 4000 tokens.
+ * Default: 30% of context window, minimum 4000 tokens.
  */
-export function getSystemPromptBudget(modelContextWindow: number, ratio = 0.35): number {
+export function getSystemPromptBudget(modelContextWindow: number, ratio = 0.30): number {
 	return Math.max(4000, Math.floor(modelContextWindow * ratio))
+}
+
+// ─── Message-level token utilities ────────────────────────────────────────────
+
+export interface CoreMessageLike {
+	role: string
+	content: unknown
+}
+
+export interface TrimResult {
+	/** Messages kept (newest first ordering preserved) */
+	kept: CoreMessageLike[]
+	/** Number of messages dropped */
+	dropped: number
+	/** Estimated tokens of the kept messages */
+	estimatedTokens: number
+}
+
+/**
+ * Estimate the total token count of an array of chat messages.
+ * Stringifies each message's content and sums the per-message estimates.
+ */
+export function estimateMessageTokens(messages: CoreMessageLike[]): number {
+	let total = 0
+	for (const msg of messages) {
+		const text = typeof msg.content === 'string'
+			? msg.content
+			: JSON.stringify(msg.content ?? '')
+		// Add ~4 tokens overhead per message for role/framing
+		total += estimateTokens(text) + 4
+	}
+	return total
+}
+
+/**
+ * Calculate the token budget available for chat messages.
+ *
+ * Returns the lesser of:
+ *   contextWindow × messageRatio
+ *   contextWindow − systemPromptTokens − responseReserve
+ *
+ * This ensures messages never overflow even when the system prompt is large.
+ */
+export function getMessageTokenBudget(
+	contextWindow: number,
+	systemPromptTokens: number,
+	responseReserve: number,
+	messageRatio = 0.30,
+): number {
+	const ratioBudget = Math.floor(contextWindow * messageRatio)
+	const remainderBudget = contextWindow - systemPromptTokens - responseReserve
+	return Math.max(0, Math.min(ratioBudget, remainderBudget))
+}
+
+/**
+ * Trim messages to fit within a token budget.
+ *
+ * Drops messages from the OLDEST end first, always keeping at least the
+ * last `minKeep` messages (default 2) so the model has recent context.
+ */
+export function trimMessagesToTokenBudget(
+	messages: CoreMessageLike[],
+	maxTokens: number,
+	minKeep = 2,
+): TrimResult {
+	if (messages.length === 0) {
+		return { kept: [], dropped: 0, estimatedTokens: 0 }
+	}
+
+	// Always keep at least minKeep messages regardless of budget
+	const guaranteed = Math.min(minKeep, messages.length)
+
+	// Walk from newest to oldest, accumulating tokens
+	let tokens = 0
+	let keepFrom = messages.length // will move backward
+
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const msg = messages[i]
+		const text = typeof msg.content === 'string'
+			? msg.content
+			: JSON.stringify(msg.content ?? '')
+		const msgTokens = estimateTokens(text) + 4
+
+		if (tokens + msgTokens > maxTokens && (messages.length - i) > guaranteed) {
+			break
+		}
+		tokens += msgTokens
+		keepFrom = i
+	}
+
+	// Ensure we always keep at least `guaranteed` messages
+	const maxKeepFrom = messages.length - guaranteed
+	if (keepFrom > maxKeepFrom) {
+		keepFrom = maxKeepFrom
+		// Recalculate tokens for the guaranteed set
+		tokens = 0
+		for (let i = keepFrom; i < messages.length; i++) {
+			const text = typeof messages[i].content === 'string'
+				? messages[i].content as string
+				: JSON.stringify(messages[i].content ?? '')
+			tokens += estimateTokens(text) + 4
+		}
+	}
+
+	const kept = messages.slice(keepFrom)
+	return {
+		kept,
+		dropped: keepFrom,
+		estimatedTokens: tokens,
+	}
 }
 
 /**

@@ -48,19 +48,19 @@ function makeAIService(responseText = 'sub-agent result text') {
 	const aiService = new AIService(bridgeManager)
 
 	const m = aiService as any
-	m.refreshTools = async () => {}
+	m.refreshTools = async () => { }
 	m.activeTools = {}
-	m.toolDocs = ''
+	m.toolNames = []
 
 	// Track dispatched bridge events per channelId
 	const bridgeEvents: DaemonEvent[] = []
-	;(bridgeManager as any).dispatchEvent = async (
-		_channelId: string,
-		event: DaemonEvent,
-		_ctx: any
-	) => {
-		bridgeEvents.push(event)
-	}
+		; (bridgeManager as any).dispatchEvent = async (
+			_channelId: string,
+			event: DaemonEvent,
+			_ctx: any
+		) => {
+			bridgeEvents.push(event)
+		}
 
 	// Replace processSession with a lightweight simulation that emits start→chunk→done.
 	// For parent/non-sub-agent sessions we return early so queue items stay visible to tests.
@@ -190,9 +190,9 @@ describe('attachBridgeListeners — sub-agent output suppression', () => {
 		const { aiService, bridgeManager } = makeAIService()
 
 		const capturedEvents: DaemonEvent[] = []
-		;(bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
-			capturedEvents.push(evt)
-		}
+			; (bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
+				capturedEvents.push(evt)
+			}
 
 		const session = aiService.createSession({ channelId: 'discord', channelUserId: 'u2' })
 		session.emitter.emit('event', { type: 'start', sessionId: session.id })
@@ -349,9 +349,9 @@ describe('updateSubagentProgress', () => {
 	test('updates session.progress and emits subagent-status:progress to bridge', async () => {
 		const capturedEvents: DaemonEvent[] = []
 		const { aiService, bridgeManager } = makeAIService()
-		;(bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
-			capturedEvents.push(evt)
-		}
+			; (bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
+				capturedEvents.push(evt)
+			}
 
 		const parent = aiService.createSession({ channelId: 'discord', channelUserId: 'u3' })
 		const sub = aiService.createSession({
@@ -384,9 +384,9 @@ describe('updateSubagentProgress', () => {
 	test('does nothing for terminal sub-agents (no channel to notify)', async () => {
 		const capturedEvents: DaemonEvent[] = []
 		const { aiService, bridgeManager } = makeAIService()
-		;(bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
-			capturedEvents.push(evt)
-		}
+			; (bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
+				capturedEvents.push(evt)
+			}
 
 		const parent = aiService.createSession({ channelId: 'terminal' })
 		const sub = aiService.createSession({
@@ -407,9 +407,9 @@ describe('Auto-finish: sub-agent lifecycle via simulated processSession', () => 
 	test('sub-agent completes → subagent-status:completed sent to bridge + report queued in parent', async () => {
 		const capturedBridgeEvents: DaemonEvent[] = []
 		const { aiService, bridgeManager } = makeAIService('The answer is 42')
-		;(bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
-			capturedBridgeEvents.push(evt)
-		}
+			; (bridgeManager as any).dispatchEvent = async (_: string, evt: DaemonEvent) => {
+				capturedBridgeEvents.push(evt)
+			}
 
 		const parent = aiService.createSession({ channelId: 'discord', channelUserId: 'ux' })
 		const sub = aiService.createSession({
@@ -441,7 +441,7 @@ describe('Auto-finish: sub-agent lifecycle via simulated processSession', () => 
 
 	test('sub-agent callback already called → no auto-inject into parent', async () => {
 		const { aiService, bridgeManager } = makeAIService('result')
-		;(bridgeManager as any).dispatchEvent = async () => {}
+			; (bridgeManager as any).dispatchEvent = async () => { }
 
 		const parent = aiService.createSession({ channelId: 'discord', channelUserId: 'uy' })
 		const sub = aiService.createSession({

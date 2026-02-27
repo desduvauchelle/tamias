@@ -15,6 +15,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getAllModelOptions } from '../utils/config'
 import { buildActiveTools } from '../utils/toolRegistry'
+import { estimateTokens, estimateMessageTokens, getMessageTokenBudget, trimMessagesToTokenBudget } from '../utils/tokenBudget'
 import { buildSystemPrompt, updatePersonaFiles, writePersonaFile, appendDailyLog, scaffoldFromTemplates, readAllPersonaFiles } from '../utils/memory'
 import { saveSessionToDisk, type SessionPersist, listAllStoredSessions, loadSessionFromDisk } from '../utils/sessions'
 import { db } from '../utils/db'
@@ -91,8 +92,8 @@ export class AIService {
 	private sessions = new Map<string, Session>()
 	private bridgeSessionMap = new Map<string, string>()
 	private activeTools: Record<string, unknown> = {}
+	private toolNames: string[] = []
 	private mcpClients: Array<{ close: () => Promise<void> }> = []
-	private toolDocs = ''
 	private bridgeManager: BridgeManager
 	private dashboardPort?: number
 
@@ -153,9 +154,9 @@ export class AIService {
 
 	public async refreshTools(sessionId: string) {
 		try {
-			const { tools, mcpClients, toolDocs } = await buildActiveTools(this, sessionId)
+			const { tools, mcpClients, toolNames } = await buildActiveTools(this, sessionId)
 			this.activeTools = tools
-			this.toolDocs = toolDocs
+			this.toolNames = toolNames
 			// Close old clients before replacing
 			for (const c of this.mcpClients) await c.close().catch((err) => console.error('[AIService] Failed to close MCP client:', err))
 			this.mcpClients = mcpClients
@@ -575,7 +576,7 @@ export class AIService {
 			try {
 				await this.refreshTools(session.id)
 				const model = this.buildModel(connection, modelId)
-				const toolNamesList = Object.keys(this.activeTools)
+				const toolFunctionNames = Object.keys(this.activeTools)
 
 				// Build project context for system prompt
 				let projectContext: string | undefined
@@ -596,13 +597,27 @@ export class AIService {
 					if (parts.length > 0) projectContext = parts.join('\n\n---\n\n')
 				} catch { /* projects module may not exist yet */ }
 
-				const systemPrompt = buildSystemPrompt(toolNamesList, this.toolDocs, session.summary, {
+				const systemPrompt = buildSystemPrompt(this.toolNames, session.summary, {
 					id: session.channelId,
 					userId: session.channelUserId,
 					name: session.channelName,
 					authorName: job.authorName,
 					isSubagent: session.isSubagent
-				}, session.agentDir, { projectContext })
+				}, session.agentDir, { projectContext, modelContextWindow: connection.contextWindow ?? 128000 })
+
+				// ── Token-budgeted message trimming ──────────────────────────
+				const ctxWindow = connection.contextWindow ?? 128000
+				const msgRatio = config.messageTokenRatio ?? 0.30
+				const responseReserve = config.responseTokenReserve ?? 8192
+				const systemTokens = estimateTokens(systemPrompt)
+				const messageBudget = getMessageTokenBudget(ctxWindow, systemTokens, responseReserve, msgRatio)
+				const { kept: messagesForSend, dropped } = trimMessagesToTokenBudget(
+					session.messages as any,
+					messageBudget,
+				)
+				if (dropped > 0) {
+					console.log(`[AIService] Trimmed ${dropped} oldest messages to fit ${messageBudget}-token budget (ctx=${ctxWindow}, sys=${systemTokens})`)
+				}
 
 				const startTime = Date.now()
 				const source = job.metadata?.source || 'from-chat'
@@ -614,8 +629,8 @@ export class AIService {
 				const result = streamText({
 					model,
 					system: systemPrompt,
-					messages: session.messages as any,
-					tools: toolNamesList.length > 0 ? (this.activeTools as any) : undefined,
+					messages: messagesForSend as any,
+					tools: toolFunctionNames.length > 0 ? (this.activeTools as any) : undefined,
 					stopWhen: stepCountIs(20),
 					headers,
 					onStepFinish: async ({ toolCalls, toolResults }) => {
@@ -757,8 +772,12 @@ export class AIService {
 					return
 				}
 
-				if (session.messages.length >= 20) {
-					this.compactSession(session, model).then(() => {
+				// Token-based compaction trigger: compact when message tokens exceed the budget
+				const postMsgTokens = estimateMessageTokens(session.messages as any)
+				const compactCtxWindow = connection.contextWindow ?? 128000
+				const compactMsgRatio = config.messageTokenRatio ?? 0.30
+				if (postMsgTokens > compactCtxWindow * compactMsgRatio) {
+					this.compactSession(session, model, connection, config).then(() => {
 						saveSessionToDisk(this.toPersist(session))
 					}).catch((err) => console.error(`[AIService] Session compaction failed for ${session.id}:`, err))
 				}
@@ -833,8 +852,12 @@ export class AIService {
 		}
 	}
 
-	private async compactSession(session: Session, model: any) {
-		if (session.messages.length < 20) return
+	private async compactSession(session: Session, model: any, connection?: ConnectionConfig, cfg?: any) {
+		const ctxWindow = connection?.contextWindow ?? 128000
+		const msgRatio = cfg?.messageTokenRatio ?? 0.30
+		const responseReserve = cfg?.responseTokenReserve ?? 8192
+		const msgTokens = estimateMessageTokens(session.messages as any)
+		if (msgTokens <= ctxWindow * msgRatio * 0.5) return // not worth compacting yet
 		const startTime = Date.now()
 		try {
 			const personaFiles = readAllPersonaFiles()
@@ -958,7 +981,10 @@ Return a structured object.`
 					console.error('[Compaction] Failed to write PROJECT-README.md:', err)
 				}
 			}
-			session.messages = session.messages.slice(-10)
+			// Token-based post-compaction trim: keep ~50% of message budget so there's room to grow
+			const postBudget = getMessageTokenBudget(ctxWindow, 0, responseReserve, msgRatio) * 0.5
+			const { kept } = trimMessagesToTokenBudget(session.messages as any, postBudget)
+			session.messages = kept as any
 		} catch (err) {
 			console.error('Failed to compact session:', err)
 		}

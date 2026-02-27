@@ -30,6 +30,13 @@ interface RollingUsageData {
 	updatedAt: string
 }
 
+function localDateKey(date: Date): string {
+	const y = date.getFullYear()
+	const m = String(date.getMonth() + 1).padStart(2, '0')
+	const d = String(date.getDate()).padStart(2, '0')
+	return `${y}-${m}-${d}`
+}
+
 function emptyResponse() {
 	return {
 		today: 0, yesterday: 0, thisWeek: 0, thisMonth: 0, total: 0,
@@ -57,14 +64,14 @@ function buildUsageSummaryFromFile(): ReturnType<typeof emptyResponse> {
 
 	const now = new Date()
 	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-	const todayStr = startOfToday.toISOString().split('T')[0]
-	const yesterdayStr = new Date(startOfToday.getTime() - 86400000).toISOString().split('T')[0]
+	const todayStr = localDateKey(startOfToday)
+	const yesterdayStr = localDateKey(new Date(startOfToday.getTime() - 86400000))
 
 	const dayOfWeek = now.getDay()
 	const diffToMonday = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)
 	const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diffToMonday)
-	const weekStr = startOfWeek.toISOString().split('T')[0]
-	const monthStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+	const weekStr = localDateKey(startOfWeek)
+	const monthStr = localDateKey(new Date(now.getFullYear(), now.getMonth(), 1))
 
 	let today = 0, yesterday = 0, thisWeek = 0, thisMonth = 0, total = 0
 	let totalPromptTokens = 0, totalCompletionTokens = 0, totalRequests = 0
@@ -75,7 +82,7 @@ function buildUsageSummaryFromFile(): ReturnType<typeof emptyResponse> {
 
 	const dailyMap: Record<string, number> = {}
 	for (let i = 0; i < 14; i++) {
-		dailyMap[new Date(startOfToday.getTime() - i * 86400000).toISOString().split('T')[0]] = 0
+		dailyMap[localDateKey(new Date(startOfToday.getTime() - i * 86400000))] = 0
 	}
 
 	for (const [dateKey, day] of Object.entries(data.days)) {

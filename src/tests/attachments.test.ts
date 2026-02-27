@@ -45,7 +45,7 @@ function makeAIService(responseText = 'OK') {
 	const m = aiService as any
 	m.refreshTools = async () => { }
 	m.activeTools = {}
-	m.toolDocs = ''
+	m.toolNames = []
 
 	m.buildModel = () => ({
 		// streamText picks up messages from session and calls onStepFinish, then yields textStream

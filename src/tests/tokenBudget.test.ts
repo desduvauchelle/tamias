@@ -20,8 +20,8 @@ describe('Token Budget', () => {
 	})
 
 	describe('getSystemPromptBudget', () => {
-		test('returns 35% of context window by default', () => {
-			expect(getSystemPromptBudget(100000)).toBe(35000)
+		test('returns 30% of context window by default', () => {
+			expect(getSystemPromptBudget(100000)).toBe(30000)
 		})
 
 		test('enforces minimum of 4000', () => {

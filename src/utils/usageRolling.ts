@@ -33,6 +33,13 @@ export interface RollingUsageData {
 	updatedAt: string
 }
 
+function localDateKey(date: Date): string {
+	const y = date.getFullYear()
+	const m = String(date.getMonth() + 1).padStart(2, '0')
+	const d = String(date.getDate()).padStart(2, '0')
+	return `${y}-${m}-${d}`
+}
+
 function emptyDay(): DayStats {
 	return {
 		models: {},
@@ -72,7 +79,7 @@ export function loadRollingUsage(): RollingUsageData {
 function pruneDays(data: RollingUsageData): void {
 	const cutoff = new Date()
 	cutoff.setDate(cutoff.getDate() - 30)
-	const cutoffStr = cutoff.toISOString().split('T')[0]
+	const cutoffStr = localDateKey(cutoff)
 
 	for (const dateKey of Object.keys(data.days)) {
 		if (dateKey < cutoffStr) {
@@ -109,7 +116,7 @@ export interface UsageRecord {
 export function recordUsage(record: UsageRecord): void {
 	try {
 		const data = loadRollingUsage()
-		const dateKey = new Date().toISOString().split('T')[0]
+		const dateKey = localDateKey(new Date())
 
 		if (!data.days[dateKey]) {
 			data.days[dateKey] = emptyDay()
@@ -189,17 +196,17 @@ export function buildUsageSummary(): {
 
 	const now = new Date()
 	const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-	const todayStr = startOfToday.toISOString().split('T')[0]
-	const yesterdayStr = new Date(startOfToday.getTime() - 86400000).toISOString().split('T')[0]
+	const todayStr = localDateKey(startOfToday)
+	const yesterdayStr = localDateKey(new Date(startOfToday.getTime() - 86400000))
 
 	// Start of week (Monday)
 	const dayOfWeek = now.getDay()
 	const diffToMonday = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)
 	const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diffToMonday)
-	const weekStr = startOfWeek.toISOString().split('T')[0]
+	const weekStr = localDateKey(startOfWeek)
 
 	const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-	const monthStr = startOfMonth.toISOString().split('T')[0]
+	const monthStr = localDateKey(startOfMonth)
 
 	let today = 0, yesterday = 0, thisWeek = 0, thisMonth = 0, total = 0
 	let totalPromptTokens = 0, totalCompletionTokens = 0, totalRequests = 0
@@ -213,7 +220,7 @@ export function buildUsageSummary(): {
 	const dailyMap: Record<string, number> = {}
 	for (let i = 0; i < 14; i++) {
 		const d = new Date(startOfToday.getTime() - (i * 86400000))
-		dailyMap[d.toISOString().split('T')[0]] = 0
+		dailyMap[localDateKey(d)] = 0
 	}
 
 	for (const [dateKey, day] of Object.entries(data.days)) {

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- implement progress update feature in DiscordBridge and enhance project context handling
 - Enhance CLI documentation and add usage tracking
 - ensure workspace directory exists before tests and streamline imports in sandbox tests
 - implement Modal component and integrate it into various pages for improved UI
@@ -130,6 +131,12 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.26.15] - 2026-02-26
+
+### Features
+- implement progress update feature in DiscordBridge and enhance project context handling
+- Enhance CLI documentation and add usage tracking
 
 ## [v26.2.26.11] - 2026-02-26
 

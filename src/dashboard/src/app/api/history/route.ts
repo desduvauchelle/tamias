@@ -25,10 +25,45 @@ interface DaemonLogEntry {
 	fullHistory?: unknown[]
 }
 
+interface DashboardLogEntry {
+	id: string
+	timestamp: string
+	sessionId?: string
+	model: string
+	provider: string
+	action: string
+	durationMs: number
+	tokens: {
+		prompt: number
+		completion: number
+		total: number
+	}
+	prompt?: string
+	response?: string
+	estimatedCostUsd: number
+	fullHistory: unknown[]
+}
+
 const DAEMON_FILE = join(homedir(), '.tamias', 'daemon.json')
 
-export async function GET() {
+function normalizeText(value: unknown): string {
+	if (typeof value === 'string') return value
+	if (value == null) return ''
 	try {
+		return JSON.stringify(value)
+	} catch {
+		return String(value)
+	}
+}
+
+export async function GET(request: Request) {
+	try {
+		const { searchParams } = new URL(request.url)
+		const query = searchParams.get('q')?.trim().toLowerCase() ?? ''
+		const limitParam = searchParams.get('limit')
+		const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : undefined
+		const limit = parsedLimit && Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined
+
 		// Get daemon port
 		const str = await readFile(DAEMON_FILE, 'utf-8')
 		const info = JSON.parse(str)
@@ -39,7 +74,8 @@ export async function GET() {
 
 		const data = await res.json()
 		// Forward daemon logs directly, mapping field names to dashboard format
-		const logs = (data.logs || []).map((l: DaemonLogEntry) => ({
+		const daemonLogs = (data.logs || []) as DaemonLogEntry[]
+		const mappedLogs: DashboardLogEntry[] = daemonLogs.map((l: DaemonLogEntry) => ({
 			id: l.id,
 			timestamp: l.timestamp,
 			sessionId: l.initiator ?? l.sessionId,
@@ -57,6 +93,20 @@ export async function GET() {
 			estimatedCostUsd: l.estimatedCostUsd ?? 0,
 			fullHistory: l.fullHistory ?? []
 		}))
+
+		const filteredLogs = query
+			? mappedLogs.filter((log: DashboardLogEntry) => {
+				const haystack = [
+					log.sessionId,
+					log.model,
+					normalizeText(log.prompt),
+					normalizeText(log.response),
+				].join(' ').toLowerCase()
+				return haystack.includes(query)
+			})
+			: mappedLogs
+
+		const logs = typeof limit === 'number' ? filteredLogs.slice(0, limit) : filteredLogs
 
 		return NextResponse.json({ logs })
 	} catch (error) {

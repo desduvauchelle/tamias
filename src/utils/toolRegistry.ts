@@ -68,13 +68,11 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 	tools: ToolSet
 	mcpClients: Array<{ close: () => Promise<void> }>
 	toolNames: string[]
-	toolDocs: string
 }> {
 	const config = loadConfig()
 	const mergedTools: ToolSet = {}
 	const mcpClients: Array<{ close: () => Promise<void> }> = []
 	const toolNames: string[] = []
-	let toolDocs = ''
 
 	// ── Internal tools ────────────────────────────────────────────────────────
 	const internalCatalog: Record<string, ToolSet> = {
@@ -99,15 +97,12 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 
 		const guarded = applyFunctionConfig(allFunctions, toolCfg.functions)
 		if (Object.keys(guarded).length > 0) {
-			toolDocs += `## ${toolName}\n`
 			for (const [fnName, fn] of Object.entries(guarded)) {
 				const fullName = `${toolName}__${fnName}`
 				mergedTools[fullName] = fn
-				toolDocs += `- \`${fullName}\`: ${fn.description || 'No description available.'}\n`
 			}
-			toolDocs += '\n'
+			toolNames.push(`internal:${toolName}`)
 		}
-		toolNames.push(`internal:${toolName}`)
 	}
 
 	// ── External MCPs ─────────────────────────────────────────────────────────
@@ -117,22 +112,19 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 			const { client, tools: mcpTools } = await connectMcpServer(name, mcpCfg)
 			const guarded = applyFunctionConfig(mcpTools, mcpCfg.functions)
 			if (Object.keys(guarded).length > 0) {
-				toolDocs += `## MCP: ${name}\n`
 				for (const [fnName, fn] of Object.entries(guarded)) {
 					const fullName = `${name}__${fnName}`
 					mergedTools[fullName] = fn
-					toolDocs += `- \`${fullName}\`: ${fn.description || 'No description available.'}\n`
 				}
-				toolDocs += '\n'
+				toolNames.push(`mcp:${name}`)
 			}
 			mcpClients.push(client)
-			toolNames.push(`mcp:${name}`)
 		} catch (err) {
 			console.error(`⚠️  Failed to connect to MCP server '${name}': ${err}`)
 		}
 	}
 
-	return { tools: mergedTools, mcpClients, toolNames, toolDocs: toolDocs.trim() }
+	return { tools: mergedTools, mcpClients, toolNames }
 }
 
 async function connectMcpServer(name: string, cfg: McpServerConfig) {

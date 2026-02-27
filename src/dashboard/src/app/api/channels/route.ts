@@ -57,12 +57,14 @@ export async function POST(request: Request) {
 			if (!config.bridges.discords) config.bridges.discords = {}
 			for (const [key, instanceData] of Object.entries(bridges.discords as Record<string, any>)) {
 				const { botToken, ...rest } = instanceData
+				const existing = config.bridges.discords[key] ?? {}
+				rest.mode = rest.mode ?? existing.mode ?? 'full'
 				if (botToken && botToken !== '[REDACTED]') {
 					const envKey = `TAMIAS_DISCORD_BOT_TOKEN_${key.toUpperCase()}`
 					await setTamiasEnvVar(envKey, botToken)
 					rest.envKeyName = envKey
-				} else if (config.bridges.discords[key]?.envKeyName) {
-					rest.envKeyName = config.bridges.discords[key].envKeyName
+				} else if (existing.envKeyName) {
+					rest.envKeyName = existing.envKeyName
 				}
 				config.bridges.discords[key] = rest
 			}
@@ -79,12 +81,14 @@ export async function POST(request: Request) {
 			if (!config.bridges.telegrams) config.bridges.telegrams = {}
 			for (const [key, instanceData] of Object.entries(bridges.telegrams as Record<string, any>)) {
 				const { botToken, ...rest } = instanceData
+				const existing = config.bridges.telegrams[key] ?? {}
+				rest.mode = rest.mode ?? existing.mode ?? 'full'
 				if (botToken && botToken !== '[REDACTED]') {
 					const envKey = `TAMIAS_TELEGRAM_BOT_TOKEN_${key.toUpperCase()}`
 					await setTamiasEnvVar(envKey, botToken)
 					rest.envKeyName = envKey
-				} else if (config.bridges.telegrams[key]?.envKeyName) {
-					rest.envKeyName = config.bridges.telegrams[key].envKeyName
+				} else if (existing.envKeyName) {
+					rest.envKeyName = existing.envKeyName
 				}
 				config.bridges.telegrams[key] = rest
 			}

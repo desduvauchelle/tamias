@@ -30,6 +30,8 @@ export const ConnectionConfigSchema = z.object({
 	baseUrl: z.string().url().optional().or(z.literal('')),
 	// User-selected models for this connection
 	selectedModels: z.array(z.string()).optional(),
+	/** Override context window size (tokens) for this connection's models */
+	contextWindow: z.number().int().positive().optional(),
 	createdAt: z.string().datetime().optional(),
 })
 
@@ -168,8 +170,12 @@ export const TamiasConfigSchema = z.object({
 		/** Command timeout in seconds */
 		timeout: z.number().default(30),
 	}).default({ engine: 'none', image: 'ubuntu:22.04', memoryLimit: '512m', cpuLimit: '1.0', networkEnabled: false, timeout: 30 }).optional(),
-	/** Ratio of model context window to reserve for the system prompt (0.1 – 0.6, default 0.35) */
-	systemPromptRatio: z.number().min(0.1).max(0.6).default(0.35).optional(),
+	/** Ratio of model context window to reserve for the system prompt (0.1 – 0.6, default 0.30) */
+	systemPromptRatio: z.number().min(0.1).max(0.6).default(0.30).optional(),
+	/** Ratio of model context window to reserve for chat messages (0.1 – 0.6, default 0.30) */
+	messageTokenRatio: z.number().min(0.1).max(0.6).default(0.30).optional(),
+	/** Tokens reserved for the model's response (default 8192) */
+	responseTokenReserve: z.number().int().positive().default(8192).optional(),
 })
 
 export type TamiasConfig = z.infer<typeof TamiasConfigSchema>

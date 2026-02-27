@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { Modal } from '../_components/Modal'
 
 export type ToolFunctionConfig = {
 	enabled: boolean
@@ -10,6 +11,39 @@ export type ToolFunctionConfig = {
 export type InternalToolConfig = {
 	enabled: boolean
 	functions?: Record<string, ToolFunctionConfig>
+}
+
+function FunctionRulesSection({
+	config,
+	availableFunctions,
+	onFunctionChange,
+}: {
+	config: InternalToolConfig
+	availableFunctions: string[]
+	onFunctionChange: (fnName: string, fnConfig: ToolFunctionConfig) => void
+}) {
+	const allFunctions = Array.from(new Set([...availableFunctions, ...Object.keys(config.functions || {})])).sort()
+
+	if (allFunctions.length === 0) return null
+
+	return (
+		<div className="space-y-3">
+			<div className="flex items-center justify-between">
+				<label className="text-[10px] uppercase font-bold text-base-content/40">Function Rules</label>
+				<span className="badge badge-outline badge-xs font-mono">{allFunctions.length} rules</span>
+			</div>
+			<div className="grid grid-cols-1 gap-2">
+				{allFunctions.map((fn) => (
+					<ToolFunctionRow
+						key={fn}
+						name={fn}
+						config={config.functions?.[fn] || { enabled: true }}
+						onChange={(u) => onFunctionChange(fn, u)}
+					/>
+				))}
+			</div>
+		</div>
+	)
 }
 
 export type EmailAccountConfig = {
@@ -86,6 +120,8 @@ function EmailAccountCard({
 	onChange: (c: EmailAccountConfig) => void
 	onRemove: () => void
 }) {
+	const [isModalOpen, setIsModalOpen] = useState(false)
+
 	return (
 		<div className={`card bg-base-200 border ${config.enabled ? 'border-info/40' : 'border-base-300 opacity-60 hover:opacity-100'} transition-all`}>
 			<div className="card-body p-4 space-y-3">
@@ -93,27 +129,10 @@ function EmailAccountCard({
 					<span className="text-3xl w-10 text-center shrink-0">📧</span>
 					<div className="flex-1">
 						<div className="flex items-center gap-2">
-							<div className="flex flex-col flex-1">
-								<span className="text-[8px] uppercase font-bold text-base-content/40 ml-0.5">Display Name</span>
-								<input
-									type="text"
-									className="input input-xs input-ghost font-mono font-bold text-sm text-info p-0 h-auto w-full"
-									value={config.nickname}
-									onChange={e => onChange({ ...config, nickname: e.target.value })}
-								/>
-							</div>
+							<div className="font-mono font-bold text-sm text-info truncate">{config.nickname}</div>
 							{config.isDefault && <span className="badge badge-info badge-xs uppercase font-bold text-[8px]">Default</span>}
 						</div>
-						<div className="flex flex-col w-full">
-							<span className="text-[8px] uppercase font-bold text-base-content/40 ml-0.5">Himalaya Account ID</span>
-							<input
-								type="text"
-								placeholder="e.g. personal"
-								className="input input-xs input-ghost text-[10px] text-base-content/60 lowercase p-0 h-auto w-full"
-								value={config.accountName}
-								onChange={e => onChange({ ...config, accountName: e.target.value })}
-							/>
-						</div>
+						<div className="text-[10px] text-base-content/60 lowercase">{config.accountName || 'no account id'}</div>
 					</div>
 					<div className="flex flex-col items-end gap-2">
 						<input
@@ -125,58 +144,93 @@ function EmailAccountCard({
 						<button onClick={onRemove} className="btn btn-xs btn-ghost text-error opacity-20 hover:opacity-100">✕</button>
 					</div>
 				</div>
-
-				{config.enabled && (
-					<div className="space-y-3 pt-2 border-t border-base-content/5">
-						<div className="flex items-center justify-between">
-							<span className="text-[10px] uppercase font-bold text-base-content/40">Default Account</span>
-							<input
-								type="checkbox"
-								className="checkbox checkbox-xs checkbox-info"
-								checked={config.isDefault}
-								onChange={e => onChange({ ...config, isDefault: e.target.checked })}
-							/>
-						</div>
-						<div className="flex items-center justify-between">
-							<span className="text-[10px] uppercase font-bold text-base-content/40">Authorize anyone to receive emails</span>
-							<input
-								type="checkbox"
-								className="checkbox checkbox-xs checkbox-info"
-								checked={config.permissions.canSend}
-								onChange={e => onChange({ ...config, permissions: { ...config.permissions, canSend: e.target.checked } })}
-							/>
-						</div>
-						{!config.permissions.canSend && (
-							<div className="space-y-1">
-								<div className="flex justify-between items-center ml-1">
-									<label className="text-[10px] uppercase font-bold text-base-content/40">Destination Whitelist</label>
-									<span className="text-[8px] text-base-content/30 italic">Comma separated emails only</span>
-								</div>
-								<textarea
-									placeholder="Limit to: boss@company.com, assistant@company.com"
-									className="textarea textarea-xs textarea-bordered w-full font-mono text-[10px] min-h-[60px]"
-									value={config.permissions.whitelist.join(', ')}
-									onChange={e => {
-										const val = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-										onChange({ ...config, permissions: { ...config.permissions, whitelist: val } })
-									}}
-								/>
-							</div>
-						)}
-					</div>
-				)}
+				<div className="text-[10px] text-base-content/50 flex items-center justify-between pt-1 border-t border-base-content/5">
+					<span>{config.permissions.canSend ? 'Open send permissions' : `${config.permissions.whitelist.length} whitelisted recipients`}</span>
+					<button onClick={() => setIsModalOpen(true)} className="btn btn-xs btn-ghost">Edit Details</button>
+				</div>
 			</div>
+
+			<Modal
+				isOpen={isModalOpen}
+				onClose={() => setIsModalOpen(false)}
+				title={<h3 className="text-lg font-semibold">Email Account Settings</h3>}
+				className="w-11/12 max-w-3xl"
+			>
+				<div className="space-y-4">
+					<div className="form-control">
+						<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Display Name</span></label>
+						<input
+							type="text"
+							className="input input-sm input-bordered font-mono"
+							value={config.nickname}
+							onChange={e => onChange({ ...config, nickname: e.target.value })}
+						/>
+					</div>
+					<div className="form-control">
+						<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Himalaya Account ID</span></label>
+						<input
+							type="text"
+							placeholder="e.g. personal"
+							className="input input-sm input-bordered font-mono"
+							value={config.accountName}
+							onChange={e => onChange({ ...config, accountName: e.target.value })}
+						/>
+					</div>
+					<div className="flex items-center justify-between">
+						<span className="text-xs uppercase font-bold text-base-content/50">Default Account</span>
+						<input
+							type="checkbox"
+							className="checkbox checkbox-sm checkbox-info"
+							checked={config.isDefault}
+							onChange={e => onChange({ ...config, isDefault: e.target.checked })}
+						/>
+					</div>
+					<div className="flex items-center justify-between">
+						<span className="text-xs uppercase font-bold text-base-content/50">Authorize anyone to receive emails</span>
+						<input
+							type="checkbox"
+							className="checkbox checkbox-sm checkbox-info"
+							checked={config.permissions.canSend}
+							onChange={e => onChange({ ...config, permissions: { ...config.permissions, canSend: e.target.checked } })}
+						/>
+					</div>
+					{!config.permissions.canSend && (
+						<div className="form-control">
+							<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Destination Whitelist</span></label>
+							<textarea
+								placeholder="Limit to: boss@company.com, assistant@company.com"
+								className="textarea textarea-bordered w-full font-mono text-xs min-h-15"
+								value={config.permissions.whitelist.join(', ')}
+								onChange={e => {
+									const val = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+									onChange({ ...config, permissions: { ...config.permissions, whitelist: val } })
+								}}
+							/>
+							<p className="text-[10px] text-base-content/40 mt-1">Comma-separated email addresses</p>
+						</div>
+					)}
+				</div>
+			</Modal>
 		</div>
 	)
 }
 
 function GeminiToolCard({
 	config,
+	availableFunctions,
 	onChange
 }: {
 	config: InternalToolConfig
+	availableFunctions: string[]
 	onChange: (c: InternalToolConfig) => void
 }) {
+	const [isModalOpen, setIsModalOpen] = useState(false)
+
+	const toggleFunction = (fnName: string, fnConfig: ToolFunctionConfig) => {
+		const updatedFns = { ...(config.functions || {}), [fnName]: fnConfig }
+		onChange({ ...config, functions: updatedFns })
+	}
+
 	return (
 		<div className={`card bg-base-200 border ${config.enabled ? 'border-primary/40' : 'border-base-300 opacity-60 hover:opacity-100'} transition-all`}>
 			<div className="card-body p-4 space-y-3">
@@ -193,21 +247,173 @@ function GeminiToolCard({
 						onChange={e => onChange({ ...config, enabled: e.target.checked })}
 					/>
 				</div>
+				<div className="text-[10px] text-base-content/50 flex items-center justify-between pt-1 border-t border-base-content/5">
+					<span>{availableFunctions.length} functions available</span>
+					<button
+						onClick={() => setIsModalOpen(true)}
+						className="btn btn-xs btn-ghost"
+						disabled={!config.enabled}
+					>
+						Edit Details
+					</button>
+				</div>
+			</div>
 
-				{config.enabled && (
-					<div className="space-y-3 pt-2 border-t border-base-content/5">
-						<div className="p-3 bg-base-300/50 rounded-lg space-y-2">
-							<p className="text-[10px] font-bold uppercase text-base-content/40">Setup Required</p>
-							<div className="flex flex-col gap-2">
-								<a href="https://github.com/google-gemini/gemini-cli" target="_blank" className="btn btn-xs btn-outline btn-primary">Install Gemini CLI</a>
-								<div className="text-[10px] leading-relaxed opacity-70">
-									Once installed, run <code className="bg-base-content/10 px-1 rounded">gemini auth login</code> in your terminal to authenticate.
-								</div>
+			<Modal
+				isOpen={isModalOpen}
+				onClose={() => setIsModalOpen(false)}
+				title={<h3 className="text-lg font-semibold">Gemini Tool Settings</h3>}
+				className="w-11/12 max-w-3xl"
+			>
+				<div className="space-y-4">
+					<div className="p-3 bg-base-300/50 rounded-lg space-y-2">
+						<p className="text-[10px] font-bold uppercase text-base-content/40">Setup Required</p>
+						<div className="flex flex-col gap-2">
+							<a href="https://github.com/google-gemini/gemini-cli" target="_blank" className="btn btn-xs btn-outline btn-primary">Install Gemini CLI</a>
+							<div className="text-[10px] leading-relaxed opacity-70">
+								Once installed, run <code className="bg-base-content/10 px-1 rounded">gemini auth login</code> in your terminal to authenticate.
 							</div>
 						</div>
 					</div>
-				)}
+					<FunctionRulesSection
+						config={config}
+						availableFunctions={availableFunctions}
+						onFunctionChange={toggleFunction}
+					/>
+				</div>
+			</Modal>
+		</div>
+	)
+}
+
+function ImageToolCard({
+	config,
+	availableFunctions,
+	defaultImageModels,
+	onChange,
+	onModelsChange,
+}: {
+	config: InternalToolConfig
+	availableFunctions: string[]
+	defaultImageModels: string[]
+	onChange: (c: InternalToolConfig) => void
+	onModelsChange: (models: string[]) => void
+}) {
+	const [newModel, setNewModel] = useState('')
+	const [isModalOpen, setIsModalOpen] = useState(false)
+
+	const toggleFunction = (fnName: string, fnConfig: ToolFunctionConfig) => {
+		const updatedFns = { ...(config.functions || {}), [fnName]: fnConfig }
+		onChange({ ...config, functions: updatedFns })
+	}
+
+	const addModel = () => {
+		const model = newModel.trim()
+		if (!model || defaultImageModels.includes(model)) return
+		onModelsChange([...defaultImageModels, model])
+		setNewModel('')
+	}
+
+	const removeModel = (index: number) => {
+		onModelsChange(defaultImageModels.filter((_, idx) => idx !== index))
+	}
+
+	const moveModel = (index: number, direction: -1 | 1) => {
+		const next = [...defaultImageModels]
+		const target = index + direction
+		if (target < 0 || target >= next.length) return
+		const [item] = next.splice(index, 1)
+		next.splice(target, 0, item)
+		onModelsChange(next)
+	}
+
+	return (
+		<div className={`card bg-base-200 border ${config.enabled ? 'border-primary/40' : 'border-base-300 opacity-60 hover:opacity-100'} transition-all`}>
+			<div className="card-body p-4 space-y-3">
+				<div className="flex items-center gap-4">
+					<span className="text-3xl w-10 text-center shrink-0">🖼️</span>
+					<div className="flex-1">
+						<div className="font-mono font-bold text-sm text-primary uppercase">Image Generation</div>
+						<div className="text-[10px] text-base-content/50">Generate AI images</div>
+					</div>
+					<input
+						type="checkbox"
+						className="toggle toggle-primary toggle-sm shrink-0"
+						checked={config.enabled}
+						onChange={e => onChange({ ...config, enabled: e.target.checked })}
+					/>
+				</div>
+				<div className="text-[10px] text-base-content/50 flex items-center justify-between pt-1 border-t border-base-content/5">
+					<span>{defaultImageModels.length} preferred models</span>
+					<button
+						onClick={() => setIsModalOpen(true)}
+						className="btn btn-xs btn-ghost"
+						disabled={!config.enabled}
+					>
+						Edit Details
+					</button>
+				</div>
 			</div>
+
+			<Modal
+				isOpen={isModalOpen}
+				onClose={() => setIsModalOpen(false)}
+				title={<h3 className="text-lg font-semibold">Image Tool Settings</h3>}
+				className="w-11/12 max-w-3xl"
+			>
+				<div className="space-y-4">
+					<div className="space-y-2">
+						<label className="text-[10px] uppercase font-bold text-base-content/40 ml-1">Default Image Models (priority order)</label>
+						<div className="space-y-1.5">
+							{defaultImageModels.map((model, index) => (
+								<div key={`${model}-${index}`} className="flex items-center gap-1.5 p-2 bg-base-300/30 rounded-lg border border-base-content/5">
+									<span className="text-[10px] font-mono text-base-content/60 w-5 text-center">{index + 1}</span>
+									<span className="font-mono text-xs flex-1 truncate">{model}</span>
+									<button
+										onClick={() => moveModel(index, -1)}
+										className="btn btn-xs btn-ghost btn-square"
+										disabled={index === 0}
+										title="Move up"
+									>
+										↑
+									</button>
+									<button
+										onClick={() => moveModel(index, 1)}
+										className="btn btn-xs btn-ghost btn-square"
+										disabled={index === defaultImageModels.length - 1}
+										title="Move down"
+									>
+										↓
+									</button>
+									<button
+										onClick={() => removeModel(index)}
+										className="btn btn-xs btn-ghost btn-square text-error"
+										title="Remove"
+									>
+										✕
+									</button>
+								</div>
+							))}
+						</div>
+						<div className="flex gap-1.5 mt-2">
+							<input
+								type="text"
+								placeholder="provider/model-id"
+								className="input input-xs input-bordered flex-1 font-mono text-[10px]"
+								value={newModel}
+								onChange={e => setNewModel(e.target.value)}
+								onKeyDown={e => e.key === 'Enter' && addModel()}
+							/>
+							<button onClick={addModel} className="btn btn-xs btn-outline">Add</button>
+						</div>
+					</div>
+					<FunctionRulesSection
+						config={config}
+						availableFunctions={availableFunctions}
+						onFunctionChange={toggleFunction}
+					/>
+				</div>
+			</Modal>
 		</div>
 	)
 }
@@ -216,25 +422,20 @@ function InternalToolCard({
 	id,
 	label,
 	config,
+	availableFunctions,
 	onChange
 }: {
 	id: string
 	label: string
 	config: InternalToolConfig
+	availableFunctions: string[]
 	onChange: (c: InternalToolConfig) => void
 }) {
-	const [expanded, setExpanded] = useState(false)
-	const [newFnName, setNewFnName] = useState('')
+	const [isModalOpen, setIsModalOpen] = useState(false)
 
 	const toggleFunction = (fnName: string, fnConfig: ToolFunctionConfig) => {
 		const updatedFns = { ...(config.functions || {}), [fnName]: fnConfig }
 		onChange({ ...config, functions: updatedFns })
-	}
-
-	const addFunction = () => {
-		if (!newFnName) return
-		toggleFunction(newFnName, { enabled: true })
-		setNewFnName('')
 	}
 
 	return (
@@ -253,46 +454,30 @@ function InternalToolCard({
 						onChange={e => onChange({ ...config, enabled: e.target.checked })}
 					/>
 				</div>
-
-				{config.enabled && (
-					<div className="space-y-3 pt-2">
-						<button
-							onClick={() => setExpanded(!expanded)}
-							className="btn btn-xs btn-ghost w-full justify-between opacity-50 hover:opacity-100"
-						>
-							<span>{expanded ? '▲ Hide' : '▼ Show'} Functions</span>
-							<span className="badge badge-outline badge-xs font-mono">{Object.keys(config.functions || {}).length} rules</span>
-						</button>
-
-						{expanded && (
-							<div className="space-y-3 border-t border-base-content/10 pt-3">
-								<div className="grid grid-cols-1 gap-2">
-									{Object.entries(config.functions || {}).map(([fn, fnCfg]) => (
-										<ToolFunctionRow
-											key={fn}
-											name={fn}
-											config={fnCfg}
-											onChange={(u) => toggleFunction(fn, u)}
-										/>
-									))}
-								</div>
-
-								<div className="flex gap-1 mt-2">
-									<input
-										type="text"
-										placeholder="New function name..."
-										className="input input-xs input-bordered flex-1 font-mono text-[10px]"
-										value={newFnName}
-										onChange={e => setNewFnName(e.target.value)}
-										onKeyDown={e => e.key === 'Enter' && addFunction()}
-									/>
-									<button onClick={addFunction} className="btn btn-xs btn-outline btn-square">+</button>
-								</div>
-							</div>
-						)}
-					</div>
-				)}
+				<div className="text-[10px] text-base-content/50 flex items-center justify-between pt-1 border-t border-base-content/5">
+					<span>{availableFunctions.length} functions available</span>
+					<button
+						onClick={() => setIsModalOpen(true)}
+						className="btn btn-xs btn-ghost"
+						disabled={!config.enabled}
+					>
+						Edit Details
+					</button>
+				</div>
 			</div>
+
+			<Modal
+				isOpen={isModalOpen}
+				onClose={() => setIsModalOpen(false)}
+				title={<h3 className="text-lg font-semibold">{id} Tool Settings</h3>}
+				className="w-11/12 max-w-3xl"
+			>
+				<FunctionRulesSection
+					config={config}
+					availableFunctions={availableFunctions}
+					onFunctionChange={toggleFunction}
+				/>
+			</Modal>
 		</div>
 	)
 }
@@ -308,6 +493,8 @@ function McpServerCard({
 	onChange: (c: McpServerConfig) => void
 	onRemove: () => void
 }) {
+	const [isModalOpen, setIsModalOpen] = useState(false)
+
 	return (
 		<div className={`card bg-base-200 border ${config.enabled ? 'border-success/40' : 'border-base-300 opacity-60 hover:opacity-100'} transition-all group relative`}>
 			<button
@@ -325,13 +512,7 @@ function McpServerCard({
 						</div>
 						<div className="flex items-center gap-2">
 							<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 shrink-0">Label</span>
-							<input
-								type="text"
-								placeholder="e.g. Memory Server"
-								className="input input-xs input-ghost w-full font-mono text-base-content/80 text-sm p-0 h-auto"
-								value={config.label || ''}
-								onChange={e => onChange({ ...config, label: e.target.value })}
-							/>
+							<div className="font-mono text-sm text-base-content/70 truncate">{config.label || 'No label'}</div>
 						</div>
 					</div>
 					<input
@@ -343,11 +524,32 @@ function McpServerCard({
 					/>
 				</div>
 
-				<div className="divider m-0 opacity-20">Configuration</div>
+				<div className="text-[10px] text-base-content/50 flex items-center justify-between pt-1 border-t border-base-content/5">
+					<span>{config.transport === 'stdio' ? 'Local stdio transport' : 'Remote HTTP transport'}</span>
+					<button onClick={() => setIsModalOpen(true)} className="btn btn-xs btn-ghost">Edit Details</button>
+				</div>
+			</div>
 
-				<div className="flex-1 space-y-3">
-					<div className="flex items-center gap-2">
-						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 shrink-0">Transport</span>
+			<Modal
+				isOpen={isModalOpen}
+				onClose={() => setIsModalOpen(false)}
+				title={<h3 className="text-lg font-semibold">MCP Server Settings</h3>}
+				className="w-11/12 max-w-3xl"
+			>
+				<div className="space-y-3">
+					<div className="form-control">
+						<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Label</span></label>
+						<input
+							type="text"
+							placeholder="e.g. Memory Server"
+							className="input input-sm input-bordered w-full font-mono text-xs"
+							value={config.label || ''}
+							onChange={e => onChange({ ...config, label: e.target.value })}
+						/>
+					</div>
+
+					<div className="form-control">
+						<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Transport</span></label>
 						<select
 							className="select select-sm select-bordered font-mono w-full text-xs"
 							value={config.transport}
@@ -360,8 +562,8 @@ function McpServerCard({
 
 					{config.transport === 'stdio' ? (
 						<>
-							<div className="flex items-center gap-2">
-								<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 shrink-0">Command</span>
+							<div className="form-control">
+								<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Command</span></label>
 								<input
 									type="text"
 									placeholder="e.g. npx"
@@ -370,49 +572,45 @@ function McpServerCard({
 									onChange={e => onChange({ ...config, command: e.target.value })}
 								/>
 							</div>
-							<div className="flex items-start gap-2">
-								<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 shrink-0 mt-2">Args</span>
-								<div className="flex-1">
-									<textarea
-										placeholder="e.g. -y, @modelcontextprotocol/server-memory"
-										className="textarea textarea-bordered textarea-sm w-full font-mono min-h-[60px]"
-										value={(config.args || []).join('\n')}
-										onChange={e => {
-											const lines = e.target.value.split('\n').map(l => l.trim()).filter(Boolean)
-											onChange({ ...config, args: lines })
-										}}
-									/>
-									<p className="text-[10px] text-base-content/40 mt-1">One argument per line</p>
-								</div>
+							<div className="form-control">
+								<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Args</span></label>
+								<textarea
+									placeholder="e.g. -y, @modelcontextprotocol/server-memory"
+									className="textarea textarea-bordered textarea-sm w-full font-mono min-h-15"
+									value={(config.args || []).join('\n')}
+									onChange={e => {
+										const lines = e.target.value.split('\n').map(l => l.trim()).filter(Boolean)
+										onChange({ ...config, args: lines })
+									}}
+								/>
+								<p className="text-[10px] text-base-content/40 mt-1">One argument per line</p>
 							</div>
-							<div className="flex items-start gap-2">
-								<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 shrink-0 mt-2">Env Vars</span>
-								<div className="flex-1">
-									<textarea
-										placeholder="e.g. API_KEY=abc123"
-										className="textarea textarea-bordered textarea-sm w-full font-mono min-h-[60px]"
-										value={Object.entries(config.env || {}).map(([k, v]) => `${k}=${v}`).join('\n')}
-										onChange={e => {
-											const env: Record<string, string> = {}
-											e.target.value.split('\n').forEach(line => {
-												const eq = line.indexOf('=')
-												if (eq > 0) {
-													const k = line.slice(0, eq).trim()
-													const v = line.slice(eq + 1).trim()
-													if (k) env[k] = v
-												}
-											})
-											onChange({ ...config, env: Object.keys(env).length ? env : undefined })
-										}}
-									/>
-									<p className="text-[10px] text-base-content/40 mt-1">KEY=VALUE, one per line</p>
-								</div>
+							<div className="form-control">
+								<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Env Vars</span></label>
+								<textarea
+									placeholder="e.g. API_KEY=abc123"
+									className="textarea textarea-bordered textarea-sm w-full font-mono min-h-15"
+									value={Object.entries(config.env || {}).map(([k, v]) => `${k}=${v}`).join('\n')}
+									onChange={e => {
+										const env: Record<string, string> = {}
+										e.target.value.split('\n').forEach(line => {
+											const eq = line.indexOf('=')
+											if (eq > 0) {
+												const k = line.slice(0, eq).trim()
+												const v = line.slice(eq + 1).trim()
+												if (k) env[k] = v
+											}
+										})
+										onChange({ ...config, env: Object.keys(env).length ? env : undefined })
+									}}
+								/>
+								<p className="text-[10px] text-base-content/40 mt-1">KEY=VALUE, one per line</p>
 							</div>
 						</>
 					) : (
 						<>
-							<div className="flex items-center gap-2">
-								<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 shrink-0">SSE URL</span>
+							<div className="form-control">
+								<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">SSE URL</span></label>
 								<input
 									type="text"
 									placeholder="https://my-server.com/mcp/sse"
@@ -421,33 +619,31 @@ function McpServerCard({
 									onChange={e => onChange({ ...config, url: e.target.value })}
 								/>
 							</div>
-							<div className="flex items-start gap-2">
-								<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 shrink-0 mt-2">Headers</span>
-								<div className="flex-1">
-									<textarea
-										placeholder="e.g. Authorization=Bearer abc"
-										className="textarea textarea-bordered textarea-sm w-full font-mono min-h-[60px]"
-										value={Object.entries(config.headers || {}).map(([k, v]) => `${k}=${v}`).join('\n')}
-										onChange={e => {
-											const headers: Record<string, string> = {}
-											e.target.value.split('\n').forEach(line => {
-												const eq = line.indexOf('=')
-												if (eq > 0) {
-													const k = line.slice(0, eq).trim()
-													const v = line.slice(eq + 1).trim()
-													if (k) headers[k] = v
-												}
-											})
-											onChange({ ...config, headers: Object.keys(headers).length ? headers : undefined })
-										}}
-									/>
-									<p className="text-[10px] text-base-content/40 mt-1">KEY=VALUE, one per line</p>
-								</div>
+							<div className="form-control">
+								<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Headers</span></label>
+								<textarea
+									placeholder="e.g. Authorization=Bearer abc"
+									className="textarea textarea-bordered textarea-sm w-full font-mono min-h-15"
+									value={Object.entries(config.headers || {}).map(([k, v]) => `${k}=${v}`).join('\n')}
+									onChange={e => {
+										const headers: Record<string, string> = {}
+										e.target.value.split('\n').forEach(line => {
+											const eq = line.indexOf('=')
+											if (eq > 0) {
+												const k = line.slice(0, eq).trim()
+												const v = line.slice(eq + 1).trim()
+												if (k) headers[k] = v
+											}
+										})
+										onChange({ ...config, headers: Object.keys(headers).length ? headers : undefined })
+									}}
+								/>
+								<p className="text-[10px] text-base-content/40 mt-1">KEY=VALUE, one per line</p>
 							</div>
 						</>
 					)}
 				</div>
-			</div>
+			</Modal>
 		</div>
 	)
 }
@@ -455,6 +651,8 @@ function McpServerCard({
 export default function ToolsPage() {
 	const [internalTools, setInternalTools] = useState<Record<string, InternalToolConfig>>({})
 	const [availableInternalTools, setAvailableInternalTools] = useState<Record<string, string>>({})
+	const [availableFunctions, setAvailableFunctions] = useState<Record<string, string[]>>({})
+	const [defaultImageModels, setDefaultImageModels] = useState<string[]>([])
 	const [emails, setEmails] = useState<Record<string, EmailAccountConfig>>({})
 	const [mcpServers, setMcpServers] = useState<Record<string, McpServerConfig>>({})
 	const [saving, setSaving] = useState(false)
@@ -466,6 +664,8 @@ export default function ToolsPage() {
 			.then(d => {
 				setInternalTools(d.internalTools || {})
 				setAvailableInternalTools(d.availableInternalTools || {})
+				setAvailableFunctions(d.availableFunctions || {})
+				setDefaultImageModels(d.defaultImageModels || [])
 				setEmails(d.emails || {})
 				setMcpServers(d.mcpServers || {})
 			})
@@ -476,7 +676,7 @@ export default function ToolsPage() {
 		await fetch('/api/tools', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ internalTools, mcpServers, emails }),
+			body: JSON.stringify({ internalTools, mcpServers, emails, defaultImageModels }),
 		})
 		setSaving(false)
 		setSaved(true)
@@ -596,16 +796,26 @@ export default function ToolsPage() {
 					{/* Specialized Gemini Card */}
 					<GeminiToolCard
 						config={internalTools['gemini'] || { enabled: true }}
+						availableFunctions={availableFunctions['gemini'] || []}
 						onChange={(u) => updateInternalTool('gemini', u)}
 					/>
 
+					<ImageToolCard
+						config={internalTools['image'] || { enabled: true }}
+						availableFunctions={availableFunctions['image'] || []}
+						defaultImageModels={defaultImageModels}
+						onChange={(u) => updateInternalTool('image', u)}
+						onModelsChange={setDefaultImageModels}
+					/>
+
 					{/* Other Internal Tools */}
-					{Object.entries(availableInternalTools).filter(([id]) => id !== 'gemini' && id !== 'email').map(([id, label]) => (
+					{Object.entries(availableInternalTools).filter(([id]) => id !== 'gemini' && id !== 'email' && id !== 'image').map(([id, label]) => (
 						<InternalToolCard
 							key={id}
 							id={id}
 							label={label}
 							config={internalTools[id] || { enabled: true }}
+							availableFunctions={availableFunctions[id] || []}
 							onChange={(u) => updateInternalTool(id, u)}
 						/>
 					))}

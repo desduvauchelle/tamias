@@ -179,7 +179,6 @@ export function injectDynamicVariables(content: string, vars: Record<string, str
  * Context window defaults to 128k — override via modelContextWindow param. */
 export function buildSystemPrompt(
 	toolNames: string[],
-	toolDocs: string,
 	summary?: string,
 	channel?: { id: string, userId?: string, name?: string, authorName?: string, isSubagent?: boolean },
 	agentDir?: string,
@@ -394,8 +393,8 @@ When reading or updating your memory, you can use either the absolute path or th
 	// ── Assemble with token budget ────────────────────────────────────────────
 	const modelContextWindow = opts?.modelContextWindow ?? 128000
 
-	// Read configurable system prompt ratio (default 0.35)
-	let configuredRatio = 0.35
+	// Read configurable system prompt ratio (default 0.30)
+	let configuredRatio = 0.30
 	try {
 		const cfg = loadConfig()
 		if (cfg.systemPromptRatio && cfg.systemPromptRatio >= 0.1 && cfg.systemPromptRatio <= 0.6) {

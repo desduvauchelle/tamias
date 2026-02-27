@@ -16,7 +16,9 @@ import {
 	FileText,
 	History,
 	Cpu,
-	FolderOpen
+	FolderOpen,
+	Bot,
+	Activity
 } from 'lucide-react'
 
 const navItems = [
@@ -42,6 +44,11 @@ const navItems = [
 		icon: <BookOpen className="w-5 h-5" />,
 	},
 	{
+		href: '/agents',
+		label: 'Agents',
+		icon: <Bot className="w-5 h-5" />,
+	},
+	{
 		href: '/channels',
 		label: 'Channels',
 		icon: <Smartphone className="w-5 h-5" />,
@@ -55,6 +62,11 @@ const navItems = [
 		href: '/history',
 		label: 'History',
 		icon: <List className="w-5 h-5" />,
+	},
+	{
+		href: '/live-logs',
+		label: 'Live Logs',
+		icon: <Activity className="w-5 h-5" />,
 	},
 	{
 		href: '/usage',
