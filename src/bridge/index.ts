@@ -116,4 +116,39 @@ export class BridgeManager {
 			await bridge.handleDaemonEvent({ type: 'chunk', text: message } as DaemonEvent, {})
 		}
 	}
+
+	/**
+	 * Returns human-readable cron targets discovered from active bridges.
+	 */
+	async getCronTargets(): Promise<Array<{ target: string; label: string; platform: string; source: string }>> {
+		const targets: Array<{ target: string; label: string; platform: string; source: string }> = []
+
+		for (const bridge of this.activeBridges.values()) {
+			const listCronTargets = (bridge as any).listCronTargets
+			if (typeof listCronTargets !== 'function') continue
+
+			try {
+				const discovered = await listCronTargets.call(bridge)
+				if (!Array.isArray(discovered)) continue
+				for (const item of discovered) {
+					if (!item?.target || !item?.label) continue
+					targets.push({
+						target: String(item.target),
+						label: String(item.label),
+						platform: String(item.platform ?? 'unknown'),
+						source: String(item.source ?? 'bridge'),
+					})
+				}
+			} catch (err) {
+				console.warn(`[Bridge Manager] Failed to discover cron targets from ${bridge.name}:`, err)
+			}
+		}
+
+		const seen = new Set<string>()
+		return targets.filter(t => {
+			if (seen.has(t.target)) return false
+			seen.add(t.target)
+			return true
+		})
+	}
 }

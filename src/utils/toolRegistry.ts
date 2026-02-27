@@ -15,6 +15,7 @@ import { createBrowserTools, BROWSER_TOOL_NAME } from '../tools/browser.ts'
 import { createPdfTools, PDF_TOOL_NAME } from '../tools/pdf.ts'
 import { memoryTools, MEMORY_TOOL_NAME } from '../tools/memory.ts'
 import { createSwarmTools, SWARM_TOOL_NAME } from '../tools/swarm.ts'
+import { createSessionTools, SESSION_TOOL_NAME } from '../tools/session.ts'
 import type { AIService } from '../services/aiService.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -89,6 +90,7 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 		[PDF_TOOL_NAME]: createPdfTools(aiService, sessionId) as ToolSet,
 		[MEMORY_TOOL_NAME]: memoryTools as ToolSet,
 		[SWARM_TOOL_NAME]: createSwarmTools(aiService, sessionId) as ToolSet,
+		[SESSION_TOOL_NAME]: createSessionTools(aiService, sessionId) as ToolSet,
 	}
 
 	for (const [toolName, allFunctions] of Object.entries(internalCatalog)) {

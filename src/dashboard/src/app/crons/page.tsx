@@ -1,19 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Trash2, Plus, Check, Clock, Brain, Target, Info, Play, X, Loader2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Trash2, Plus, Check, Clock, Play, Loader2, Pencil, Target, Activity } from 'lucide-react'
 import { Modal } from '../_components/Modal'
 
 export type CronJob = {
 	id: string
 	name: string
 	schedule: string
-	/** 'ai' = prompt to AI → response to channel; 'message' = send text directly */
 	type: 'ai' | 'message'
 	prompt: string
 	target: string
 	enabled: boolean
 	lastRun?: string
+	lastStatus?: 'success' | 'error'
+	lastError?: string
 	createdAt: string
 }
 
@@ -23,6 +24,24 @@ interface SessionInfo {
 	channelUserId?: string
 	channelName?: string
 	updatedAt: string
+}
+
+interface CronTargetOption {
+	target: string
+	label: string
+	platform?: string
+	source?: string
+}
+
+function normalizeTargetLabel(target: string, options: CronTargetOption[]) {
+	if (target === 'last') return 'Last active session'
+	const match = options.find(option => option.target === target)
+	if (match) return match.label
+	if (target.startsWith('discord:')) {
+		const channelId = target.split(':')[1]
+		return `Discord #${channelId}`
+	}
+	return target
 }
 
 function CronTestModal({ job, onClose }: { job: CronJob; onClose: () => void }) {
@@ -150,119 +169,242 @@ function CronTestModal({ job, onClose }: { job: CronJob; onClose: () => void }) 
 	)
 }
 
-function CronCard({
+function CronEditModal({
 	job,
-	onChange,
-	onRemove,
-	onTest
+	targetOptions,
+	onSave,
+	onClose,
 }: {
 	job: CronJob
-	onChange: (c: CronJob) => void
-	onRemove: (id: string) => void
-	onTest: (job: CronJob) => void
+	targetOptions: CronTargetOption[]
+	onSave: (job: CronJob) => void
+	onClose: () => void
 }) {
+	const [draft, setDraft] = useState<CronJob>(job)
+	const [selectedTarget, setSelectedTarget] = useState(job.target)
+	const [customTarget, setCustomTarget] = useState('')
+
+	const targetChoices = useMemo(() => {
+		const base: CronTargetOption[] = [{ target: 'last', label: 'Last active session', platform: 'system', source: 'builtin' }]
+		for (const option of targetOptions) {
+			if (!base.find(b => b.target === option.target)) {
+				base.push(option)
+			}
+		}
+		if (!base.find(b => b.target === draft.target)) {
+			base.push({ target: draft.target, label: normalizeTargetLabel(draft.target, targetOptions), platform: 'custom', source: 'existing' })
+		}
+		return base
+	}, [targetOptions, draft.target])
+
+	const isKnownTarget = targetChoices.some(choice => choice.target === selectedTarget)
+	const effectiveTarget = isKnownTarget ? selectedTarget : (customTarget || selectedTarget)
+
 	return (
-		<div className={`card bg-base-200 border ${job.enabled ? 'border-primary' : 'border-base-300 opacity-60 hover:opacity-100'} transition-all group relative overflow-hidden`}>
-			<div className="card-body p-4 space-y-4">
-				<div className="flex items-start justify-between gap-4">
-					<div className="flex-1 space-y-2">
+		<Modal
+			isOpen={true}
+			onClose={onClose}
+			className="w-full max-w-2xl"
+			title={
+				<div>
+					<h2 className="text-xl font-black uppercase tracking-tighter text-primary flex items-center gap-2">
+						<Pencil size={20} /> Edit Cron
+					</h2>
+					<p className="text-sm text-base-content/60 mt-0.5">{draft.name}</p>
+				</div>
+			}
+			footer={
+				<div className="flex gap-3 justify-end">
+					<button onClick={onClose} className="btn btn-sm btn-ghost">Cancel</button>
+					<button
+						onClick={() => onSave({ ...draft, target: effectiveTarget })}
+						className="btn btn-sm btn-primary"
+					>
+						Save
+					</button>
+				</div>
+			}
+		>
+			<div className="space-y-4 font-mono">
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+					<div className="space-y-1">
+						<label className="text-xs font-bold uppercase tracking-wider text-base-content/60">Name</label>
 						<input
 							type="text"
-							placeholder="Job Name"
-							className="input input-sm input-ghost w-full font-bold text-base-content text-lg uppercase px-0 h-auto min-h-0 focus:text-primary transition-colors"
-							value={job.name}
-							onChange={e => onChange({ ...job, name: e.target.value })}
+							className="input input-sm input-bordered w-full"
+							value={draft.name}
+							onChange={e => setDraft({ ...draft, name: e.target.value })}
 						/>
-						<div className="text-xs text-base-content/50 font-mono">ID: {job.id.slice(0, 8)}</div>
 					</div>
-					<div className="flex items-center gap-3 shrink-0">
-						<div className="tooltip tooltip-left" data-tip={job.enabled ? 'Pause task' : 'Enable task'}>
-							<input
-								type="checkbox"
-								className="toggle toggle-primary toggle-sm"
-								checked={job.enabled}
-								onChange={e => onChange({ ...job, enabled: e.target.checked })}
-							/>
-						</div>
+					<div className="space-y-1">
+						<label className="text-xs font-bold uppercase tracking-wider text-base-content/60">Schedule</label>
+						<input
+							type="text"
+							className="input input-sm input-bordered w-full"
+							placeholder="e.g. 1h or 0 9 * * 1-5"
+							value={draft.schedule}
+							onChange={e => setDraft({ ...draft, schedule: e.target.value })}
+						/>
+					</div>
+				</div>
+
+				<div className="flex items-center justify-between rounded-lg border border-base-300 p-3">
+					<div>
+						<p className="text-xs font-bold uppercase tracking-wider text-base-content/60">Enabled</p>
+						<p className="text-xs text-base-content/50">Run this cron when the daemon is active</p>
+					</div>
+					<input
+						type="checkbox"
+						className="toggle toggle-primary toggle-sm"
+						checked={draft.enabled}
+						onChange={e => setDraft({ ...draft, enabled: e.target.checked })}
+					/>
+				</div>
+
+				<div className="space-y-1">
+					<label className="text-xs font-bold uppercase tracking-wider text-base-content/60">Type</label>
+					<div className="flex gap-2">
 						<button
-							onClick={() => onTest(job)}
-							className="btn btn-sm btn-circle btn-ghost text-success opacity-0 group-hover:opacity-100 transition-all hover:bg-success/20"
-							title="Test this job now"
+							className={`btn btn-xs ${(draft.type ?? 'ai') === 'ai' ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+							onClick={() => setDraft({ ...draft, type: 'ai' })}
 						>
-							<Play size={16} />
+							🤖 AI Response
 						</button>
 						<button
-							onClick={() => {
-								if (window.confirm(`⚠️ DELETION CONFIRMATION\n\nAre you sure you want to permanently delete "${job.name}"?\n\nThis action cannot be undone.`)) {
-									onRemove(job.id)
-								}
-							}}
-							className="btn btn-sm btn-circle btn-error btn-ghost opacity-0 group-hover:opacity-100 transition-all hover:bg-error/20"
-							title="Remove cron job"
+							className={`btn btn-xs ${draft.type === 'message' ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+							onClick={() => setDraft({ ...draft, type: 'message' })}
 						>
-							<Trash2 size={16} />
+							💬 Direct
 						</button>
 					</div>
 				</div>
 
-				<div className="divider m-0 opacity-20">Configuration</div>
+				<div className="space-y-1">
+					<label className="text-xs font-bold uppercase tracking-wider text-base-content/60">
+						{draft.type === 'message' ? 'Message' : 'Prompt'}
+					</label>
+					<textarea
+						className="textarea textarea-bordered textarea-sm w-full min-h-24"
+						value={draft.prompt}
+						onChange={e => setDraft({ ...draft, prompt: e.target.value })}
+					/>
+				</div>
 
-				<div className="flex-1 space-y-3">
-					<div className="flex items-center gap-2">
-						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 shrink-0 flex items-center gap-1">
-							<Clock size={12} /> Schedule
-						</span>
+				<div className="space-y-1">
+					<label className="text-xs font-bold uppercase tracking-wider text-base-content/60">Target</label>
+					<select
+						className="select select-sm select-bordered w-full"
+						value={isKnownTarget ? selectedTarget : '__custom__'}
+						onChange={e => {
+							const value = e.target.value
+							if (value === '__custom__') {
+								setSelectedTarget(customTarget || draft.target)
+								return
+							}
+							setSelectedTarget(value)
+						}}
+					>
+						{targetChoices.map(choice => (
+							<option key={choice.target} value={choice.target}>{choice.label}</option>
+						))}
+						<option value="__custom__">Custom target…</option>
+					</select>
+					{(!isKnownTarget || (isKnownTarget && selectedTarget === draft.target && !targetChoices.find(c => c.target === draft.target))) && (
 						<input
 							type="text"
-							placeholder="e.g. 30m, 1h, or cron expression"
-							className="input input-sm input-bordered w-full font-mono text-xs"
-							value={job.schedule}
-							onChange={e => onChange({ ...job, schedule: e.target.value })}
+							className="input input-sm input-bordered w-full mt-2"
+							placeholder="e.g. discord:1234567890"
+							value={customTarget || draft.target}
+							onChange={e => {
+								setCustomTarget(e.target.value)
+								setSelectedTarget(e.target.value)
+							}}
 						/>
+					)}
+				</div>
+			</div>
+		</Modal>
+	)
+}
+
+function CronCard({
+	job,
+	targetOptions,
+	onToggle,
+	onEdit,
+	onRemove,
+	onTest,
+}: {
+	job: CronJob
+	targetOptions: CronTargetOption[]
+	onToggle: (id: string, enabled: boolean) => void
+	onEdit: (job: CronJob) => void
+	onRemove: (id: string) => void
+	onTest: (job: CronJob) => void
+}) {
+	const statusClass = job.lastStatus === 'error' ? 'text-error' : 'text-success'
+	const statusText = job.lastStatus === 'error'
+		? `Failed${job.lastError ? `: ${job.lastError}` : ''}`
+		: job.lastStatus === 'success'
+			? 'Success'
+			: 'No runs yet'
+
+	return (
+		<div className={`card bg-base-200 border ${job.enabled ? 'border-primary' : 'border-base-300 opacity-70'} transition-all`}>
+			<div className="card-body p-4 space-y-4">
+				<div className="flex items-start justify-between gap-3">
+					<div className="min-w-0">
+						<h3 className="font-black uppercase tracking-tight text-base truncate">{job.name}</h3>
+						<p className="text-xs text-base-content/45">ID: {job.id.slice(0, 8)}</p>
 					</div>
-					<div className="flex items-center gap-2">
-						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 shrink-0">Type</span>
-						<div className="flex gap-2">
-							<button
-								className={`btn btn-xs ${(job.type ?? 'ai') === 'ai' ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
-								onClick={() => onChange({ ...job, type: 'ai' })}
-								title="Send prompt to AI, deliver generated response to the channel"
-							>🤖 AI Response</button>
-							<button
-								className={`btn btn-xs ${job.type === 'message' ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
-								onClick={() => onChange({ ...job, type: 'message' })}
-								title="Send the text directly to the channel with no AI involved"
-							>💬 Direct</button>
-						</div>
+					<input
+						type="checkbox"
+						className="toggle toggle-primary toggle-sm"
+						checked={job.enabled}
+						onChange={e => onToggle(job.id, e.target.checked)}
+					/>
+				</div>
+
+				<div className="space-y-2 text-xs">
+					<div className="flex items-center gap-2 text-base-content/70">
+						<Clock size={12} />
+						<span className="font-bold uppercase tracking-wide">Schedule</span>
+						<span className="font-mono">{job.schedule}</span>
+					</div>
+					<div className="flex items-center gap-2 text-base-content/70">
+						<Target size={12} />
+						<span className="font-bold uppercase tracking-wide">Target</span>
+						<span className="truncate">{normalizeTargetLabel(job.target, targetOptions)}</span>
 					</div>
 					<div className="flex items-start gap-2">
-						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 shrink-0 mt-2 flex items-center gap-1">
-							<Brain size={12} /> {job.type === 'message' ? 'Message' : 'Prompt'}
-						</span>
-						<textarea
-							placeholder={job.type === 'message' ? 'Text to send directly to the channel' : 'Instruction for the AI agent'}
-							className="textarea textarea-bordered textarea-sm w-full font-mono min-h-20"
-							value={job.prompt}
-							onChange={e => onChange({ ...job, prompt: e.target.value })}
-						/>
-					</div>
-					<div className="flex items-center gap-2">
-						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 shrink-0 flex items-center gap-1">
-							<Target size={12} /> Target
-						</span>
-						<input
-							type="text"
-							placeholder="e.g. 'last' or 'channel:user'"
-							className="input input-sm input-bordered w-full font-mono text-xs"
-							value={job.target}
-							onChange={e => onChange({ ...job, target: e.target.value })}
-						/>
-					</div>
-					{job.lastRun && (
-						<div className="text-[10px] text-base-content/40 uppercase tracking-widest mt-2 flex items-center gap-1">
-							<Info size={10} /> Last run: {new Date(job.lastRun).toLocaleString()}
+						<Activity size={12} className="mt-0.5 text-base-content/70" />
+						<div className="min-w-0">
+							<div className="text-base-content/70">
+								<span className="font-bold uppercase tracking-wide">Last run</span>{' '}
+								{job.lastRun ? new Date(job.lastRun).toLocaleString() : 'Never'}
+							</div>
+							<div className={`truncate ${statusClass}`}>{statusText}</div>
 						</div>
-					)}
+					</div>
+				</div>
+
+				<div className="flex items-center justify-end gap-2">
+					<button onClick={() => onTest(job)} className="btn btn-xs btn-ghost text-success">
+						<Play size={14} /> Test
+					</button>
+					<button onClick={() => onEdit(job)} className="btn btn-xs btn-primary">
+						<Pencil size={14} /> Edit
+					</button>
+					<button
+						onClick={() => {
+							if (window.confirm(`Delete "${job.name}"? This cannot be undone.`)) {
+								onRemove(job.id)
+							}
+						}}
+						className="btn btn-xs btn-ghost text-error"
+					>
+						<Trash2 size={14} /> Delete
+					</button>
 				</div>
 			</div>
 		</div>
@@ -274,12 +416,30 @@ export default function CronsPage() {
 	const [saving, setSaving] = useState(false)
 	const [saved, setSaved] = useState(false)
 	const [testJob, setTestJob] = useState<CronJob | null>(null)
+	const [editingJob, setEditingJob] = useState<CronJob | null>(null)
+	const [targetOptions, setTargetOptions] = useState<CronTargetOption[]>([])
+	const [daemonRunning, setDaemonRunning] = useState(false)
 
 	useEffect(() => {
 		fetch('/api/crons')
 			.then(r => r.json())
 			.then(d => {
 				setCrons(d.crons || [])
+			})
+	}, [])
+
+	useEffect(() => {
+		Promise.all([
+			fetch('/api/status').then(r => r.json()),
+			fetch('/api/crons/targets').then(r => r.json()),
+		])
+			.then(([status, targets]) => {
+				setDaemonRunning(Boolean(status?.running))
+				setTargetOptions(Array.isArray(targets?.targets) ? targets.targets : [])
+			})
+			.catch(() => {
+				setDaemonRunning(false)
+				setTargetOptions([])
 			})
 	}, [])
 
@@ -304,17 +464,18 @@ export default function CronsPage() {
 			prompt: 'Check pending tasks and summarize them.',
 			target: 'last',
 			enabled: true,
-			createdAt: new Date().toISOString()
+			createdAt: new Date().toISOString(),
 		}
-		setCrons([newCron, ...crons])
+		setCrons(prev => [newCron, ...prev])
+		setEditingJob(newCron)
 	}
 
 	const updateCron = (id: string, update: CronJob) => {
-		setCrons(crons.map(c => c.id === id ? update : c))
+		setCrons(prev => prev.map(c => c.id === id ? update : c))
 	}
 
 	const removeCron = (id: string) => {
-		setCrons(crons.filter(c => c.id !== id))
+		setCrons(prev => prev.filter(c => c.id !== id))
 	}
 
 	return (
@@ -325,7 +486,10 @@ export default function CronsPage() {
 						<h1 className="text-3xl font-black text-primary uppercase tracking-tighter flex items-center gap-3">
 							<Clock size={32} /> AUTOMATED TASKS
 						</h1>
-						<p className="text-base-content/50 text-sm mt-1">Configure background background AI agent triggers.</p>
+						<p className="text-base-content/50 text-sm mt-1">Configure background AI agent triggers.</p>
+						<p className={`text-xs mt-2 ${daemonRunning ? 'text-success' : 'text-warning'}`}>
+							Daemon: {daemonRunning ? 'running' : 'not running'}
+						</p>
 					</div>
 					<button
 						onClick={save}
@@ -357,15 +521,34 @@ export default function CronsPage() {
 								<CronCard
 									key={c.id}
 									job={c}
-									onChange={(u) => updateCron(c.id, u)}
-									onRemove={(id) => removeCron(id)}
-									onTest={(job) => setTestJob(job)}
+									targetOptions={targetOptions}
+									onToggle={(id, enabled) => {
+										const current = crons.find(item => item.id === id)
+										if (!current) return
+										updateCron(id, { ...current, enabled })
+									}}
+									onEdit={setEditingJob}
+									onRemove={removeCron}
+									onTest={setTestJob}
 								/>
 							))}
 						</div>
 					)}
 				</section>
 			</div>
+
+			{editingJob && (
+				<CronEditModal
+					key={editingJob.id}
+					job={editingJob}
+					targetOptions={targetOptions}
+					onClose={() => setEditingJob(null)}
+					onSave={(job) => {
+						updateCron(job.id, job)
+						setEditingJob(null)
+					}}
+				/>
+			)}
 			{testJob && <CronTestModal job={testJob} onClose={() => setTestJob(null)} />}
 		</>
 	)

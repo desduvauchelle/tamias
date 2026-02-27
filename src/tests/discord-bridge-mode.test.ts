@@ -162,4 +162,32 @@ describe('DiscordBridge mode gating', () => {
 		expect(onMessage).toHaveBeenCalledTimes(0)
 		expect(msg.react).toHaveBeenCalledTimes(0)
 	})
+
+	test('queues subsequent messages with hourglass reaction', async () => {
+		const onMessage = mock(async () => true)
+		const bridge = new DiscordBridge('default')
+
+		await bridge.initialize({
+			bridges: {
+				discords: {
+					default: {
+						enabled: true,
+						allowedChannels: [],
+					},
+				},
+			},
+		} as any, onMessage)
+
+		expect(createdClients.length).toBe(1)
+		const client = createdClients[0]
+
+		const first = makeMessage({ mentioned: false })
+		const second = makeMessage({ mentioned: false })
+
+		await client.emit('messageCreate', first)
+		await client.emit('messageCreate', second)
+
+		expect(first.react).toHaveBeenCalledWith('👀')
+		expect(second.react).toHaveBeenCalledWith('⏳')
+	})
 })

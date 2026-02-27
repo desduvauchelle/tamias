@@ -36,6 +36,23 @@ export class DiscordBridge implements IBridge {
 	/** Threads created for sub-agents: subagentId → Discord ThreadChannel */
 	private subagentThreads = new Map<string, any>()
 
+	private async clearStatusReactions(message: Message): Promise<void> {
+		if (!this.client?.user?.id) return
+		for (const emoji of ['👀', '⏳', '🧠']) {
+			try {
+				const reaction = message.reactions.cache.get(emoji)
+				if (reaction) await reaction.users.remove(this.client.user.id)
+			} catch { }
+		}
+	}
+
+	private async promoteNextQueuedMessage(state: DiscordChannelState): Promise<void> {
+		if (state.currentMessage || state.queue.length === 0) return
+		const nextUp = state.queue[0]
+		await this.clearStatusReactions(nextUp)
+		nextUp.react('👀').catch(() => { })
+	}
+
 	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean): Promise<void> {
 		this.onMessage = onMessage
 		const token = getBotTokenForInstance('discords', this.instanceKey)
@@ -89,11 +106,6 @@ export class DiscordBridge implements IBridge {
 			const sessionKey = this.channelSessions.get(channelId) ?? `dc_${channelId}`
 			this.channelSessions.set(channelId, sessionKey)
 
-			// 👀 React immediately on receive
-			try {
-				await message.react('👀')
-			} catch { }
-
 			// Add to queue for this channel
 			let state = this.channelStates.get(channelId)
 			if (!state) {
@@ -101,6 +113,12 @@ export class DiscordBridge implements IBridge {
 				this.channelStates.set(channelId, state)
 			}
 			state.queue.push(message)
+
+			// Queue-aware receipt reaction: 👀 when next-up, ⏳ when queued
+			const isQueued = !!state.currentMessage || state.queue.length > 1
+			try {
+				await message.react(isQueued ? '⏳' : '👀')
+			} catch { }
 
 			const channelRef = message.channel
 			const discordChannelName = 'name' in channelRef ? (channelRef as { name: string }).name : null
@@ -147,10 +165,9 @@ export class DiscordBridge implements IBridge {
 			if (handled === false && state.queue.includes(message)) {
 				state.queue = state.queue.filter(m => m !== message)
 				console.log(`[Discord Bridge] Message rejected by onMessage, removed from queue: "${message.content.slice(0, 40)}"`)
-				// Remove reaction if it was handled but rejected (e.g. system command)
-				try {
-					await message.reactions.cache.get('👀')?.users.remove(this.client!.user!.id)
-				} catch { }
+				// Clear receipt/legacy reactions for rejected messages
+				await this.clearStatusReactions(message)
+				await this.promoteNextQueuedMessage(state)
 			}
 		})
 
@@ -190,6 +207,7 @@ export class DiscordBridge implements IBridge {
 					}
 					state.currentMessage = message
 					state.buffer = ''
+					await this.clearStatusReactions(message)
 
 					// Start typing indicator synchronously
 					if (state.typingInterval) clearInterval(state.typingInterval)
@@ -207,19 +225,7 @@ export class DiscordBridge implements IBridge {
 							channel.sendTyping().catch(() => { })
 						}, 7000)
 						state.typingInterval = intervalId
-
-						// 🛡️ Safety timeout: clear typing after 60s no matter what
-						setTimeout(() => {
-							if (state && state.typingInterval === intervalId) {
-								console.log(`[Discord Bridge] Typing safety timeout triggered for channel ${channelId}`)
-								clearInterval(intervalId)
-								state.typingInterval = undefined
-							}
-						}, 60000)
 					}
-
-					// 🧠 Add thinking reaction (fire-and-forget, after typing is set up)
-					message.react('🧠').catch(() => { })
 				}
 				break
 			}
@@ -272,15 +278,7 @@ export class DiscordBridge implements IBridge {
 					const ctxMessage = state.currentMessage
 					console.log(`[Discord Bridge] Sending response to ${channelId} (${fullText.length} chars)`)
 
-					// Remove 👀 and 🧠 reactions
-					try {
-						const eye = ctxMessage.reactions.cache.get('👀')
-						if (eye) await eye.users.remove(this.client!.user!.id)
-					} catch { }
-					try {
-						const brain = ctxMessage.reactions.cache.get('🧠')
-						if (brain) await brain.users.remove(this.client!.user!.id)
-					} catch { }
+					await this.clearStatusReactions(ctxMessage)
 
 					if (fullText.trim()) {
 						try {
@@ -300,6 +298,7 @@ export class DiscordBridge implements IBridge {
 					// Clean up current message
 					state.currentMessage = undefined
 					state.buffer = ''
+					await this.promoteNextQueuedMessage(state)
 
 					// Clean up progress thread for this session
 					const doneSessionId = sessionContext?.sessionId ?? channelId
@@ -320,14 +319,7 @@ export class DiscordBridge implements IBridge {
 					}
 					if (!state.currentMessage) break
 					const ctxMessage = state.currentMessage
-					try {
-						const eye = ctxMessage.reactions.cache.get('👀')
-						if (eye) await eye.users.remove(this.client!.user!.id)
-					} catch { }
-					try {
-						const brain = ctxMessage.reactions.cache.get('🧠')
-						if (brain) await brain.users.remove(this.client!.user!.id)
-					} catch { }
+					await this.clearStatusReactions(ctxMessage)
 					try {
 						await (ctxMessage.channel as any).send?.(`⚠️ Error [v${VERSION}]: ${event.message}`)
 					} catch (err) {
@@ -335,6 +327,7 @@ export class DiscordBridge implements IBridge {
 					}
 					state.currentMessage = undefined
 					state.buffer = ''
+					await this.promoteNextQueuedMessage(state)
 				}
 				break
 			}
@@ -495,6 +488,42 @@ export class DiscordBridge implements IBridge {
 				break
 			}
 		}
+	}
+
+	async listCronTargets(): Promise<Array<{ target: string; label: string; platform: 'discord'; source: string }>> {
+		if (!this.client || !this.client.isReady()) return []
+
+		const discovered: Array<{ target: string; label: string; platform: 'discord'; source: string }> = []
+
+		for (const guild of this.client.guilds.cache.values()) {
+			try {
+				const channels = await guild.channels.fetch()
+				for (const channel of channels.values()) {
+					if (!channel) continue
+					if (typeof (channel as any).isTextBased !== 'function') continue
+					if (!(channel as any).isTextBased()) continue
+					if ((channel as any).isThread?.()) continue
+
+					const channelId = String(channel.id)
+					const channelName = 'name' in channel ? String((channel as any).name ?? channelId) : channelId
+					discovered.push({
+						target: `discord:${channelId}`,
+						label: `Discord #${channelName} (${guild.name})`,
+						platform: 'discord',
+						source: `discord:${this.instanceKey}`,
+					})
+				}
+			} catch (err) {
+				console.warn(`[Discord Bridge] Failed to fetch channels for guild ${guild.id}:`, err)
+			}
+		}
+
+		const seen = new Set<string>()
+		return discovered.filter(item => {
+			if (seen.has(item.target)) return false
+			seen.add(item.target)
+			return true
+		})
 	}
 
 	async destroy(): Promise<void> {

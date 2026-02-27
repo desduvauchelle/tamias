@@ -35,6 +35,7 @@ import { CRON_TOOL_NAME } from './cron.ts'
 import { SUBAGENT_TOOL_NAME } from './subagent.ts'
 import { GITHUB_TOOL_NAME } from './github.ts'
 import { IMAGE_TOOL_NAME } from './image.ts'
+import { SESSION_TOOL_NAME } from './session.ts'
 import { saveSkill, deleteSkill, getLoadedSkills, loadSkills } from '../utils/skills.ts'
 import matter from 'gray-matter'
 
@@ -138,6 +139,7 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 					GEMINI_TOOL_NAME,
 					CRON_TOOL_NAME,
 					SUBAGENT_TOOL_NAME,
+					SESSION_TOOL_NAME,
 					GITHUB_TOOL_NAME,
 					IMAGE_TOOL_NAME
 				]

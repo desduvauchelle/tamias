@@ -11,7 +11,7 @@ import { BridgeManager } from '../bridge/index.ts'
 import { CronManager } from '../bridge/cronManager.ts'
 import { watchSkills } from '../utils/skills.ts'
 import type { CronJob } from '../utils/cronStore.ts'
-import { loadCronJobs } from '../utils/cronStore.ts'
+import { loadCronJobs, recordCronJobRun } from '../utils/cronStore.ts'
 import { scaffoldFromTemplates } from '../utils/memory.ts'
 import { loadAgents } from '../utils/agentsStore.ts'
 import { db } from '../utils/db.ts'
@@ -296,6 +296,8 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 		const now = new Date().toISOString()
 		console.log(`[Cron] ${now} Triggering job: "${job.name}" (id=${job.id}, type=${job.type ?? 'ai'}, target=${job.target})`)
 		let session: Session | undefined
+		let runStatus: 'success' | 'error' = 'success'
+		let runError: string | undefined
 
 		try {
 			if (job.target === 'last') {
@@ -340,7 +342,15 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				console.log(`[Cron] ${now} AI prompt enqueued successfully for job "${job.name}"`)
 			}
 		} catch (err) {
+			runStatus = 'error'
+			runError = err instanceof Error ? err.message : String(err)
 			console.error(`[Cron] ${now} ERROR executing job "${job.name}" (id=${job.id}):`, err)
+		} finally {
+			try {
+				recordCronJobRun(job.id, { status: runStatus, error: runError })
+			} catch (err) {
+				console.warn(`[Cron] ${now} Could not persist run result for job ${job.id}:`, err)
+			}
 		}
 	}
 	const cronManager = new CronManager(onCronTrigger)
@@ -690,6 +700,32 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					return json({ ok: true, jobName: job.name, target: testJob.target })
 				} catch (err) {
 					return json({ error: String(err) }, 500)
+				}
+			}
+
+			if (method === 'GET' && url.pathname === '/cron-targets') {
+				try {
+					const bridgeTargets = await bridgeManager.getCronTargets()
+					const sessionTargets = aiService.getAllSessions()
+						.filter(s => s.channelId === 'discord' && s.channelUserId)
+						.map(s => ({
+							target: `discord:${s.channelUserId}`,
+							label: s.channelName ? `Discord ${s.channelName}` : `Discord #${s.channelUserId}`,
+							platform: 'discord',
+							source: 'session',
+						}))
+
+					const merged = [...bridgeTargets, ...sessionTargets]
+					const seen = new Set<string>()
+					const targets = merged.filter(t => {
+						if (seen.has(t.target)) return false
+						seen.add(t.target)
+						return true
+					})
+
+					return json({ targets })
+				} catch (err) {
+					return json({ error: String(err), targets: [] }, 500)
 				}
 			}
 

@@ -1,7 +1,7 @@
 import { join } from 'path'
 import { homedir, cpus, freemem, totalmem, platform, arch } from 'os'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs'
-import { getBridgesConfig, getWorkspacePath, TAMIAS_DIR } from './config.ts'
+import { getAllConnections, getBridgesConfig, getWorkspacePath, TAMIAS_DIR } from './config.ts'
 import { getLoadedSkills } from './skills.js'
 import { readRecentDigests } from './dailyDigest.js'
 import { assembleSystemPrompt as assembleBudget, estimateTokens, getSystemPromptBudget, formatTokenBudgetDebug, type ContextTier, type TokenBudgetResult } from './tokenBudget.js'
@@ -167,6 +167,19 @@ export function injectDynamicVariables(content: string, vars: Record<string, str
 	return content.replace(/\{\{(\w+)\}\}/g, (match, key) => {
 		return vars[key] ?? match // Leave unreplaced if no value exists
 	})
+}
+
+function getConfiguredModelPairs(): string[] {
+	const models = getAllConnections().flatMap(connection => {
+		const nickname = (connection.nickname ?? '').trim()
+		return (connection.selectedModels ?? []).map(model => {
+			const selectedModel = (model ?? '').trim()
+			if (!nickname || !selectedModel) return ''
+			return `${nickname}/${selectedModel}`
+		})
+	})
+
+	return Array.from(new Set(models.map(m => m.trim()).filter(Boolean)))
 }
 
 // ─── System prompt builder ────────────────────────────────────────────────────
@@ -342,13 +355,32 @@ When reading or updating your memory, you can use either the absolute path or th
 		}
 	}
 
-	// ── TIER 9: Tools + Skills (P=9, skills trimmable) ────────────────────────
+	// ── TIER 9: Available Models (P=9, never trimmed) ─────────────────────────
+	const configuredModels = getConfiguredModelPairs()
+	if (configuredModels.length > 0) {
+		const modelList = configuredModels.map(model => `- \`${model}\``).join('\n')
+		tiers.push({
+			name: 'available-models',
+			content: `# Available Models\n\nUse one of these configured models when selecting a model for sub-agents or model-aware tasks.\n\n${modelList}`,
+			priority: 9,
+			trimmable: false,
+		})
+	} else {
+		tiers.push({
+			name: 'available-models',
+			content: '# Available Models\n\nNo models are configured yet. Run `tamias models` to set up connections and selected models.',
+			priority: 9,
+			trimmable: false,
+		})
+	}
+
+	// ── TIER 10: Tools + Skills (P=10, skills trimmable) ──────────────────────
 	if (toolNames.length > 0) {
 		const groups = toolNames.map(t => `\`${t.replace(/^(internal:|mcp:)/, '')}\``).join(', ')
 		tiers.push({
 			name: 'available-tools',
 			content: `# Available Tools\n\nTool calls use the format \`toolName__functionName\`. Enabled tool groups: ${groups}.`,
-			priority: 9,
+			priority: 10,
 			trimmable: false,
 		})
 	}
@@ -363,13 +395,13 @@ When reading or updating your memory, you can use either the absolute path or th
 		tiers.push({
 			name: 'available-skills',
 			content: `# Available Skills\n\nYou have access to the following skills. You can read their detailed instructions by reading their \`SKILL.md\` file using your file reading tools if you feel they are applicable to the task at hand. When spawning a sub-agent for a skill that has a preferred model, pass that model to the sub-agent.\n\n${skillsList}`,
-			priority: 10,
+			priority: 11,
 			trimmable: true,
 			minContent: `# Available Skills\n\n${skills.map(s => `- \`${s.name}\`: ${s.description}`).join('\n')}`,
 		})
 	}
 
-	// ── TIER 11: Active Channels (P=11, trimmable) ────────────────────────────
+	// ── TIER 12: Active Channels (P=12, trimmable) ────────────────────────────
 	const bridges = getBridgesConfig()
 	const active: string[] = []
 	if (bridges.terminal?.enabled !== false) active.push('Terminal')
@@ -386,7 +418,7 @@ When reading or updating your memory, you can use either the absolute path or th
 		tiers.push({
 			name: 'connected-channels',
 			content: `# Connected Channels\nYou are currently reachable via: ${active.join(', ')}.`,
-			priority: 11,
+			priority: 12,
 			trimmable: true,
 		})
 	}

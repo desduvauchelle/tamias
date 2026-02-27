@@ -3,13 +3,26 @@ import { getBotTokenForInstance, type TamiasConfig } from '../../utils/config.ts
 import { VERSION } from '../../utils/version.ts'
 import type { BridgeMessage, DaemonEvent, IBridge } from '../types.ts'
 
-interface TelegramContext {
+interface TelegramMessageContext {
 	chatId: number
 	messageId: number
-	/** accumulated text chunks */
-	buffer: string
+}
+
+interface TelegramChatState {
+	/** Queue of messages awaiting processing for this chat */
+	queue: TelegramMessageContext[]
+	/** The message currently being responded to */
+	currentContext?: TelegramMessageContext
 	/** typing keepalive interval */
 	typingInterval?: ReturnType<typeof setInterval>
+	/** accumulated text chunks */
+	buffer: string
+}
+
+interface MessageIdentity {
+	authorId: string
+	authorName?: string
+	channelName: string
 }
 
 export class TelegramBridge implements IBridge {
@@ -21,10 +34,75 @@ export class TelegramBridge implements IBridge {
 	constructor(key = 'telegram') {
 		this.instanceKey = key
 	}
-	/** Map of chatId → in-flight context */
-	private contexts = new Map<string, TelegramContext>()
+	/** Map of chatId → per-chat orchestration state */
+	private chatStates = new Map<string, TelegramChatState>()
 	/** Map of chatId → sessionId */
 	private chatSessions = new Map<string, string>()
+
+	private getOrCreateChatState(chatKey: string): TelegramChatState {
+		let state = this.chatStates.get(chatKey)
+		if (!state) {
+			state = { queue: [], buffer: '' }
+			this.chatStates.set(chatKey, state)
+		}
+		return state
+	}
+
+	private getMessageIdentity(ctx: any): MessageIdentity {
+		return {
+			authorId: String(ctx.from?.id),
+			authorName: ctx.from?.first_name,
+			channelName: ctx.chat.type === 'private' ? 'Private Chat' : (ctx.chat as any).title,
+		}
+	}
+
+	private async setReceiptReaction(chatId: number, messageId: number, emoji: '👀' | '⏳'): Promise<void> {
+		try {
+			await this.bot?.api.setMessageReaction(chatId, messageId, [{ type: 'emoji', emoji }] as any)
+		} catch { /* Reactions are not supported in all chats/clients */ }
+	}
+
+	private async clearStatusReactions(chatId: number, messageId: number): Promise<void> {
+		try {
+			await this.bot?.api.setMessageReaction(chatId, messageId, [])
+		} catch { }
+	}
+
+	private stopTyping(state: TelegramChatState): void {
+		if (state.typingInterval) {
+			clearInterval(state.typingInterval)
+			state.typingInterval = undefined
+		}
+	}
+
+	private async promoteNextQueued(state: TelegramChatState): Promise<void> {
+		if (state.currentContext || state.queue.length === 0) return
+		const nextUp = state.queue[0]
+		await this.clearStatusReactions(nextUp.chatId, nextUp.messageId)
+		await this.setReceiptReaction(nextUp.chatId, nextUp.messageId, '👀')
+	}
+
+	private async queueIncomingMessage(params: {
+		chatKey: string
+		chatId: number
+		messageId: number
+		sessionKey: string
+		bridgeMsg: BridgeMessage
+	}): Promise<void> {
+		const state = this.getOrCreateChatState(params.chatKey)
+		const context: TelegramMessageContext = { chatId: params.chatId, messageId: params.messageId }
+		state.queue.push(context)
+
+		const isQueued = !!state.currentContext || state.queue.length > 1
+		await this.setReceiptReaction(params.chatId, params.messageId, isQueued ? '⏳' : '👀')
+
+		const handled = await this.onMessage?.(params.bridgeMsg, params.sessionKey)
+		if (handled === false && state.queue.includes(context)) {
+			state.queue = state.queue.filter((queuedContext) => queuedContext !== context)
+			await this.clearStatusReactions(params.chatId, params.messageId)
+			await this.promoteNextQueued(state)
+		}
+	}
 
 	async initialize(config: TamiasConfig, onMessage: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean): Promise<void> {
 		this.onMessage = onMessage
@@ -56,13 +134,10 @@ export class TelegramBridge implements IBridge {
 			const chatId = ctx.chat.id
 			const messageId = ctx.message.message_id
 			const chatKey = String(chatId)
+			const identity = this.getMessageIdentity(ctx)
 
 			const sessionKey = this.chatSessions.get(chatKey) ?? `tg_${chatKey}`
 			this.chatSessions.set(chatKey, sessionKey)
-
-			try {
-				await ctx.react('👀')
-			} catch { /* old Telegram clients don't support this */ }
 
 			try {
 				const fileId = ctx.message.voice?.file_id || ctx.message.audio?.file_id
@@ -92,14 +167,19 @@ export class TelegramBridge implements IBridge {
 				const bridgeMsg: BridgeMessage = {
 					channelId: 'telegram',
 					channelUserId: chatKey,
-					channelName: ctx.chat.type === 'private' ? 'Private Chat' : (ctx.chat as any).title,
-					authorId: String(ctx.from?.id),
-					authorName: ctx.from?.first_name,
+					channelName: identity.channelName,
+					authorId: identity.authorId,
+					authorName: identity.authorName,
 					content: transcript,
 				}
 
-				this.contexts.set(chatKey, { chatId, messageId, buffer: '' })
-				await this.onMessage?.(bridgeMsg, sessionKey)
+				await this.queueIncomingMessage({
+					chatKey,
+					chatId,
+					messageId,
+					sessionKey,
+					bridgeMsg,
+				})
 			} catch (err: any) {
 				console.error('[Telegram Bridge] Audio transcription error:', err)
 				try {
@@ -113,26 +193,27 @@ export class TelegramBridge implements IBridge {
 			const chatId = ctx.chat.id
 			const messageId = ctx.message.message_id
 			const chatKey = String(chatId)
+			const identity = this.getMessageIdentity(ctx)
 
 			const sessionKey = this.chatSessions.get(chatKey) ?? `tg_${chatKey}`
 			this.chatSessions.set(chatKey, sessionKey)
 
-			// 👀 React immediately to signal receipt
-			try {
-				await ctx.react('👀')
-			} catch { /* Reactions not supported in all chats */ }
-
 			const bridgeMsg: BridgeMessage = {
 				channelId: 'telegram',
 				channelUserId: chatKey,
-				channelName: ctx.chat.type === 'private' ? 'Private Chat' : (ctx.chat as any).title,
-				authorId: String(ctx.from?.id),
-				authorName: ctx.from?.first_name,
+				channelName: identity.channelName,
+				authorId: identity.authorId,
+				authorName: identity.authorName,
 				content: ctx.message.text,
 			}
 
-			this.contexts.set(chatKey, { chatId, messageId, buffer: '' })
-			await this.onMessage?.(bridgeMsg, sessionKey)
+			await this.queueIncomingMessage({
+				chatKey,
+				chatId,
+				messageId,
+				sessionKey,
+				bridgeMsg,
+			})
 		})
 
 		// Handle photos
@@ -141,11 +222,10 @@ export class TelegramBridge implements IBridge {
 			const chatId = ctx.chat.id
 			const messageId = ctx.message.message_id
 			const chatKey = String(chatId)
+			const identity = this.getMessageIdentity(ctx)
 
 			const sessionKey = this.chatSessions.get(chatKey) ?? `tg_${chatKey}`
 			this.chatSessions.set(chatKey, sessionKey)
-
-			try { await ctx.react('👀') } catch { }
 
 			try {
 				// Use the highest-resolution variant
@@ -159,15 +239,20 @@ export class TelegramBridge implements IBridge {
 				const bridgeMsg: BridgeMessage = {
 					channelId: 'telegram',
 					channelUserId: chatKey,
-					channelName: ctx.chat.type === 'private' ? 'Private Chat' : (ctx.chat as any).title,
-					authorId: String(ctx.from?.id),
-					authorName: ctx.from?.first_name,
+					channelName: identity.channelName,
+					authorId: identity.authorId,
+					authorName: identity.authorName,
 					content: ctx.message.caption || 'What is in this image?',
 					attachments: [{ type: 'image', buffer, mimeType: 'image/jpeg' }],
 				}
 
-				this.contexts.set(chatKey, { chatId, messageId, buffer: '' })
-				await this.onMessage?.(bridgeMsg, sessionKey)
+				await this.queueIncomingMessage({
+					chatKey,
+					chatId,
+					messageId,
+					sessionKey,
+					bridgeMsg,
+				})
 			} catch (err: any) {
 				console.error('[Telegram Bridge] Failed to process photo:', err)
 				try { await ctx.reply(`❌ Failed to process image: ${err.message}`) } catch { }
@@ -180,11 +265,10 @@ export class TelegramBridge implements IBridge {
 			const chatId = ctx.chat.id
 			const messageId = ctx.message.message_id
 			const chatKey = String(chatId)
+			const identity = this.getMessageIdentity(ctx)
 
 			const sessionKey = this.chatSessions.get(chatKey) ?? `tg_${chatKey}`
 			this.chatSessions.set(chatKey, sessionKey)
-
-			try { await ctx.react('👀') } catch { }
 
 			try {
 				const doc = ctx.message.document
@@ -198,15 +282,20 @@ export class TelegramBridge implements IBridge {
 				const bridgeMsg: BridgeMessage = {
 					channelId: 'telegram',
 					channelUserId: chatKey,
-					channelName: ctx.chat.type === 'private' ? 'Private Chat' : (ctx.chat as any).title,
-					authorId: String(ctx.from?.id),
-					authorName: ctx.from?.first_name,
+					channelName: identity.channelName,
+					authorId: identity.authorId,
+					authorName: identity.authorName,
 					content: ctx.message.caption ?? '',
 					attachments: [{ type: isImage ? 'image' : 'file', buffer, mimeType, url: doc.file_name }],
 				}
 
-				this.contexts.set(chatKey, { chatId, messageId, buffer: '' })
-				await this.onMessage?.(bridgeMsg, sessionKey)
+				await this.queueIncomingMessage({
+					chatKey,
+					chatId,
+					messageId,
+					sessionKey,
+					bridgeMsg,
+				})
 			} catch (err: any) {
 				console.error('[Telegram Bridge] Failed to process document:', err)
 				try { await ctx.reply(`❌ Failed to process file: ${err.message}`) } catch { }
@@ -227,74 +316,83 @@ export class TelegramBridge implements IBridge {
 		const chatKey = String(sessionContext?.channelUserId ?? '')
 		if (!chatKey) return
 
-		const ctx = this.contexts.get(chatKey)
-
 		switch (event.type) {
 			case 'start': {
-				// 🧠 Add thinking reaction and start typing indicator
-				if (ctx) {
-					try {
-						await this.bot.api.setMessageReaction(ctx.chatId, ctx.messageId, [{ type: 'emoji', emoji: '👀' }])
-					} catch { /* old Telegram clients don't support this */ }
+				const state = this.chatStates.get(chatKey)
+				if (!state) break
 
-					// Send typing status every 4s (Telegram clears it after 5s)
-					ctx.typingInterval = setInterval(async () => {
-						await this.bot?.api.sendChatAction(ctx.chatId, 'typing').catch(() => { })
-					}, 4000)
-					// Send once immediately
-					await this.bot?.api.sendChatAction(ctx.chatId, 'typing').catch(() => { })
-					ctx.buffer = ''
-				}
+				const messageContext = state.queue.shift()
+				if (!messageContext) break
+
+				state.currentContext = messageContext
+				state.buffer = ''
+
+				await this.clearStatusReactions(messageContext.chatId, messageContext.messageId)
+
+				this.stopTyping(state)
+				state.typingInterval = setInterval(async () => {
+					await this.bot?.api.sendChatAction(messageContext.chatId, 'typing').catch(() => { })
+				}, 4000)
+				await this.bot?.api.sendChatAction(messageContext.chatId, 'typing').catch(() => { })
 				break
 			}
 			case 'chunk': {
-				if (ctx) ctx.buffer += event.text
+				const state = this.chatStates.get(chatKey)
+				if (state?.currentContext) state.buffer += event.text
 				break
 			}
 			case 'done': {
-				if (ctx) {
-					clearInterval(ctx.typingInterval)
-					const fullText = ctx.buffer
-					this.contexts.delete(chatKey)
+				const state = this.chatStates.get(chatKey)
+				const currentContext = state?.currentContext
+				if (!state || !currentContext) break
 
-					// Remove all reactions (pass empty array)
+				this.stopTyping(state)
+				const fullText = state.buffer
+				state.currentContext = undefined
+				state.buffer = ''
+
+				await this.clearStatusReactions(currentContext.chatId, currentContext.messageId)
+
+				if (fullText.trim()) {
 					try {
-						await this.bot.api.setMessageReaction(ctx.chatId, ctx.messageId, [])
-					} catch { }
-
-					if (fullText.trim()) {
-						try {
-							const chunks = splitText(fullText, 4000)
-							for (const chunk of chunks) {
-								await this.bot.api.sendMessage(ctx.chatId, chunk, { parse_mode: 'Markdown' })
-									.catch(() => this.bot!.api.sendMessage(ctx.chatId, chunk)) // fallback without markdown
-							}
-						} catch (err) {
-							console.error(`[Telegram Bridge] Failed to send to ${chatKey}:`, err)
+						const chunks = splitText(fullText, 4000)
+						for (const chunk of chunks) {
+							await this.bot.api.sendMessage(currentContext.chatId, chunk, { parse_mode: 'Markdown' })
+								.catch(() => this.bot!.api.sendMessage(currentContext.chatId, chunk)) // fallback without markdown
 						}
+					} catch (err) {
+						console.error(`[Telegram Bridge] Failed to send to ${chatKey}:`, err)
 					}
 				}
+
+				await this.promoteNextQueued(state)
 				break
 			}
 			case 'error': {
-				if (ctx) {
-					clearInterval(ctx.typingInterval)
-					this.contexts.delete(chatKey)
-					try {
-						await this.bot.api.setMessageReaction(ctx.chatId, ctx.messageId, [])
-					} catch { }
-					try {
-						await this.bot.api.sendMessage(ctx.chatId, `⚠️ Error [v${VERSION}]: ${event.message}`)
-					} catch (err) {
-						console.error(`[Telegram Bridge] Failed to send error notification to chat ${chatKey}:`, err)
-					}
+				const state = this.chatStates.get(chatKey)
+				const currentContext = state?.currentContext
+				if (!state || !currentContext) break
+
+				this.stopTyping(state)
+				state.currentContext = undefined
+				state.buffer = ''
+
+				await this.clearStatusReactions(currentContext.chatId, currentContext.messageId)
+				try {
+					await this.bot.api.sendMessage(currentContext.chatId, `⚠️ Error [v${VERSION}]: ${event.message}`)
+				} catch (err) {
+					console.error(`[Telegram Bridge] Failed to send error notification to chat ${chatKey}:`, err)
 				}
+
+				await this.promoteNextQueued(state)
 				break
 			}
 			case 'file': {
-				if (ctx) {
+				const state = this.chatStates.get(chatKey)
+				const currentContext = state?.currentContext
+				if (currentContext) {
 					try {
-						await this.bot.api.sendDocument(ctx.chatId, new InputFile(event.buffer, event.name))
+						await this.bot.api.sendDocument(currentContext.chatId, new InputFile(event.buffer, event.name))
 					} catch (err) {
 						console.error(`[Telegram Bridge] Failed to send file to ${chatKey}:`, err)
 					}
@@ -343,6 +441,9 @@ export class TelegramBridge implements IBridge {
 
 	async destroy(): Promise<void> {
 		if (this.bot) {
+			for (const state of this.chatStates.values()) {
+				this.stopTyping(state)
+			}
 			this.bot.stop()
 			console.log('[Telegram Bridge] Stopped.')
 		}

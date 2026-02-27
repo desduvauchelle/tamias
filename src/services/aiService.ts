@@ -479,16 +479,40 @@ export class AIService {
 		const job = session.queue.shift()!
 		let messageContent = job.authorName ? `[${job.authorName}]: ${job.content}` : job.content
 
-		// Handle attachments (especially text files)
+		// Handle attachments (text files, audio for transcription, etc.)
 		if (job.attachments && job.attachments.length > 0) {
 			for (const att of job.attachments) {
-				if (att.type === 'file' && att.buffer && (att.mimeType.startsWith('text/') || att.mimeType === 'application/json' || att.mimeType === 'application/javascript' || att.mimeType === 'application/typescript' || att.mimeType === 'application/octet-stream')) {
-					// Check if it looks like text even if octet-stream
-					const text = att.buffer.toString('utf-8')
-					// Rough check for binary
-					const isLikelyText = !/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(text.slice(0, 1024))
-					if (isLikelyText) {
-						messageContent += `\n\n--- ATTACHED FILE: ${att.url?.split('/').pop() || 'unknown'} ---\n${text}\n--- END ATTACHED FILE ---`
+				if (att.type === 'file' && att.buffer) {
+					const isAudio = att.mimeType.startsWith('audio/')
+						|| att.mimeType === 'application/ogg'
+						|| (att.url != null && /\.(ogg|mp3|m4a|wav|flac|aac|opus|weba|webm)$/i.test(att.url))
+
+					if (isAudio) {
+						// Transcribe audio attachments (e.g. voice messages from Discord)
+						try {
+							const filename = att.url?.split('/').pop() || 'audio'
+							console.log(`[AIService] Transcribing audio attachment: ${filename} (${att.mimeType})`)
+							const { transcribeAudioBuffer } = await import('../utils/transcription.ts')
+							const transcript = await transcribeAudioBuffer(att.buffer)
+							if (transcript) {
+								messageContent = messageContent
+									? `${messageContent}\n\n[Transcribed audio: ${transcript}]`
+									: `[Transcribed audio: ${transcript}]`
+								console.log(`[AIService] Audio transcribed: "${transcript.slice(0, 100)}"`)
+							} else {
+								console.warn(`[AIService] Audio transcription returned empty for ${filename}`)
+							}
+						} catch (err) {
+							console.error('[AIService] Failed to transcribe audio attachment:', err)
+						}
+					} else if (att.mimeType.startsWith('text/') || att.mimeType === 'application/json' || att.mimeType === 'application/javascript' || att.mimeType === 'application/typescript' || att.mimeType === 'application/octet-stream') {
+						// Check if it looks like text even if octet-stream
+						const text = att.buffer.toString('utf-8')
+						// Rough check for binary
+						const isLikelyText = !/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(text.slice(0, 1024))
+						if (isLikelyText) {
+							messageContent += `\n\n--- ATTACHED FILE: ${att.url?.split('/').pop() || 'unknown'} ---\n${text}\n--- END ATTACHED FILE ---`
+						}
 					}
 				}
 			}
@@ -938,7 +962,11 @@ Leave the insights array EMPTY if nothing new was learned. DO NOT repeat what is
 3. **MEMORY.md Update**: Rewrite MEMORY.md entirely with updated projects table + 7-day rolling activity log + notes.
 4. **USER.md Update** (optional): If a genuinely new personal fact was learned, provide a full rewrite of USER.md. Otherwise leave empty.
 5. **IDENTITY.md / SOUL.md Insights** (optional): Append-only notes for genuinely new AI behavior or personality insights.
-6. **Project README** (optional): If this session is working on a specific project (check the project context in the conversation), provide a concise technical summary of the project — architecture, key components, conventions, and current state. This will be saved as PROJECT-README.md in the project's memory directory for future sessions. Leave empty if no project work was discussed.
+6. **Project README** (optional): If this session is working on a specific project (check the project context in the conversation), provide a concise technical summary of the project — architecture, key components, conventions, and current state. Include a dedicated \
+## Todo List\
+section by default. If there are no concrete todos from this session, include a placeholder item like: \
+- put todos here\
+This will be saved as PROJECT-README.md in the project's memory directory for future sessions. Leave empty if no project work was discussed.
 
 Return a structured object.`
 
@@ -949,7 +977,7 @@ Return a structured object.`
 					sessionName: z.string().describe('A short, descriptive name for the session.'),
 					memoryUpdate: z.string().describe('Full replacement content for MEMORY.md: active projects table + 7-day rolling activity log + notes.'),
 					userUpdate: z.string().describe('Full replacement content for USER.md if genuinely new personal facts were learned. Empty string if nothing new.'),
-					projectReadmeUpdate: z.string().describe('Technical summary of the project worked on in this session (architecture, components, conventions, current state). Empty string if no project work was discussed.'),
+					projectReadmeUpdate: z.string().describe('Technical summary of the project worked on in this session (architecture, components, conventions, current state), including a default "## Todo List" section. If no todos are known, include a placeholder like "- put todos here". Empty string if no project work was discussed.'),
 					insights: z.array(z.object({
 						filename: z.enum(['IDENTITY.md', 'SOUL.md']).describe('The persona file to append a new insight to.'),
 						content: z.string().describe('The new insight to append.')
@@ -1011,7 +1039,16 @@ Return a structured object.`
 					const projectDir = getProjectDir(session.projectSlug)
 					const readmePath = join(projectDir, 'PROJECT-README.md')
 					if (existsSync(projectDir)) {
-						writeFileSync(readmePath, object.projectReadmeUpdate.trim() + '\n', 'utf-8')
+						let projectReadmeContent = object.projectReadmeUpdate.trim()
+						if (!/\n##\s+Todo List\b/i.test(`\n${projectReadmeContent}`)) {
+							projectReadmeContent += '\n\n## Todo List\n\n- put todos here'
+						} else {
+							projectReadmeContent = projectReadmeContent.replace(
+								/(\n##\s+Todo List\s*\n)(?=\s*(?:##\s+|$))/i,
+								'$1\n- put todos here\n'
+							)
+						}
+						writeFileSync(readmePath, projectReadmeContent.trim() + '\n', 'utf-8')
 					}
 				} catch (err) {
 					console.error('[Compaction] Failed to write PROJECT-README.md:', err)

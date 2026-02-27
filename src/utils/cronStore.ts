@@ -17,6 +17,8 @@ export const CronJobSchema = z.object({
 	target: z.string().optional().default('last'),
 	enabled: z.boolean().default(true),
 	lastRun: z.string().datetime().optional(),
+	lastStatus: z.enum(['success', 'error']).optional(),
+	lastError: z.string().optional(),
 	createdAt: z.string().datetime(),
 })
 
@@ -38,7 +40,22 @@ export const loadCronJobs = (): CronJob[] => {
 
 	try {
 		const rawData = JSON.parse(readFileSync(path, 'utf-8'))
-		return z.array(CronJobSchema).parse(rawData)
+		if (!Array.isArray(rawData)) {
+			console.error('Cron configuration file root must be an array')
+			return []
+		}
+
+		const validJobs: CronJob[] = []
+		for (const [index, entry] of rawData.entries()) {
+			const parsed = CronJobSchema.safeParse(entry)
+			if (parsed.success) {
+				validJobs.push(parsed.data)
+			} else {
+				console.warn(`Skipping invalid cron job at index ${index}:`, parsed.error.issues)
+			}
+		}
+
+		return validJobs
 	} catch (err) {
 		console.error('Cron configuration file is invalid or missing:', err)
 		return []
@@ -72,6 +89,17 @@ export const updateCronJob = (id: string, updates: Partial<Omit<CronJob, 'id' | 
 	jobs[index] = { ...jobs[index], ...updates }
 	saveCronJobs(jobs)
 	return jobs[index]
+}
+
+export const recordCronJobRun = (
+	id: string,
+	result: { status: 'success' | 'error'; error?: string }
+): CronJob => {
+	return updateCronJob(id, {
+		lastRun: new Date().toISOString(),
+		lastStatus: result.status,
+		lastError: result.status === 'error' ? result.error ?? 'Unknown cron execution error' : undefined,
+	})
 }
 
 export const removeCronJob = (id: string): void => {

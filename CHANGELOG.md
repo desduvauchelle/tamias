@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- Enhance history logging and API with rich tracing fields
 - enhance agent form with model fallback functionality and improve data fetching
 - add comprehensive tests for channels API and Discord bridge modes
 - implement progress update feature in DiscordBridge and enhance project context handling
@@ -154,9 +155,19 @@
 
 ## [v26.2.26.15] - 2026-02-26
 
+
+
+## [v26.2.26.12] - 2026-02-26
+
 ### Features
+- Enhance history logging and API with rich tracing fields
+- enhance agent form with model fallback functionality and improve data fetching
+- add comprehensive tests for channels API and Discord bridge modes
 - implement progress update feature in DiscordBridge and enhance project context handling
 - Enhance CLI documentation and add usage tracking
+
+### Bug Fixes
+- update version display from '3' to 'i4' in the navigation component
 
 ## [v26.2.26.11] - 2026-02-26
 

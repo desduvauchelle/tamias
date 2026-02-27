@@ -5,6 +5,7 @@ Tools are the hands of the AI. Tamias provides a set of highly specific tools de
 ---
 
 ## 💻 Terminal Tool
+
 The most versatile tool in the arsenal. It allows the AI to interact with your system directly.
 
 | Function | Primary Use Case |
@@ -21,6 +22,7 @@ The most versatile tool in the arsenal. It allows the AI to interact with your s
 ---
 
 ## 🐙 GitHub Tool
+
 A specialized tool for managing Git repositories. It handles the "Git workflow" so you don't have to.
 
 | Function | Description |
@@ -35,6 +37,7 @@ A specialized tool for managing Git repositories. It handles the "Git workflow" 
 ---
 
 ## ✉️ Email Tool
+
 Managed via the `himalaya` CLI, this tool allows the AI to be your gatekeeper.
 
 - **Inbox Management**: Summarize long email threads.
@@ -46,6 +49,7 @@ Managed via the `himalaya` CLI, this tool allows the AI to be your gatekeeper.
 ---
 
 ## 🐿️ Sub-agent Tool
+
 The `subagent__spawn` tool is how Tamias orchestrates multiple brains.
 
 - **Task**: A clear, actionable description of what the sub-agent should do.
@@ -54,7 +58,19 @@ The `subagent__spawn` tool is how Tamias orchestrates multiple brains.
 
 ---
 
+## 🧵 Session Tool
+
+Lightweight thread/session orchestration for creating and routing conversation work.
+
+| Function | Description |
+|---|---|
+| `create_thread` | Create a new session/thread with optional model/channel overrides and optional initial message enqueue. |
+| `send_message` | Enqueue a message to a specific thread/session (or current session by default). |
+
+---
+
 ## 🧩 Skills Tool
+
 The AI can manage its own skills using the `skills` tool.
 
 | Function | Description |
@@ -69,6 +85,7 @@ The AI can manage its own skills using the `skills` tool.
 ---
 
 ### Custom MCP Tools
+
 Tamias supports the **Model Context Protocol**. If you have an MCP server running (e.g., a Google Drive connector), Tamias will automatically discover its tools and expose them to the AI.
 
 To add an MCP server, use the `tamias config` command.
