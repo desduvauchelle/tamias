@@ -1,4 +1,6 @@
 import { EventEmitter } from 'events'
+import { join } from 'path'
+import { existsSync, writeFileSync } from 'fs'
 import { streamText, generateText, generateObject, stepCountIs } from 'ai'
 
 // Verbose debug logger — enabled by setting TAMIAS_DEBUG=1 or launching with `tamias start --verbose`
@@ -62,6 +64,8 @@ export interface Session {
 	agentId?: string
 	agentSlug?: string
 	agentDir?: string
+	// Active project for this session
+	projectSlug?: string
 }
 
 export interface CreateSessionOptions {
@@ -576,8 +580,20 @@ export class AIService {
 				// Build project context for system prompt
 				let projectContext: string | undefined
 				try {
-					const { buildProjectContext } = await import('../utils/projects')
-					projectContext = buildProjectContext()
+					const { buildProjectContext, buildActiveProjectContext, listProjects } = await import('../utils/projects')
+					const parts: string[] = []
+
+					// If session has an active project, include detailed context
+					if (session.projectSlug) {
+						const activeCtx = buildActiveProjectContext(session.projectSlug)
+						if (activeCtx) parts.push(activeCtx)
+					}
+
+					// Always include the shallow list of all projects
+					const shallowCtx = buildProjectContext()
+					if (shallowCtx) parts.push(shallowCtx)
+
+					if (parts.length > 0) projectContext = parts.join('\n\n---\n\n')
 				} catch { /* projects module may not exist yet */ }
 
 				const systemPrompt = buildSystemPrompt(toolNamesList, this.toolDocs, session.summary, {
@@ -863,6 +879,7 @@ Leave the insights array EMPTY if nothing new was learned. DO NOT repeat what is
 3. **MEMORY.md Update**: Rewrite MEMORY.md entirely with updated projects table + 7-day rolling activity log + notes.
 4. **USER.md Update** (optional): If a genuinely new personal fact was learned, provide a full rewrite of USER.md. Otherwise leave empty.
 5. **IDENTITY.md / SOUL.md Insights** (optional): Append-only notes for genuinely new AI behavior or personality insights.
+6. **Project README** (optional): If this session is working on a specific project (check the project context in the conversation), provide a concise technical summary of the project — architecture, key components, conventions, and current state. This will be saved as PROJECT-README.md in the project's memory directory for future sessions. Leave empty if no project work was discussed.
 
 Return a structured object.`
 
@@ -873,6 +890,7 @@ Return a structured object.`
 					sessionName: z.string().describe('A short, descriptive name for the session.'),
 					memoryUpdate: z.string().describe('Full replacement content for MEMORY.md: active projects table + 7-day rolling activity log + notes.'),
 					userUpdate: z.string().describe('Full replacement content for USER.md if genuinely new personal facts were learned. Empty string if nothing new.'),
+					projectReadmeUpdate: z.string().describe('Technical summary of the project worked on in this session (architecture, components, conventions, current state). Empty string if no project work was discussed.'),
 					insights: z.array(z.object({
 						filename: z.enum(['IDENTITY.md', 'SOUL.md']).describe('The persona file to append a new insight to.'),
 						content: z.string().describe('The new insight to append.')
@@ -926,6 +944,19 @@ Return a structured object.`
 					insightsRecord[item.filename] = item.content
 				}
 				updatePersonaFiles(insightsRecord, today)
+			}
+			// Write PROJECT-README.md if project context was updated
+			if (object.projectReadmeUpdate?.trim() && session.projectSlug) {
+				try {
+					const { getProjectDir } = await import('../utils/projects')
+					const projectDir = getProjectDir(session.projectSlug)
+					const readmePath = join(projectDir, 'PROJECT-README.md')
+					if (existsSync(projectDir)) {
+						writeFileSync(readmePath, object.projectReadmeUpdate.trim() + '\n', 'utf-8')
+					}
+				} catch (err) {
+					console.error('[Compaction] Failed to write PROJECT-README.md:', err)
+				}
 			}
 			session.messages = session.messages.slice(-10)
 		} catch (err) {

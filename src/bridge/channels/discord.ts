@@ -31,6 +31,8 @@ export class DiscordBridge implements IBridge {
 	private cronBuffers = new Map<string, string>()
 	/** Deduplication guard: set of Discord message IDs already dispatched for processing */
 	private seenMessageIds = new Set<string>()
+	/** Threads created for progress updates: sessionId → Discord ThreadChannel */
+	private progressThreads = new Map<string, any>()
 	/** Threads created for sub-agents: subagentId → Discord ThreadChannel */
 	private subagentThreads = new Map<string, any>()
 
@@ -299,6 +301,12 @@ export class DiscordBridge implements IBridge {
 					state.currentMessage = undefined
 					state.buffer = ''
 
+					// Clean up progress thread for this session
+					const doneSessionId = sessionContext?.sessionId ?? channelId
+					if (this.progressThreads.has(doneSessionId)) {
+						this.progressThreads.delete(doneSessionId)
+					}
+
 					// If queue is empty, we can potentially remove the state, but better to keep it for future messages
 					// until destroy() is called or it times out (optional)
 				}
@@ -417,6 +425,56 @@ export class DiscordBridge implements IBridge {
 				}
 				break
 			}
+			case 'progress-update': {
+				const sessionId = sessionContext?.sessionId ?? channelId
+				const stepLabel = event.step && event.totalSteps
+					? ` (${event.step}/${event.totalSteps})`
+					: event.step ? ` (step ${event.step})` : ''
+				const updateMsg = `📋${stepLabel} ${event.message}`
+
+				// Try to reuse an existing progress thread for this session
+				let thread = this.progressThreads.get(sessionId)
+				if (thread) {
+					try {
+						await thread.send(updateMsg)
+					} catch {
+						this.progressThreads.delete(sessionId)
+						thread = null
+					}
+				}
+
+				// Create a new thread if none exists
+				if (!thread) {
+					const triggerMsg = state?.currentMessage
+					if (triggerMsg && typeof (triggerMsg as any).startThread === 'function') {
+						try {
+							const threadName = (event.title || 'Task Progress').slice(0, 100)
+							thread = await (triggerMsg as any).startThread({
+								name: threadName,
+								autoArchiveDuration: 60,
+							})
+							this.progressThreads.set(sessionId, thread)
+							await thread.send(updateMsg)
+						} catch (err) {
+							console.warn(`[Discord Bridge] Could not create progress thread:`, err)
+							// Fallback: post in channel
+							try {
+								const ch = await this.client!.channels.fetch(channelId)
+								if (ch && 'send' in ch) await (ch as any).send(updateMsg)
+							} catch { }
+						}
+					} else {
+						// DM or no current message — post in channel
+						try {
+							const ch = await this.client!.channels.fetch(channelId)
+							if (ch && 'send' in ch) await (ch as any).send(updateMsg)
+						} catch (err) {
+							console.error(`[Discord Bridge] Failed to send progress update to ${channelId}:`, err)
+						}
+					}
+				}
+				break
+			}
 			case 'agent-handoff': {
 				const handoffMsg = `🐝 **Agent Handoff**\n\n` +
 					`**From:** ${event.fromAgent}\n` +
@@ -448,6 +506,7 @@ export class DiscordBridge implements IBridge {
 			this.client.destroy()
 			this.seenMessageIds.clear()
 			this.subagentThreads.clear()
+			this.progressThreads.clear()
 			console.log('[Discord Bridge] Stopped.')
 		}
 	}

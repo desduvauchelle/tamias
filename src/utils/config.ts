@@ -168,6 +168,8 @@ export const TamiasConfigSchema = z.object({
 		/** Command timeout in seconds */
 		timeout: z.number().default(30),
 	}).default({ engine: 'none', image: 'ubuntu:22.04', memoryLimit: '512m', cpuLimit: '1.0', networkEnabled: false, timeout: 30 }).optional(),
+	/** Ratio of model context window to reserve for the system prompt (0.1 – 0.6, default 0.35) */
+	systemPromptRatio: z.number().min(0.1).max(0.6).default(0.35).optional(),
 })
 
 export type TamiasConfig = z.infer<typeof TamiasConfigSchema>

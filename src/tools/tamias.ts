@@ -575,5 +575,27 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 				return { subagents, count: subagents.length }
 			},
 		}),
+
+		send_progress_update: tool({
+			description: 'Send an interim progress update to the user during a multi-step task. On Discord this creates/posts to a thread so the user can follow along without flooding the main channel. Use this after completing each significant step of a complex task.',
+			inputSchema: z.object({
+				title: z.string().describe('A short title for the overall task (e.g. "Deploying backend"). This becomes the thread name on Discord.'),
+				message: z.string().describe('A brief progress update (e.g. "Step 2/5 done: database migrated successfully").'),
+				step: z.number().optional().describe('Current step number (1-based).'),
+				totalSteps: z.number().optional().describe('Total number of steps in the task.'),
+			}),
+			execute: async ({ title, message, step, totalSteps }) => {
+				const session = aiService.getSession(sessionId)
+				if (!session) return { success: false, error: 'Session not found' }
+				session.emitter.emit('event', {
+					type: 'progress-update',
+					title,
+					message,
+					step,
+					totalSteps,
+				} as any)
+				return { success: true, message: 'Progress update sent.' }
+			},
+		}),
 	}
 }

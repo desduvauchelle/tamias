@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- Enhance CLI documentation and add usage tracking
 - ensure workspace directory exists before tests and streamline imports in sandbox tests
 - implement Modal component and integrate it into various pages for improved UI
 - add tool provider preference system and vector store implementation

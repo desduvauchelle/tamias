@@ -23,6 +23,7 @@ export type DaemonEvent =
 	| { type: 'file'; name: string; buffer: Buffer; mimeType: string }
 	| { type: 'subagent-status'; subagentId: string; task: string; status: 'started' | 'progress' | 'completed' | 'failed'; message: string }
 	| { type: 'agent-handoff'; fromAgent: string; toAgent: string; reason: string }
+	| { type: 'progress-update'; title: string; message: string; step?: number; totalSteps?: number }
 
 export interface IBridge {
 	name: string

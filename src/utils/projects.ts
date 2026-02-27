@@ -12,6 +12,17 @@ import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'fs'
 import { TAMIAS_DIR } from './config.ts'
 
+/** Max depth for file tree listing */
+const FILE_TREE_MAX_DEPTH = 3
+/** Max lines for injected README */
+const README_MAX_LINES = 200
+/** Directories to skip when listing file trees */
+const FILE_TREE_IGNORE = new Set([
+	'node_modules', '.git', 'dist', 'build', '.next', '.nuxt',
+	'__pycache__', '.venv', 'venv', '.tox', 'target', 'vendor',
+	'.turbo', '.cache', 'coverage', '.output', '.svelte-kit',
+])
+
 export interface Project {
 	slug: string
 	name: string
@@ -199,6 +210,67 @@ export function buildProjectContext(tenantId?: string): string {
 	return lines.join('\n')
 }
 
+/**
+ * Build a shallow file tree string for a directory, respecting ignore list.
+ * Returns a tree-style listing up to FILE_TREE_MAX_DEPTH levels deep.
+ */
+export function getProjectFileTree(dirPath: string, maxDepth = FILE_TREE_MAX_DEPTH): string {
+	if (!existsSync(dirPath)) return ''
+
+	const lines: string[] = []
+	const walk = (dir: string, prefix: string, depth: number) => {
+		if (depth > maxDepth) return
+		let entries: { name: string; isDir: boolean }[]
+		try {
+			entries = readdirSync(dir, { withFileTypes: true })
+				.filter(e => !e.name.startsWith('.') || e.name === '.env.example')
+				.filter(e => !FILE_TREE_IGNORE.has(e.name))
+				.map(e => ({ name: e.name, isDir: e.isDirectory() }))
+				.sort((a, b) => {
+					// Directories first, then alphabetical
+					if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
+					return a.name.localeCompare(b.name)
+				})
+		} catch { return }
+
+		for (let i = 0; i < entries.length; i++) {
+			const entry = entries[i]
+			const isLast = i === entries.length - 1
+			const connector = isLast ? '└── ' : '├── '
+			const childPrefix = isLast ? '    ' : '│   '
+			lines.push(`${prefix}${connector}${entry.name}${entry.isDir ? '/' : ''}`)
+			if (entry.isDir && depth < maxDepth) {
+				walk(join(dir, entry.name), prefix + childPrefix, depth + 1)
+			}
+		}
+	}
+
+	walk(dirPath, '', 0)
+	return lines.join('\n')
+}
+
+/**
+ * Read the project README.md (if it exists at the workspace path),
+ * truncated to README_MAX_LINES lines.
+ */
+function readProjectReadme(workspacePath: string): string | null {
+	const readmeNames = ['README.md', 'readme.md', 'Readme.md', 'README.rst', 'README.txt']
+	for (const name of readmeNames) {
+		const readmePath = join(workspacePath, name)
+		if (existsSync(readmePath)) {
+			try {
+				const content = readFileSync(readmePath, 'utf-8')
+				const lines = content.split('\n')
+				if (lines.length > README_MAX_LINES) {
+					return lines.slice(0, README_MAX_LINES).join('\n') + `\n\n… (${lines.length - README_MAX_LINES} more lines truncated)`
+				}
+				return content
+			} catch { return null }
+		}
+	}
+	return null
+}
+
 /** Build detailed context for the currently active project session */
 export function buildActiveProjectContext(slug: string, tenantId?: string): string {
 	const project = getProject(slug, tenantId)
@@ -210,6 +282,34 @@ export function buildActiveProjectContext(slug: string, tenantId?: string): stri
 	sections.push(`**Description:** ${project.description}`)
 	if (project.techStack) sections.push(`**Tech Stack:** ${project.techStack}`)
 	if (project.workspacePath) sections.push(`**Workspace:** \`${project.workspacePath}\``)
+
+	// Include project file tree (if workspace path exists)
+	if (project.workspacePath && existsSync(project.workspacePath)) {
+		const tree = getProjectFileTree(project.workspacePath)
+		if (tree) {
+			sections.push(`\n### File Tree\n\n\`\`\`\n${tree}\n\`\`\``)
+		}
+	}
+
+	// Include project README
+	if (project.workspacePath) {
+		// Check for tamias-maintained project README first
+		const projectReadmePath = join(getProjectDir(slug, tenantId), 'PROJECT-README.md')
+		if (existsSync(projectReadmePath)) {
+			try {
+				const content = readFileSync(projectReadmePath, 'utf-8').trim()
+				if (content) {
+					sections.push(`\n### Project Summary (from compaction)\n\n${content}`)
+				}
+			} catch { /* ignore */ }
+		}
+
+		// Include the actual repo README
+		const readme = readProjectReadme(project.workspacePath)
+		if (readme) {
+			sections.push(`\n### Repository README\n\n${readme}`)
+		}
+	}
 
 	// Include recent activity
 	const activity = getProjectActivity(slug, 50, tenantId)
