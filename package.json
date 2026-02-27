@@ -1,6 +1,6 @@
 {
 	"name": "tamias",
-	"version": "26.2.27.1",
+	"version": "26.2.27.3",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {

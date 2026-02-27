@@ -28,14 +28,7 @@ import {
 } from '../utils/config.ts'
 import { setEnv, removeEnv, generateSecureEnvKey } from '../utils/env.ts'
 import { isDaemonRunning, readDaemonInfo, getDaemonUrl } from '../utils/daemon.ts'
-import { TERMINAL_TOOL_NAME } from './terminal.ts'
-import { EMAIL_TOOL_NAME } from './email.ts'
-import { GEMINI_TOOL_NAME } from './gemini.ts'
-import { CRON_TOOL_NAME } from './cron.ts'
-import { SUBAGENT_TOOL_NAME } from './subagent.ts'
-import { GITHUB_TOOL_NAME } from './github.ts'
-import { IMAGE_TOOL_NAME } from './image.ts'
-import { SESSION_TOOL_NAME } from './session.ts'
+import { getAllInternalToolNames } from './internalToolNames.ts'
 import { saveSkill, deleteSkill, getLoadedSkills, loadSkills } from '../utils/skills.ts'
 import matter from 'gray-matter'
 
@@ -130,22 +123,9 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 			description: 'List all configured internal tools and external MCP servers.',
 			inputSchema: z.object({}),
 			execute: async () => {
-				const { WORKSPACE_TOOL_NAME } = await import('./workspace.ts')
-				const knownInternal = [
-					TERMINAL_TOOL_NAME,
-					TAMIAS_TOOL_NAME,
-					EMAIL_TOOL_NAME,
-					WORKSPACE_TOOL_NAME,
-					GEMINI_TOOL_NAME,
-					CRON_TOOL_NAME,
-					SUBAGENT_TOOL_NAME,
-					SESSION_TOOL_NAME,
-					GITHUB_TOOL_NAME,
-					IMAGE_TOOL_NAME
-				]
 				const mcpServers = getAllMcpServers()
 				return {
-					internalTools: knownInternal.map((name) => {
+					internalTools: getAllInternalToolNames().map((name) => {
 						const cfg = getInternalToolConfig(name)
 						return { name, enabled: cfg.enabled, functionsOverridden: Object.keys(cfg.functions ?? {}) }
 					}),

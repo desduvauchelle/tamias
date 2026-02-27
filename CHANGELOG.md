@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- Enhance Cron Job Management and Session Tools
 - Enhance history logging and API with rich tracing fields
 - enhance agent form with model fallback functionality and improve data fetching
 - add comprehensive tests for channels API and Discord bridge modes
@@ -137,6 +138,12 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.27.1] - 2026-02-27
+
+### Features
+- Enhance Cron Job Management and Session Tools
+- Enhance history logging and API with rich tracing fields
 
 ## [v26.2.26.18] - 2026-02-26
 

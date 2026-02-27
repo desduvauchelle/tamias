@@ -84,11 +84,23 @@ The AI can manage its own skills using the `skills` tool.
 
 ---
 
+## 🔁 CLI ↔ Tool Sync Protocol
+
+When a new top-level CLI command is added, it must be explicitly mapped to tool behavior policy (required / optional / none).
+
+- Source of truth: `src/utils/cliToolProtocol.ts`
+- Validation command: `bun run protocol:check`
+- Internal tool namespace list: `src/tools/internalToolNames.ts`
+
+This prevents command/tool drift and makes sync requirements explicit in CI.
+
+---
+
 ### Custom MCP Tools
 
 Tamias supports the **Model Context Protocol**. If you have an MCP server running (e.g., a Google Drive connector), Tamias will automatically discover its tools and expose them to the AI.
 
-To add an MCP server, use the `tamias config` command.
+To add an MCP server, use the `tamias tools add-mcp` command.
 
 ---
 

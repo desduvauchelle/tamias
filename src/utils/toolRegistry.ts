@@ -16,6 +16,9 @@ import { createPdfTools, PDF_TOOL_NAME } from '../tools/pdf.ts'
 import { memoryTools, MEMORY_TOOL_NAME } from '../tools/memory.ts'
 import { createSwarmTools, SWARM_TOOL_NAME } from '../tools/swarm.ts'
 import { createSessionTools, SESSION_TOOL_NAME } from '../tools/session.ts'
+import { INTERNAL_TOOL_NAMES, getAllInternalToolNames } from '../tools/internalToolNames.ts'
+import { buildToolsForDomain } from '../core/adapters/ai-tools.ts'
+import { getDomains } from '../core/registry.ts'
 import type { AIService } from '../services/aiService.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -91,6 +94,23 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 		[MEMORY_TOOL_NAME]: memoryTools as ToolSet,
 		[SWARM_TOOL_NAME]: createSwarmTools(aiService, sessionId) as ToolSet,
 		[SESSION_TOOL_NAME]: createSessionTools(aiService, sessionId) as ToolSet,
+	}
+
+	// ── Auto-wire registry-backed domains ────────────────────────────────────
+	// Core domains registered in src/core/domains/ are auto-discovered here.
+	// No manual catalog entry needed — just create the domain file and export it.
+	for (const domain of getDomains()) {
+		if (!(domain in internalCatalog)) {
+			internalCatalog[domain] = buildToolsForDomain(domain) as ToolSet
+		}
+	}
+
+	// Conformance: every declared name (legacy + registry) must be wired
+	const allNames = getAllInternalToolNames()
+	for (const name of allNames) {
+		if (!(name in internalCatalog)) {
+			throw new Error(`Internal tool namespace '${name}' is declared but not wired in tool registry`)
+		}
 	}
 
 	for (const [toolName, allFunctions] of Object.entries(internalCatalog)) {
