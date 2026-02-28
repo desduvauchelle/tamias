@@ -484,15 +484,18 @@ export class AIService {
 		// Handle attachments (text files, audio for transcription, etc.)
 		if (job.attachments && job.attachments.length > 0) {
 			for (const att of job.attachments) {
-				if (att.type === 'file' && att.buffer) {
-					const isAudio = att.mimeType.startsWith('audio/')
+				if ((att.type === 'file' || att.type === 'audio') && att.buffer) {
+					// Strip CDN query parameters before testing the URL extension
+					const cleanUrl = att.url != null ? att.url.split('?')[0] : null
+					const isAudio = att.type === 'audio'
+						|| att.mimeType.startsWith('audio/')
 						|| att.mimeType === 'application/ogg'
-						|| (att.url != null && /\.(ogg|mp3|m4a|wav|flac|aac|opus|weba|webm)$/i.test(att.url))
+						|| (cleanUrl != null && /\.(ogg|mp3|m4a|wav|flac|aac|opus|weba|webm)$/i.test(cleanUrl))
 
 					if (isAudio) {
 						// Transcribe audio attachments (e.g. voice messages from Discord)
+						const filename = att.url?.split('/').pop()?.split('?')[0] || 'audio'
 						try {
-							const filename = att.url?.split('/').pop() || 'audio'
 							console.log(`[AIService] Transcribing audio attachment: ${filename} (${att.mimeType})`)
 							const { transcribeAudioBuffer } = await import('../utils/transcription.ts')
 							const transcript = await transcribeAudioBuffer(att.buffer)
@@ -503,9 +506,20 @@ export class AIService {
 								console.log(`[AIService] Audio transcribed: "${transcript.slice(0, 100)}"`)
 							} else {
 								console.warn(`[AIService] Audio transcription returned empty for ${filename}`)
+								messageContent = messageContent
+									? `${messageContent}\n\n[User sent an audio message but it was silent or could not be transcribed]`
+									: `[User sent an audio message but it was silent or could not be transcribed]`
 							}
 						} catch (err) {
 							console.error('[AIService] Failed to transcribe audio attachment:', err)
+							// Surface the failure to the user rather than silently dropping the audio
+							session.emitter.emit('event', {
+								type: 'error',
+								message: `⚠️ Audio transcription failed for "${filename}". Please send your message as text instead.`
+							} as DaemonEvent)
+							session.processing = false
+							if (session.queue.length > 0) setImmediate(() => this.processSession(session))
+							return
 						}
 					} else if (att.mimeType.startsWith('text/') || att.mimeType === 'application/json' || att.mimeType === 'application/javascript' || att.mimeType === 'application/typescript' || att.mimeType === 'application/octet-stream') {
 						// Check if it looks like text even if octet-stream

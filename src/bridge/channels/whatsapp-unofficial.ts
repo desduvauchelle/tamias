@@ -113,7 +113,7 @@ export class WhatsAppUnofficialBridge implements IBridge {
 
 		try {
 			const baileys = await import('@whiskeysockets/baileys')
-			const { makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason, makeCacheableSignalKeyStore } = baileys
+			const { makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason, makeCacheableSignalKeyStore, Browsers } = baileys
 			const pino = (await import('pino')).default
 
 			// Silent pino logger for Baileys
@@ -143,7 +143,7 @@ export class WhatsAppUnofficialBridge implements IBridge {
 				version,
 				logger,
 				printQRInTerminal: false,
-				browser: ['tamias', 'cli', '1.0'],
+				browser: Browsers.appropriate('Chrome'),
 				syncFullHistory: false,
 				markOnlineOnConnect: false,
 			})

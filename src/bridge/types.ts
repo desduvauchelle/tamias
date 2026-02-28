@@ -6,7 +6,7 @@ export interface BridgeMessage {
 	authorName?: string
 	content: string
 	attachments?: Array<{
-		type: 'image' | 'file'
+		type: 'image' | 'file' | 'audio'
 		url?: string
 		buffer?: Buffer
 		mimeType: string

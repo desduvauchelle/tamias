@@ -138,11 +138,17 @@ export class DiscordBridge implements IBridge {
 						const arrayBuffer = await response.arrayBuffer()
 						const buffer = Buffer.from(arrayBuffer)
 
+						const mimeType = attachment.contentType || 'application/octet-stream'
+						const attachType = mimeType.startsWith('image/')
+							? 'image'
+							: (mimeType.startsWith('audio/') || mimeType === 'application/ogg')
+								? 'audio'
+								: 'file'
 						attachments.push({
-							type: attachment.contentType?.startsWith('image/') ? 'image' : 'file',
+							type: attachType,
 							url: attachment.url,
 							buffer,
-							mimeType: attachment.contentType || 'application/octet-stream'
+							mimeType
 						})
 					} catch (err) {
 						console.error(`[Discord Bridge] Failed to download attachment ${attachment.name}:`, err)
