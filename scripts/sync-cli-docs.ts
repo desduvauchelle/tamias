@@ -19,8 +19,6 @@ const ROOT = join(import.meta.dir, '..')
 
 export const TARGET_FILES = [
 	'README.md',
-	'src/templates/AGENTS.md',
-	'src/templates/SYSTEM.md',
 	'docs/index.md',
 ]
 

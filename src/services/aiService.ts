@@ -79,6 +79,7 @@ export interface CreateSessionOptions {
 	id?: string
 	task?: string
 	agentId?: string
+	projectSlug?: string
 }
 
 /** Truncate a task description to a readable one-liner for status messages. */
@@ -307,6 +308,7 @@ export class AIService {
 			agentId: options.agentId,
 			agentSlug,
 			agentDir,
+			projectSlug: options.projectSlug,
 		}
 
 		// Sub-agents MUST NOT overwrite the parent's entry in bridgeSessionMap.
@@ -621,7 +623,7 @@ export class AIService {
 					if (parts.length > 0) projectContext = parts.join('\n\n---\n\n')
 				} catch { /* projects module may not exist yet */ }
 
-				const systemPrompt = buildSystemPrompt(this.toolNames, '', session.summary, {
+				const systemPrompt = buildSystemPrompt(session.summary, {
 					id: session.channelId,
 					userId: session.channelUserId,
 					name: session.channelName,

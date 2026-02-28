@@ -34,6 +34,9 @@
 ### Bug Fixes
 - update version display from '3' to 'i4' in the navigation component
 
+### Refactors
+- (breaking) Refactor agents API to use core operation registry
+
 ### Maintenance
 - bump version to 26.2.26.6 in package.json and dashboard package.json; update AGENTS.md formatting
 - bump version to 26.2.25.7 in package.json files
@@ -138,6 +141,11 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.27.3] - 2026-02-27
+
+### Refactors
+- (breaking) Refactor agents API to use core operation registry
 
 ## [v26.2.27.1] - 2026-02-27
 

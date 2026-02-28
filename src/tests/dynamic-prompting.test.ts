@@ -99,7 +99,7 @@ describe('Dynamic Prompting - buildSystemPrompt Integration', () => {
 	test('buildSystemPrompt includes date/time context', () => {
 		// Re-scaffold to ensure updated SYSTEM.md template with {{date}} etc.
 		scaffoldFromTemplates()
-		const prompt = buildSystemPrompt([], '')
+		const prompt = buildSystemPrompt()
 		// The SYSTEM.md template has {{date}}, {{time}}, etc. which should be resolved
 		expect(prompt).toContain('Date')
 		expect(prompt).toContain('Time')
@@ -109,14 +109,14 @@ describe('Dynamic Prompting - buildSystemPrompt Integration', () => {
 
 	test('buildSystemPrompt resolves platform variable', () => {
 		scaffoldFromTemplates()
-		const prompt = buildSystemPrompt([], '')
+		const prompt = buildSystemPrompt()
 		// Should not contain raw {{platform}}
 		expect(prompt).not.toContain('{{platform}}')
 	})
 
 	test('buildSystemPrompt resolves tamias_version', () => {
 		scaffoldFromTemplates()
-		const prompt = buildSystemPrompt([], '')
+		const prompt = buildSystemPrompt()
 		expect(prompt).not.toContain('{{tamias_version}}')
 	})
 })

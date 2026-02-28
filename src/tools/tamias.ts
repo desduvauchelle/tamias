@@ -24,12 +24,14 @@ import {
 	setDebugMode,
 	TAMIAS_DIR,
 	ProviderEnum,
+	loadConfig,
 	type McpServerConfig,
 } from '../utils/config.ts'
 import { setEnv, removeEnv, generateSecureEnvKey } from '../utils/env.ts'
 import { isDaemonRunning, readDaemonInfo, getDaemonUrl } from '../utils/daemon.ts'
 import { getAllInternalToolNames } from './internalToolNames.ts'
 import { saveSkill, deleteSkill, getLoadedSkills, loadSkills } from '../utils/skills.ts'
+import { buildSystemPrompt } from '../utils/memory.ts'
 import matter from 'gray-matter'
 
 export const TAMIAS_TOOL_NAME = 'tamias'
@@ -555,6 +557,46 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 						elapsedSeconds: s.spawnedAt ? Math.round((now - s.spawnedAt.getTime()) / 1000) : null,
 					}))
 				return { subagents, count: subagents.length }
+			},
+		}),
+
+		get_system_prompt: tool({
+			description: 'Return the fully compiled system prompt that is currently used for this session. This is the exact prompt that would be sent to the AI model, including all persona files, memory, channel context, project context, and all other tiers assembled by the token budget system.',
+			inputSchema: z.object({}),
+			execute: async () => {
+				const session = aiService.getSession(sessionId)
+				if (!session) return { success: false, error: 'Session not found' }
+
+				try {
+					const config = loadConfig()
+					const connection = config.connections[session.connectionNickname]
+					const contextWindow = connection?.contextWindow ?? 128000
+
+					// Build project context (same logic as processSession)
+					let projectContext: string | undefined
+					try {
+						const { buildProjectContext, buildActiveProjectContext } = await import('../utils/projects')
+						const parts: string[] = []
+						if (session.projectSlug) {
+							const activeCtx = buildActiveProjectContext(session.projectSlug)
+							if (activeCtx) parts.push(activeCtx)
+						}
+						const shallowCtx = buildProjectContext()
+						if (shallowCtx) parts.push(shallowCtx)
+						if (parts.length > 0) projectContext = parts.join('\n\n---\n\n')
+					} catch { /* projects module may not exist yet */ }
+
+					const systemPrompt = buildSystemPrompt(session.summary, {
+						id: session.channelId,
+						userId: session.channelUserId,
+						name: session.channelName,
+						isSubagent: session.isSubagent,
+					}, session.agentDir, { projectContext, modelContextWindow: contextWindow })
+
+					return { success: true, systemPrompt }
+				} catch (err: any) {
+					return { success: false, error: err.message ?? String(err) }
+				}
 			},
 		}),
 

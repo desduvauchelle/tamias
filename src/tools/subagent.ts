@@ -2,6 +2,7 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import { AIService } from '../services/aiService'
 import { loadAgents } from '../utils/agentsStore.ts'
+import { getWorkspacePath } from '../utils/config.ts'
 
 export const SUBAGENT_TOOL_NAME = 'subagent'
 export const SUBAGENT_TOOL_LABEL = '🧠 Sub-agent (spawn specialized agents)'
@@ -42,11 +43,25 @@ export const createSubagentTools = (aiService: AIService, sessionId: string) => 
 				isSubagent: true,
 				task,
 				agentId,
+				projectSlug: parentSession.projectSlug,
 			})
 
+			// Include workspace context so the sub-agent knows where to operate
+			const workspacePath = getWorkspacePath()
+			let workspaceHint = `\n\nWorkspace: ${workspacePath}`
+			if (parentSession.projectSlug) {
+				try {
+					const { getProject } = await import('../utils/projects')
+					const project = getProject(parentSession.projectSlug)
+					if (project?.workspacePath) {
+						workspaceHint = `\n\nActive Project: ${project.name} (${parentSession.projectSlug})\nProject Workspace: ${project.workspacePath}\nAll file operations should target this project folder.`
+					}
+				} catch { /* projects module may not exist */ }
+			}
+
 			const fullPrompt = finalInstructions
-				? `Task: ${task}\n\nContext/Instructions: ${finalInstructions}`
-				: task
+				? `Task: ${task}\n\nContext/Instructions: ${finalInstructions}${workspaceHint}`
+				: `${task}${workspaceHint}`
 
 			await aiService.enqueueMessage(subSession.id, fullPrompt)
 

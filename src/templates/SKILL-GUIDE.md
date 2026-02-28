@@ -8,6 +8,7 @@ Skills live at `~/.tamias/skills/<folder-name>/SKILL.md`.
 `tamias__save_skill` — pass name, description, content, and optionally tags, parent, model.
 
 **Via CLI:**
+
 ```bash
 tamias skills add                          # interactive prompts
 tamias skills add -n "Name" -d "desc" -c "content"
@@ -22,7 +23,7 @@ tamias skills rm <folder-name>             # delete a skill
 ---
 name: "My Skill Name"             # human-readable display name
 description: "Use this when..."   # TRIGGER PHRASE — see below
-model: "xai/grok-3"               # optional preferred model for sub-agents
+model: "xai/grok-3"               # optional preferred model (used if a step requires a sub-agent)
 tags: ["tag1", "tag2"]            # optional, for grouping/filtering
 parent: "orchestrator-folder"     # optional, marks this as a child step
 ---
@@ -72,12 +73,14 @@ List which tool groups this skill relies on (e.g., workspace, browser, subagent)
 Edge cases, gotchas, preferences the user has expressed about this skill.
 ```
 
-## Multi-Step / Agentic Skills
+## Multi-Step Skills
 
 For workflows with multiple steps (like `investment-master-research`):
 
-- Create one **orchestrator** skill that defines the sequence and spawns sub-agents sequentially (not in parallel — steps often depend on prior output).
+- Create one **orchestrator** skill that defines the sequence of steps. You execute the steps yourself unless one explicitly requires delegation to a sub-agent.
 - Create each step as a **child** skill with `parent: "orchestrator-folder-name"`.
 - Child descriptions should say: `"Step N of [orchestrator]: [what this step does]"`.
 - Each step should read its input from a JSON file written by the previous step, and write its output to a new JSON file.
 - Use a unique per-run folder (e.g., `runs/YYYY-MM-DD-N/`) to keep runs isolated.
+
+> **Note:** Skills are reference documents, not agents. A skill may instruct you to use sub-agents for specific steps, but the skill itself is just documentation that teaches you a workflow.
