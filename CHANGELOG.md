@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- add search, read, and recent file listing tools for terminal and workspace
 - Enhance Cron Job Management and Session Tools
 - Enhance history logging and API with rich tracing fields
 - enhance agent form with model fallback functionality and improve data fetching
@@ -144,6 +145,11 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.28.3] - 2026-02-28
+
+### Features
+- add search, read, and recent file listing tools for terminal and workspace
 
 ## [v26.2.27.5] - 2026-02-27
 

@@ -13,9 +13,10 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
-import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getAllModelOptions } from '../utils/config'
+import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getAllModelOptions, getCompactionModel, getAllConnections } from '../utils/config'
 import { buildActiveTools } from '../utils/toolRegistry'
 import { estimateTokens, estimateMessageTokens, getMessageTokenBudget, trimMessagesToTokenBudget } from '../utils/tokenBudget'
+import { buildProviderOptions } from '../utils/promptCaching'
 import { buildSystemPrompt, updatePersonaFiles, writePersonaFile, appendDailyLog, scaffoldFromTemplates, readAllPersonaFiles } from '../utils/memory'
 import { saveSessionToDisk, type SessionPersist, listAllStoredSessions, loadSessionFromDisk } from '../utils/sessions'
 import { db } from '../utils/db'
@@ -687,13 +688,17 @@ export class AIService {
 					return value
 				}
 
+				// Build provider-specific options (cache scoping, usage tracking)
+				const providerOpts = buildProviderOptions(connection.provider, modelId, session.id)
+
 				const result = streamText({
 					model,
 					system: systemPrompt,
 					messages: messagesForSend as any,
 					tools: toolFunctionNames.length > 0 ? (this.activeTools as any) : undefined,
-					stopWhen: stepCountIs(20),
+					stopWhen: stepCountIs(10),
 					headers,
+					...(providerOpts ? { providerOptions: providerOpts } : {}),
 					onStepFinish: async ({ toolCalls, toolResults }) => {
 						if (toolCalls?.length) {
 							for (const tc of toolCalls) {
@@ -916,7 +921,9 @@ export class AIService {
 			case 'anthropic': return createAnthropic({ apiKey })(modelId) as any
 			case 'google': return createGoogleGenerativeAI({ apiKey })(modelId) as any
 			case 'openrouter': {
-				return createOpenRouter({ apiKey })(`${modelId}:online`)
+				return createOpenRouter({ apiKey })(modelId, {
+					usage: { include: true },
+				})
 			}
 			case 'ollama': {
 				let baseURL = (connection as any).baseUrl || 'http://127.0.0.1:11434'
@@ -934,6 +941,25 @@ export class AIService {
 		const responseReserve = cfg?.responseTokenReserve ?? 8192
 		const msgTokens = estimateMessageTokens(session.messages as any)
 		if (msgTokens <= ctxWindow * msgRatio * 0.5) return // not worth compacting yet
+
+		// ── Use cheap compaction model if configured ──────────────────────
+		let compactionModel = model
+		const compactionModelStr = getCompactionModel()
+		if (compactionModelStr) {
+			try {
+				const [nickname, ...rest] = compactionModelStr.split('/')
+				const modelId = rest.join('/')
+				const allConnections = getAllConnections()
+				const conn = allConnections.find(c => c.nickname === nickname)
+				if (conn) {
+					compactionModel = this.buildModel(conn, modelId)
+					console.log(`[AIService] Using compaction model: ${compactionModelStr}`)
+				}
+			} catch (err) {
+				console.warn(`[AIService] Failed to build compaction model '${compactionModelStr}', falling back to default:`, err)
+			}
+		}
+
 		const startTime = Date.now()
 		try {
 			// ── Split messages into old (to compact) and recent (to keep) ──────
@@ -1001,8 +1027,10 @@ ${oldHistoryText}
 ### INPUT: RECENT MESSAGES BEING KEPT (context — do NOT summarize, just use for awareness)
 ${keptHistoryText}`
 
+			const compProviderOpts = buildProviderOptions(connection?.provider ?? '', '', session.id)
+
 			const { object, usage } = await generateObject({
-				model,
+				model: compactionModel,
 				schema: z.object({
 					summary: z.string().describe('3-4 dense paragraphs summarizing outcomes, key variables (paths/IDs/names), and user tone/persona preferences from the old history. Will be prepended to the active chat buffer as SESSION BACKSTORY.'),
 					sessionName: z.string().describe('A short, descriptive name for the session.'),
@@ -1019,7 +1047,8 @@ ${keptHistoryText}`
 				headers: {
 					'X-Title': 'Tamias (from-compacting)',
 					'X-Tamias-Source': 'from-compacting',
-				}
+				},
+				...(compProviderOpts ? { providerOptions: compProviderOpts } : {}),
 			})
 
 			logAiRequest({

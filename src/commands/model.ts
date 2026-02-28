@@ -1,6 +1,6 @@
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
-import { getDefaultModels, setDefaultModels, getAllModelOptions, getDefaultImageModels, setDefaultImageModels } from '../utils/config.ts'
+import { getDefaultModels, setDefaultModels, getAllModelOptions, getDefaultImageModels, setDefaultImageModels, getCompactionModel, setCompactionModel } from '../utils/config.ts'
 
 // ─── tamias model — show current default(s) ──────────────────────────────────
 
@@ -24,6 +24,16 @@ export const runModelCommand = async () => {
 		currentImage.forEach((m, i) => {
 			console.log(`${i + 1}. ${pc.bold(pc.magenta(m))}${i === 0 ? pc.dim(' (primary)') : ''}`)
 		})
+	}
+
+	const currentCompaction = getCompactionModel()
+	console.log('')
+	if (!currentCompaction) {
+		console.log(pc.yellow('No compaction model set. Run `tamias model set-compaction` to configure.'))
+		console.log(pc.dim('  (Using the default chat model for compaction — a cheaper model is recommended)'))
+	} else {
+		console.log(pc.cyan('Compaction model:'))
+		console.log(`  ${pc.bold(pc.blue(currentCompaction))}`)
 	}
 }
 
@@ -156,4 +166,49 @@ export const runModelSetImageCommand = async () => {
 
 	setDefaultImageModels(selectedModels)
 	p.outro(pc.green(`✅ Image model priority updated`))
+}
+
+// ─── tamias model set-compaction — interactive picker ─────────────────────────
+
+export const runModelSetCompactionCommand = async () => {
+	p.intro(pc.bgBlue(pc.white(' Tamias — Set Compaction Model ')))
+
+	const options = getAllModelOptions()
+	if (options.length === 0) {
+		p.cancel(pc.yellow('No models configured. Add one with `tamias config`.'))
+		process.exit(0)
+	}
+
+	// Sort cheaper/smaller models to the top as suggestions
+	const cheapKeywords = ['mini', 'flash', 'haiku', 'small', 'lite', 'nano', 'instant', 'turbo']
+	const sortedOptions = [...options].sort((a, b) => {
+		const aCheap = cheapKeywords.some(k => a.toLowerCase().includes(k))
+		const bCheap = cheapKeywords.some(k => b.toLowerCase().includes(k))
+		if (aCheap && !bCheap) return -1
+		if (!aCheap && bCheap) return 1
+		return 0
+	})
+
+	const selected = await p.select({
+		message: 'Select the model for session compaction (cheap, fast model recommended):',
+		options: sortedOptions.map(o => {
+			const isCheap = cheapKeywords.some(k => o.toLowerCase().includes(k))
+			return {
+				value: o,
+				label: isCheap ? `${o} ${pc.dim('(recommended — cheaper)')}` : o,
+			}
+		}),
+	})
+
+	if (p.isCancel(selected)) { p.cancel('Cancelled.'); process.exit(0) }
+
+	const confirmed = await p.confirm({
+		message: `Set compaction model to: ${pc.bold(pc.blue(selected as string))}?`,
+		initialValue: true,
+	})
+
+	if (p.isCancel(confirmed) || !confirmed) { p.cancel('Cancelled.'); process.exit(0) }
+
+	setCompactionModel(selected as string)
+	p.outro(pc.green(`✅ Compaction model set to ${selected}`))
 }

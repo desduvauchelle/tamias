@@ -9,6 +9,8 @@ import {
 	setDefaultModel,
 	getDefaultImageModels,
 	setDefaultImageModels,
+	getCompactionModel,
+	setCompactionModel,
 	getAllModelOptions,
 	getAllConnections,
 	getAllMcpServers,
@@ -87,6 +89,30 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 				}
 				setDefaultImageModels(models)
 				return { success: true, defaultImageModels: models }
+			},
+		}),
+
+		get_compaction_model: tool({
+			description: 'Get the current model used for session compaction (memory summarization). A cheap, fast model is recommended.',
+			inputSchema: z.object({}),
+			execute: async () => {
+				const model = getCompactionModel()
+				return { compactionModel: model ?? null, note: model ? undefined : 'No compaction model set — using the default chat model (more expensive). Run set_compaction_model with a cheap model like mini/flash/haiku.' }
+			},
+		}),
+
+		set_compaction_model: tool({
+			description: 'Set the model for session compaction (memory summarization). Use a cheap, fast model (e.g. mini/flash/haiku). Format: "nickname/modelId".',
+			inputSchema: z.object({
+				model: z.string().describe('Model in "nickname/modelId" format, e.g. "openrouter/google/gemini-2.0-flash-001"'),
+			}),
+			execute: async ({ model }: { model: string }) => {
+				const options = getAllModelOptions()
+				if (!options.includes(model)) {
+					return { success: false, error: `Model '${model}' not found. Available: ${options.join(', ')}` }
+				}
+				setCompactionModel(model)
+				return { success: true, compactionModel: model }
 			},
 		}),
 

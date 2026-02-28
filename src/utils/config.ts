@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'fs'
 import { getEnv, setEnv, removeEnv, generateSecureEnvKey } from './env.ts'
 
 export const TAMIAS_DIR = join(homedir(), '.tamias')
@@ -152,6 +152,8 @@ export const TamiasConfigSchema = z.object({
 	defaultModels: z.array(z.string()).optional(),
 	/** Image generation model priority */
 	defaultImageModels: z.array(z.string()).optional(),
+	/** Model to use for session compaction (cheap model recommended). Format: "nickname/modelId" */
+	compactionModel: z.string().optional(),
 	internalTools: z.record(z.string(), InternalToolConfigSchema).optional(),
 	mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
 	bridges: BridgesConfigSchema.default({ terminal: { enabled: true } }),
@@ -212,6 +214,13 @@ const getConfigPath = () => {
 	return path
 }
 
+// ─── In-memory config cache (invalidated on file change or manual save) ──────
+let _configCache: { config: TamiasConfig; mtimeMs: number } | null = null
+
+export function invalidateConfigCache(): void {
+	_configCache = null
+}
+
 export const loadConfig = (): TamiasConfig => {
 	const path = getConfigPath()
 	if (!existsSync(path)) {
@@ -223,6 +232,14 @@ export const loadConfig = (): TamiasConfig => {
 			debug: false
 		}
 	}
+
+	// Return cached config if file hasn't changed
+	try {
+		const { mtimeMs } = statSync(path)
+		if (_configCache && _configCache.mtimeMs === mtimeMs) {
+			return _configCache.config
+		}
+	} catch { /* fall through to full load */ }
 
 	try {
 		const rawData = JSON.parse(readFileSync(path, 'utf-8'))
@@ -355,6 +372,11 @@ export const loadConfig = (): TamiasConfig => {
 			saveConfig(data) // Remove plaintext secrets from the config file immediately
 		}
 
+		// Cache the loaded config
+		try {
+			const { mtimeMs } = statSync(path)
+			_configCache = { config: data, mtimeMs }
+		} catch { /* ignore */ }
 		return data
 	} catch (err) {
 		if (err instanceof z.ZodError) {
@@ -367,6 +389,7 @@ export const loadConfig = (): TamiasConfig => {
 }
 
 export const saveConfig = (config: TamiasConfig): void => {
+	_configCache = null
 	const path = getConfigPath()
 	const validated = TamiasConfigSchema.parse(config)
 	writeFileSync(path, JSON.stringify(validated, null, 2), 'utf-8')
@@ -516,6 +539,16 @@ export const getDefaultImageModels = (): string[] => {
 export const setDefaultImageModels = (models: string[]): void => {
 	const c = loadConfig()
 	c.defaultImageModels = models
+	saveConfig(c)
+}
+
+export const getCompactionModel = (): string | undefined => {
+	return loadConfig().compactionModel
+}
+
+export const setCompactionModel = (model: string): void => {
+	const c = loadConfig()
+	c.compactionModel = model
 	saveConfig(c)
 }
 

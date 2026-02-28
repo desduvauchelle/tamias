@@ -17,6 +17,7 @@ import { memoryTools, MEMORY_TOOL_NAME } from '../tools/memory.ts'
 import { createSwarmTools, SWARM_TOOL_NAME } from '../tools/swarm.ts'
 import { createSessionTools, SESSION_TOOL_NAME } from '../tools/session.ts'
 import { skillsTools, SKILLS_TOOL_NAME } from '../tools/skills.ts'
+import { createWebsearchTools, WEBSEARCH_TOOL_NAME } from '../tools/websearch.ts'
 import { INTERNAL_TOOL_NAMES, getAllInternalToolNames } from '../tools/internalToolNames.ts'
 import { buildToolsForDomain } from '../core/adapters/ai-tools.ts'
 import { getDomains } from '../core/registry.ts'
@@ -96,6 +97,7 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 		[SWARM_TOOL_NAME]: createSwarmTools(aiService, sessionId) as ToolSet,
 		[SESSION_TOOL_NAME]: createSessionTools(aiService, sessionId) as ToolSet,
 		[SKILLS_TOOL_NAME]: skillsTools as ToolSet,
+		[WEBSEARCH_TOOL_NAME]: createWebsearchTools(aiService, sessionId) as ToolSet,
 	}
 
 	// ── Auto-wire registry-backed domains ────────────────────────────────────

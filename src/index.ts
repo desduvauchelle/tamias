@@ -7,7 +7,7 @@ import { runChannelsCommand, runChannelsListCommand, runChannelsAddCommand, runC
 import { runStartCommand } from './commands/start.ts'
 import { runStopCommand } from './commands/stop.ts'
 import { runStatusCommand } from './commands/status.ts'
-import { runModelCommand, runModelSetCommand, runModelSetImageCommand } from './commands/model.ts'
+import { runModelCommand, runModelSetCommand, runModelSetImageCommand, runModelSetCompactionCommand } from './commands/model.ts'
 import { runOnboarding } from './commands/onboarding.ts'
 import { runSetupCommand } from './commands/setup.ts'
 import { runUsageCommand } from './commands/usage.ts'
@@ -129,6 +129,11 @@ modelCmd
 	.command('set-image')
 	.description('Interactively set the default image model priority')
 	.action(runModelSetImageCommand)
+
+modelCmd
+	.command('set-compaction')
+	.description('Set the model for session compaction (cheap model recommended)')
+	.action(runModelSetCompactionCommand)
 
 // ─── tamias onboarding ────────────────────────────────────────────────────────
 program
