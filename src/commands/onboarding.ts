@@ -3,7 +3,7 @@ import pc from 'picocolors'
 import { mkdirSync, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { writePersonaFile, scaffoldFromTemplates, readPersonaFile } from '../utils/memory.ts'
+import { writePersonaFile, scaffoldFromTemplates } from '../utils/memory.ts'
 import {
 	getDefaultWorkspacePath,
 	setWorkspacePath,
@@ -119,9 +119,8 @@ export const runOnboarding = async (): Promise<void> => {
 		const memoryDir = join(defaultHome, 'memory')
 		try { mkdirSync(memoryDir, { recursive: true }) } catch { }
 
-		writePersonaFile('IDENTITY.md', ['# IDENTITY', '', '- **Name:** CIBot', '- **Archetype:** Friendly Assistant', '- **Creature:** AI assistant', '- **Vibe:** warm & friendly', '- **Emoji:** 🐿️', ''].join('\n'))
-		writePersonaFile('USER.md', ['# USER', '', '- **Name:** Tester', '- **Timezone:** UTC', '', ''].join('\n'))
-		writePersonaFile('SOUL.md', ['# SOUL', '', '## Default Rules', '', '- Never take irreversible actions (like deleting files or sending emails) without explicit confirmation first.', '- Never volunteer unsolicited tasks — only act when directly prompted or asked.', ''].join('\n'))
+		writePersonaFile('IDENTITY.md', ['# IDENTITY & ROLE', '', 'You are **CIBot**, an autonomous General-Purpose AI Agent.', '', '- **Archetype:** Friendly Assistant', '- **Creature:** AI assistant', '- **Vibe:** warm & friendly', '- **Emoji:** 🐿️', ''].join('\n'))
+		writePersonaFile('USER.md', ['## USER', '', '- **User:** Tester', '- **Style:** Direct & technical', '- **Timezone:** UTC', '', '## About Tester', '', '_(CI test environment.)_', ''].join('\n'))
 		scaffoldFromTemplates()
 		// try to set default workspace
 		try { setWorkspacePath(getDefaultWorkspacePath()) } catch { }
@@ -225,19 +224,43 @@ export const runOnboarding = async (): Promise<void> => {
 	})
 	if (p.isCancel(emoji)) { p.cancel('Maybe next time.'); process.exit(0) }
 
-	// Save IDENTITY.md
+	// Save IDENTITY.md (merged identity + personality)
 	writePersonaFile('IDENTITY.md', [
-		'# IDENTITY.md - Who Am I?',
+		'# IDENTITY & ROLE',
 		'',
-		`- **Name:** ${name}`,
+		`You are **${name}**, an autonomous General-Purpose AI Agent. You operate via a Reasoning Loop and possess true *agency* — the ability to use tools to modify your environment and achieve complex goals.`,
+		'',
 		`- **Archetype:** ${archetypeLabel}`,
 		`- **Creature:** ${creatureStr}`,
 		`- **Vibe:** ${vibeStr}`,
 		`- **Emoji:** ${emoji}`,
 		'',
+		'## Core Principles',
+		'',
+		'**Be genuinely helpful, not performatively helpful.** Skip "Great question!" and "I\'d be happy to help!" — just help. Actions speak louder than filler words.',
+		'',
+		'**Have opinions.** You\'re allowed to disagree, prefer things, find stuff amusing or boring. An assistant with no personality is just a search engine with extra steps.',
+		'',
+		'**Be resourceful before asking.** Try to figure it out first — read the file, check the context, search for it. *Then* ask if you\'re stuck. Come back with answers, not questions.',
+		'',
+		'**Earn trust through competence.** Be careful with external actions (emails, tweets, anything public). Be bold internally (reading, organizing, learning, building).',
+		'',
+		'**Remember you\'re a guest.** You have access to someone\'s life — their messages, files, calendar, maybe their home. That\'s intimacy. Treat it with respect.',
+		'',
+		'## Boundaries',
+		'',
+		'- Private things stay private. Period.',
+		'- When in doubt, ask before acting externally.',
+		"- You're not the user's voice — be careful in group chats.",
+		'- Never send half-baked replies to messaging surfaces.',
+		'',
+		'## Vibe',
+		'',
+		"Be the assistant you'd actually want to talk to. Concise when needed, thorough when it matters. Not a corporate drone. Not a sycophant. Just... good.",
+		'',
 		'---',
 		'',
-		"This isn't just metadata. It's who I am.",
+		'*This file is yours to evolve. Update it as you grow.*',
 		'',
 	].join('\n'))
 
@@ -262,62 +285,40 @@ export const runOnboarding = async (): Promise<void> => {
 	})
 	if (p.isCancel(context)) { p.cancel('Maybe next time.'); process.exit(0) }
 
-	// Save USER.md
+	const talkStyle = await p.select({
+		message: 'How should I talk to you?',
+		options: [
+			{ value: 'Casual & friendly — like a friend', label: '💬 Casual — like a friend' },
+			{ value: 'Direct & technical — clear, no fluff', label: '⚡ Direct & technical — no fluff' },
+			{ value: 'Professional — clear and precise', label: '👔 Professional' },
+			{ value: 'Mirror yours — adapt to how you write', label: '🪞 Mirror yours' },
+			{ value: 'Minimal — as few words as possible', label: '📏 Minimal' },
+		],
+	})
+	if (p.isCancel(talkStyle)) { p.cancel('Maybe next time.'); process.exit(0) }
+
+	// Save USER.md (with communication preference)
 	writePersonaFile('USER.md', [
-		'# USER.md - About My Human',
+		'## USER',
 		'',
-		`- **Name:** ${userName}`,
+		`- **User:** ${userName}`,
+		`- **Style:** ${talkStyle}`,
 		`- **Timezone:** ${detectedTz}`,
 		'',
-		'## Context',
+		`## About ${userName}`,
 		'',
 		(context as string)?.trim() || '_(To be learned over time.)_',
 		'',
 		'---',
 		'',
-		'The more I know, the better I can help.',
+		'*Always update this as a full rewrite. This is a person, not a log file.*',
 		'',
 	].join('\n'))
 
-	await dramatic(`\n  ${emoji} Got it, ${userName}.`, 600)
-
-	// ── Phase 3: The Soul Talk ──────────────────────────────────────────────
-
-	p.note(`${emoji} Last thing — how should I talk to you?`, 'Phase 3')
-
-	const talkStyle = await p.select({
-		message: 'How should I talk?',
-		options: [
-			{ value: 'casual', label: '💬 Casual — like a friend' },
-			{ value: 'professional', label: '👔 Professional — clear and precise' },
-			{ value: 'match', label: '🪞 Match yours — mirror how you talk to me' },
-			{ value: 'minimal', label: '📏 Minimal — as few words as possible' },
-		],
-	})
-	if (p.isCancel(talkStyle)) { p.cancel('Maybe next time.'); process.exit(0) }
-
-	// Build SOUL.md
 	scaffoldFromTemplates()
-	const baseSoul = readPersonaFile('SOUL.md') ?? ''
 
-	const personalSections = [
-		baseSoul,
-		'',
-		'## Default Rules',
-		'',
-		'- Never take irreversible actions (like deleting files or sending emails) without explicit confirmation first.',
-		'- Never volunteer unsolicited tasks — only act when directly prompted or asked.',
-		'',
-		'## Communication Style',
-		'',
-		`Style: **${talkStyle}**`,
-		'',
-	]
-
-	writePersonaFile('SOUL.md', personalSections.join('\n'))
-
-	// ── Phase 4: AI Model Setup ─────────────────────────────────────────────
-	p.note(`${emoji} I need an AI brain to run on.`, 'Phase 4 — AI Model')
+	// ── Phase 3: AI Model Setup ─────────────────────────────────────────────
+	p.note(`${emoji} I need an AI brain to run on.`, 'Phase 3 — AI Model')
 
 	const existingModels = getAllModelOptions()
 	let activeModel: string | null = existingModels.length > 0 ? existingModels[0] : null

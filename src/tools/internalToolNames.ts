@@ -23,6 +23,7 @@ export const INTERNAL_TOOL_NAMES = [
 	'pdf',
 	'memory',
 	'swarm',
+	'skills',
 ] as const
 
 export type InternalToolName = (typeof INTERNAL_TOOL_NAMES)[number]

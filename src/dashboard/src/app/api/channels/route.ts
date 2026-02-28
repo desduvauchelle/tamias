@@ -81,9 +81,17 @@ export async function GET() {
 			c.botToken = (c.envKeyName && env[c.envKeyName]) ? '[REDACTED]' : ''
 		}
 
+		// Hydrate whatsapp unofficial instances — check if auth exists
+		const waAuthBase = join(homedir(), '.tamias', 'whatsapp-auth')
+		for (const [key, cfg] of Object.entries(bridges.whatsappUnofficials ?? {} as Record<string, any>)) {
+			const c = cfg as any
+			const authDir = c.authDir ?? join(waAuthBase, key)
+			c.linked = existsSync(join(authDir, 'creds.json'))
+		}
+
 		return NextResponse.json({ bridges })
 	} catch (error) {
-		return NextResponse.json({ bridges: { terminal: { enabled: true }, discords: {}, telegrams: {} } })
+		return NextResponse.json({ bridges: { terminal: { enabled: true }, discords: {}, telegrams: {}, whatsappUnofficials: {} } })
 	}
 }
 
@@ -143,6 +151,23 @@ export async function POST(request: Request) {
 			for (const key of Object.keys(config.bridges.telegrams)) {
 				if (!(key in bridges.telegrams)) {
 					delete config.bridges.telegrams[key]
+				}
+			}
+		}
+
+		// Handle WhatsApp Unofficial instances
+		if (bridges.whatsappUnofficials !== undefined) {
+			if (!config.bridges.whatsappUnofficials) config.bridges.whatsappUnofficials = {}
+			for (const [key, instanceData] of Object.entries(bridges.whatsappUnofficials as Record<string, any>)) {
+				const { linked, ...rest } = instanceData  // strip computed "linked" field
+				const existing = (config.bridges.whatsappUnofficials as any)[key] ?? {}
+				rest.mode = rest.mode ?? existing.mode ?? 'read-only'
+					; (config.bridges.whatsappUnofficials as any)[key] = { ...existing, ...rest }
+			}
+			// Remove instances removed in UI
+			for (const key of Object.keys(config.bridges.whatsappUnofficials as any)) {
+				if (!(key in bridges.whatsappUnofficials)) {
+					delete (config.bridges.whatsappUnofficials as any)[key]
 				}
 			}
 		}

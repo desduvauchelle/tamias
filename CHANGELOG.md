@@ -49,6 +49,9 @@
 ### Documentation
 - update README to reflect latest version and highlight new features
 
+### Other Changes
+- Refactor skill guide and system instructions; enhance dynamic prompting and sub-agent context
+
 ## [v2026.2.23.5] - 2026-02-23
 
 ### Features
@@ -141,6 +144,11 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.27.5] - 2026-02-27
+
+### Other Changes
+- Refactor skill guide and system instructions; enhance dynamic prompting and sub-agent context
 
 ## [v26.2.27.3] - 2026-02-27
 

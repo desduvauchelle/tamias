@@ -776,6 +776,96 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				return json({ error: 'WhatsApp webhook not found' }, 404)
 			}
 
+			// ── WhatsApp Unofficial (Baileys) Routes ────────────────────
+			if (url.pathname.startsWith('/whatsapp-unofficial/')) {
+				const parts = url.pathname.split('/')
+				const key = parts[2]
+				const action = parts[3]
+
+				if (!key) return json({ error: 'Missing instance key' }, 400)
+
+				// GET /whatsapp-unofficial/<key>/status
+				if (method === 'GET' && action === 'status') {
+					const bridge = bridgeManager.findWhatsAppUnofficialByKey(key)
+					if (!bridge) return json({ error: 'Instance not found', key }, 404)
+					return json({
+						key,
+						status: bridge.getConnectionStatus(),
+						mode: bridge.getMode(),
+						allowedGroups: bridge.getAllowedGroups(),
+						allowedContacts: bridge.getAllowedContacts(),
+						availableGroups: bridge.listAvailableGroups(),
+					})
+				}
+
+				// GET /whatsapp-unofficial/<key>/groups
+				if (method === 'GET' && action === 'groups') {
+					const bridge = bridgeManager.findWhatsAppUnofficialByKey(key)
+					if (!bridge) return json({ error: 'Instance not found', key }, 404)
+					const groups = await bridge.discoverGroups()
+					return json({ groups })
+				}
+
+				// POST /whatsapp-unofficial/<key>/login
+				if (method === 'POST' && action === 'login') {
+					// Create or find existing bridge instance for login
+					let bridge = bridgeManager.findWhatsAppUnofficialByKey(key)
+					if (!bridge) {
+						// Create ad-hoc bridge for QR login
+						const { WhatsAppUnofficialBridge } = await import('../bridge/channels/whatsapp-unofficial')
+						bridge = new WhatsAppUnofficialBridge(key)
+						// Initialize with minimal config
+						const { loadConfig, getBridgesConfig, setBridgesConfig } = await import('../utils/config.ts')
+						const config = loadConfig()
+						const bridges = getBridgesConfig()
+						if (!bridges.whatsappUnofficials) bridges.whatsappUnofficials = {}
+						bridges.whatsappUnofficials[key] = { enabled: true, mode: 'read-only' }
+						setBridgesConfig(bridges)
+						config.bridges = { ...(config.bridges || {}), whatsappUnofficials: bridges.whatsappUnofficials } as any
+						await bridge.initialize(config, (msg: any) => true)
+					}
+					const qrResult = await bridge.loginWithQr()
+					if (!qrResult) return json({ error: 'Already connected or QR generation failed' }, 400)
+					const qrDataUrl = `data:image/png;base64,${qrResult.qrPng.toString('base64')}`
+					return json({ qrDataUrl, message: 'Scan this QR code with WhatsApp on your phone' })
+				}
+
+				// POST /whatsapp-unofficial/<key>/select
+				if (method === 'POST' && action === 'select') {
+					const bridge = bridgeManager.findWhatsAppUnofficialByKey(key)
+					if (!bridge) return json({ error: 'Instance not found', key }, 404)
+					const body = await req.json()
+					if (body.allowedGroups) await bridge.updateAllowedGroups(body.allowedGroups)
+					if (body.allowedContacts) await bridge.updateAllowedContacts(body.allowedContacts)
+					if (body.mode) await bridge.updateMode(body.mode)
+					return json({ success: true })
+				}
+
+				// POST /whatsapp-unofficial/<key>/unlink
+				if (method === 'POST' && action === 'unlink') {
+					const bridge = bridgeManager.findWhatsAppUnofficialByKey(key)
+					if (!bridge) return json({ error: 'Instance not found', key }, 404)
+					await bridge.unlink()
+					return json({ success: true, message: 'WhatsApp unlinked and auth cleared' })
+				}
+
+				// GET /whatsapp-unofficial/list — list all instances
+				if (method === 'GET' && key === 'list') {
+					const all = bridgeManager.getAllWhatsAppUnofficialBridges()
+					return json({
+						instances: all.map(({ key: k, bridge: b }) => ({
+							key: k,
+							status: b.getConnectionStatus(),
+							mode: b.getMode(),
+							allowedGroups: b.getAllowedGroups(),
+							allowedContacts: b.getAllowedContacts(),
+						}))
+					})
+				}
+
+				return json({ error: 'Unknown action' }, 404)
+			}
+
 			return json({ error: 'Not found' }, 404)
 		},
 	})

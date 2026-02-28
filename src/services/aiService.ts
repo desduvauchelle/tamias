@@ -922,71 +922,86 @@ export class AIService {
 		if (msgTokens <= ctxWindow * msgRatio * 0.5) return // not worth compacting yet
 		const startTime = Date.now()
 		try {
+			// ── Split messages into old (to compact) and recent (to keep) ──────
+			const postBudget = getMessageTokenBudget(ctxWindow, 0, responseReserve, msgRatio) * 0.5
+			const { kept: messagesToKeep } = trimMessagesToTokenBudget(session.messages as any, postBudget)
+			const messagesToCompact = (session.messages as any[]).slice(0, session.messages.length - messagesToKeep.length)
+
 			const personaFiles = readAllPersonaFiles()
 			const existingContext = Object.entries(personaFiles)
 				.map(([file, content]) => `### ${file}\n${content}`)
 				.join('\n\n')
 
 			const today = new Date().toISOString().slice(0, 10)
-			const compactionPrompt = `You are a memory compaction agent for Tamias, an AI assistant.
-Your goal is to summarize the current conversation and keep the user's persistent memory files accurate and up-to-date.
+			const oldHistoryText = messagesToCompact.map((m: any) => `${m.role.toUpperCase()}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`).join('\n\n')
+			const keptHistoryText = messagesToKeep.map((m: any) => `${m.role.toUpperCase()}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`).join('\n\n')
 
-# Existing Persona Context
-The user's persistent memory currently contains:
+			const compactionPrompt = `### TASK: INCREMENTAL CONTEXT COMPACTION
+You are managing the long-term memory buffer for an AI assistant called Tamias.
+
+### GOAL
+Summarize the OLDER portion of the conversation below. This summary will be prepended to the current active chat buffer so the agent retains context across the token boundary.
+
+### REQUIREMENTS
+- **Focus on Outcomes:** What was actually accomplished or decided in the older turns? Skip small-talk and failed attempts — lead with what was resolved.
+- **Variable Persistence:** Preserve any specific paths, IDs, file names, URLs, version numbers, or configuration values that were mentioned — these are easy to lose but critical to retain.
+- **Tone/Persona:** Did the user give any instructions on how to behave, what to call them, or what style to use? Carry those forward.
+- **Brevity:** Summarize into no more than 3-4 dense paragraphs. Every sentence must earn its place.
+
+### MEMORY FILE RESPONSIBILITIES
+
+You also maintain the following persistent files. Update them as needed based on the FULL conversation (old + kept).
+
+#### MEMORY.md (rewritten every compaction)
+The living activity log. Rewrite it entirely — merge existing content with new information:
+1. **Last Session** — a 2-3 sentence narrative of what was just discussed and accomplished.
+2. **Lessons Learned** — bullet list of important discoveries: API quirks, user preferences, bugs found, conventions to follow.
+3. **Pending** — bullet list of tasks or follow-ups that carry over to the next session.
+
+#### USER.md (only when genuinely new personal facts are discovered)
+Stable facts about the human: identity, communication style (the **Style:** field), what they care about, what annoys them, recurring patterns. NOT a project log.
+- Only provide a \`userUpdate\` if something meaningfully NEW was learned. Otherwise leave empty.
+- If provided, rewrite USER.md entirely — merge existing content with new info. Keep the \`- **Style:**\` field.
+
+#### IDENTITY.md (appended only when genuinely new)
+New preferences for how the AI should behave, new personality traits observed.
+Leave the insights array EMPTY if nothing new was learned. DO NOT repeat existing context.
+
+#### PROJECT-README.md (only if project work was discussed)
+Concise technical summary: architecture, key components, conventions, current state. Include a \`## Todo List\` section — placeholder \`- put todos here\` if no concrete todos.
+
+### EXISTING PERSONA CONTEXT
 ${existingContext}
 
-# File Responsibilities — What Goes Where
+### INSTRUCTIONS
+1. **Summary** — 3-4 dense paragraphs covering outcomes, key variables, and user preferences from the OLD HISTORY below.
+2. **Session Name** — short (2-4 words) descriptive label for this session.
+3. **MEMORY.md Update** — full rewrite: Last Session + Lessons Learned + Pending.
+4. **USER.md Update** (optional) — full rewrite only if new personal facts emerged.
+5. **IDENTITY.md Insights** (optional) — append-only, only genuinely new AI behavior insights.
+6. **Project README** (optional) — only if project work was discussed.
 
-## MEMORY.md (rewritten every compaction)
-The living, evolving memory. Contains:
-1. **Active Projects** — a table of current projects with description, folder path, and channel/Discord ID if known.
-2. **Recent Activity** — a rolling 7-day log in this format:
-   \`[YYYY-MM-DD HH:MM] (Project name): brief task description\`
-   DROP entries older than 7 days from this section on every rewrite. They are already captured in daily logs.
-3. **Notes & Context** — decisions, follow-ups, ongoing threads worth remembering.
+### INPUT: OLD HISTORY (summarize this)
+${oldHistoryText}
 
-This file is fully rewritten on every compaction. Always merge existing content with new information from this conversation.
-
-## USER.md (rewritten only when genuinely new personal facts are discovered)
-Stable, personal facts about the human: identity, personality, communication style, what they care about, what annoys them, recurring habits/patterns. This is NOT a project log or activity list.
-- Only provide a \`userUpdate\` if something meaningfully NEW was learned about the person (a new preference, a personality observation, a new habit pattern).
-- If provided, rewrite USER.md entirely — merge existing content with the new info. Do NOT just append a bullet.
-- Leave \`userUpdate\` as an empty string if nothing new was learned.
-
-## IDENTITY.md / SOUL.md (appended only when genuinely new)
-- IDENTITY.md — new preferences for how the AI should behave or address the user
-- SOUL.md — new AI personality traits or values
-Leave the insights array EMPTY if nothing new was learned. DO NOT repeat what is already in the existing context.
-
-# Instructions
-1. **Summary**: Write a concise, high-level summary of the conversation. Focus on what was discussed, decisions made, and current progress.
-2. **Session Name**: Suggest a short (2-4 words) descriptive name for this session (e.g., "Investment Research Run").
-3. **MEMORY.md Update**: Rewrite MEMORY.md entirely with updated projects table + 7-day rolling activity log + notes.
-4. **USER.md Update** (optional): If a genuinely new personal fact was learned, provide a full rewrite of USER.md. Otherwise leave empty.
-5. **IDENTITY.md / SOUL.md Insights** (optional): Append-only notes for genuinely new AI behavior or personality insights.
-6. **Project README** (optional): If this session is working on a specific project (check the project context in the conversation), provide a concise technical summary of the project — architecture, key components, conventions, and current state. Include a dedicated \
-## Todo List\
-section by default. If there are no concrete todos from this session, include a placeholder item like: \
-- put todos here\
-This will be saved as PROJECT-README.md in the project's memory directory for future sessions. Leave empty if no project work was discussed.
-
-Return a structured object.`
+### INPUT: RECENT MESSAGES BEING KEPT (context — do NOT summarize, just use for awareness)
+${keptHistoryText}`
 
 			const { object, usage } = await generateObject({
 				model,
 				schema: z.object({
-					summary: z.string().describe('A concise summary of the conversation history.'),
+					summary: z.string().describe('3-4 dense paragraphs summarizing outcomes, key variables (paths/IDs/names), and user tone/persona preferences from the old history. Will be prepended to the active chat buffer as SESSION BACKSTORY.'),
 					sessionName: z.string().describe('A short, descriptive name for the session.'),
-					memoryUpdate: z.string().describe('Full replacement content for MEMORY.md: active projects table + 7-day rolling activity log + notes.'),
+					memoryUpdate: z.string().describe('Full replacement content for MEMORY.md: ## Last Session (2-3 sentence narrative), ## Lessons Learned (bullets), ## Pending (bullets).'),
 					userUpdate: z.string().describe('Full replacement content for USER.md if genuinely new personal facts were learned. Empty string if nothing new.'),
 					projectReadmeUpdate: z.string().describe('Technical summary of the project worked on in this session (architecture, components, conventions, current state), including a default "## Todo List" section. If no todos are known, include a placeholder like "- put todos here". Empty string if no project work was discussed.'),
 					insights: z.array(z.object({
-						filename: z.enum(['IDENTITY.md', 'SOUL.md']).describe('The persona file to append a new insight to.'),
+						filename: z.enum(['IDENTITY.md']).describe('The persona file to append a new insight to.'),
 						content: z.string().describe('The new insight to append.')
-					})).describe('Genuinely new AI behavior/personality insights to append to IDENTITY.md or SOUL.md. Leave empty if nothing new was learned.')
+					})).describe('Genuinely new AI behavior/personality insights to append to IDENTITY.md. Leave empty if nothing new was learned.')
 				}),
 				system: compactionPrompt,
-				prompt: `Current history to compact:\n${JSON.stringify(session.messages)}`,
+				prompt: 'Summarize the OLD HISTORY section in the system prompt into the required structured object.',
 				headers: {
 					'X-Title': 'Tamias (from-compacting)',
 					'X-Tamias-Source': 'from-compacting',
@@ -1056,10 +1071,8 @@ Return a structured object.`
 					console.error('[Compaction] Failed to write PROJECT-README.md:', err)
 				}
 			}
-			// Token-based post-compaction trim: keep ~50% of message budget so there's room to grow
-			const postBudget = getMessageTokenBudget(ctxWindow, 0, responseReserve, msgRatio) * 0.5
-			const { kept } = trimMessagesToTokenBudget(session.messages as any, postBudget)
-			session.messages = kept as any
+			// Apply the pre-computed trim: keep only the recent messages, drop the compacted portion
+			session.messages = messagesToKeep as any
 		} catch (err) {
 			console.error('Failed to compact session:', err)
 		}

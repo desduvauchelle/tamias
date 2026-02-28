@@ -263,6 +263,14 @@ View the Tamias README.md with terminal formatting
 |---|---|
 | `tamias readme` | View the Tamias README.md with terminal formatting |
 
+### `tamias prompt`
+
+Preview the fully assembled system prompt sent to the AI
+
+| Command | Description |
+|---|---|
+| `tamias prompt` | Preview the fully assembled system prompt sent to the AI (`--raw`) |
+
 ### `tamias doctor`
 
 Check and fix system dependencies, health checks, and configuration

@@ -1,6 +1,6 @@
 import { join } from 'path'
 import { homedir, cpus, freemem, totalmem, platform, arch } from 'os'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'fs'
 import { getWorkspacePath, TAMIAS_DIR } from './config.ts'
 import { getLoadedSkills } from './skills.js'
 import { assembleSystemPrompt as assembleBudget, getSystemPromptBudget, formatTokenBudgetDebug, type ContextTier, type TokenBudgetResult } from './tokenBudget.js'
@@ -13,7 +13,7 @@ const DAILY_DIR = join(MEMORY_DIR, 'daily')
 
 // ─── Persona files ────────────────────────────────────────────────────────────
 
-const PERSONA_FILES = ['SYSTEM.md', 'IDENTITY.md', 'USER.md', 'SOUL.md', 'AGENTS.md'] as const
+const PERSONA_FILES = ['IDENTITY.md', 'USER.md'] as const
 
 function ensureMemoryDir(): void {
 	if (!existsSync(MEMORY_DIR)) mkdirSync(MEMORY_DIR, { recursive: true })
@@ -55,8 +55,8 @@ export function writePersonaFile(name: string, content: string): void {
 export function scaffoldFromTemplates(): void {
 	ensureMemoryDir()
 
-	// These files are only copied once if they don't exist
-	const toScaffoldOnce = ['SOUL.md', 'TOOLS.md', 'HEARTBEAT.md', 'MEMORY.md']
+	// These files are only copied once if they don't exist (user-owned)
+	const toScaffoldOnce = ['SETTINGS.md', 'TOOLS.md', 'HEARTBEAT.md', 'MEMORY.md']
 	for (const file of toScaffoldOnce) {
 		const dest = join(MEMORY_DIR, file)
 		if (!existsSync(dest)) {
@@ -69,10 +69,9 @@ export function scaffoldFromTemplates(): void {
 		}
 	}
 
-	// SYSTEM.md, SKILL-GUIDE.md, and AGENTS.md are force-overwritten every time so that
-	// upstream changes to CLI commands, agent management, and system capabilities always
-	// propagate to existing installs without needing a manual reset.
-	for (const file of ['SYSTEM.md', 'SKILL-GUIDE.md', 'AGENTS.md']) {
+	// PROTOCOL.md is force-overwritten every time so upstream changes to the
+	// ReAct protocol and constraints always propagate to existing installs.
+	for (const file of ['PROTOCOL.md']) {
 		const src = join(TEMPLATES_DIR, file)
 		if (existsSync(src)) {
 			const dest = join(MEMORY_DIR, file)
@@ -170,8 +169,188 @@ export function injectDynamicVariables(content: string, vars: Record<string, str
 
 // ─── System prompt builder ────────────────────────────────────────────────────
 
+/** Build the ENVIRONMENT section of the system prompt dynamically.
+ *
+ * Structure:
+ *   - Timestamp / CWD / channel
+ *   - ~/.tamias/ root listing (1 level, skip secrets/db/logs)
+ *   - ~/.tamias/memory/ flat file listing
+ *   - ~/.tamias/workspace/ 1 level deep (project names only)
+ *   - Project snapshots: first paragraph of PROJECT-README.md or README.md per project
+ */
+function buildEnvironmentSection(
+	channel?: { id: string; name?: string },
+	cwd?: string,
+	activeProjectDir?: string,
+): string {
+	const now = new Date()
+	const datePart = now.toISOString().slice(0, 10)
+	const timePart = `${now.toTimeString().slice(0, 5)} ${Intl.DateTimeFormat().resolvedOptions().timeZone}`
+	const workingDir = cwd ?? process.cwd()
+
+	const lines: string[] = ['## ENVIRONMENT']
+	lines.push(`- **Date:** ${datePart}`)
+	lines.push(`- **Time:** ${timePart}`)
+	lines.push(`- **Working Directory:** ${workingDir}`)
+	if (activeProjectDir && activeProjectDir !== workingDir) {
+		lines.push(`- **Active Project:** ${activeProjectDir}`)
+	}
+	if (channel) {
+		const platformNames: Record<string, string> = { discord: 'Discord', telegram: 'Telegram', terminal: 'Terminal', whatsapp: 'WhatsApp' }
+		const platformLabel = platformNames[channel.id] ?? channel.id
+		lines.push(`- **Channel:** ${platformLabel}${channel.name ? ` / #${channel.name}` : ''}`)
+	}
+
+	// ── Helper: read immediate children of a directory ────────────────────
+	function listDir(dir: string): { name: string; isDir: boolean }[] {
+		try {
+			return readdirSync(dir)
+				.sort()
+				.map(name => {
+					try { return { name, isDir: statSync(join(dir, name)).isDirectory() } }
+					catch { return null }
+				})
+				.filter(Boolean) as { name: string; isDir: boolean }[]
+		} catch { return [] }
+	}
+
+	// ── ~/.tamias/ root ───────────────────────────────────────────────────
+	// Skip secrets, databases, raw logs, and noise dirs
+	const tamiasSkipFiles = new Set(['.env', 'config.db', 'sessions.db', 'tamias.db'])
+	const tamiasSkipExts = new Set(['.db', '.sqlite', '.sqlite3', '.log'])
+	const tamiasSkipDirs = new Set(['node_modules', '.git', 'dist', 'build', 'logs'])
+
+	const tamiasEntries = listDir(TAMIAS_DIR).filter(e => {
+		if (e.isDir) return !tamiasSkipDirs.has(e.name) && !e.name.startsWith('.')
+		// skip hidden files, env, db files, log files
+		if (e.name.startsWith('.')) return false
+		if (tamiasSkipFiles.has(e.name)) return false
+		const ext = e.name.slice(e.name.lastIndexOf('.'))
+		return !tamiasSkipExts.has(ext)
+	})
+
+	if (tamiasEntries.length > 0) {
+		lines.push('')
+		lines.push('#### ~/.tamias/')
+		lines.push('```')
+		for (const e of tamiasEntries) lines.push(e.isDir ? `${e.name}/` : e.name)
+		lines.push('```')
+	}
+
+	// ── ~/.tamias/memory/ ─────────────────────────────────────────────────
+	const memoryEntries = listDir(MEMORY_DIR).filter(e => !e.isDir && !e.name.startsWith('.'))
+	if (memoryEntries.length > 0) {
+		lines.push('')
+		lines.push('#### ~/.tamias/memory/')
+		lines.push('```')
+		for (const e of memoryEntries) lines.push(e.name)
+		lines.push('```')
+	}
+
+	// ── ~/.tamias/workspace/ — 1 level (project names) ───────────────────
+	const workspacePath = getWorkspacePath()
+	if (existsSync(workspacePath)) {
+		const projectEntries = listDir(workspacePath).filter(e => e.isDir && !e.name.startsWith('.'))
+		if (projectEntries.length > 0) {
+			lines.push('')
+			lines.push('#### ~/.tamias/workspace/')
+			lines.push('```')
+			for (const e of projectEntries) lines.push(`${e.name}/`)
+			lines.push('```')
+
+			// ── Project snapshots ─────────────────────────────────────────
+			// For each project dir, read PROJECT-README.md or README.md and
+			// extract the opening description (up to first ## section, max 5 lines).
+			const snapshots: { name: string; gist: string }[] = []
+			for (const e of projectEntries) {
+				const projectDir = join(workspacePath, e.name)
+				let readmeContent: string | null = null
+				for (const candidate of ['PROJECT-README.md', 'README.md', 'MEMORY.md']) {
+					const p = join(projectDir, candidate)
+					if (existsSync(p)) {
+						try { readmeContent = readFileSync(p, 'utf-8'); break } catch { /* skip */ }
+					}
+				}
+				if (!readmeContent) continue
+
+				// Strip YAML frontmatter
+				let body = readmeContent.startsWith('---')
+					? readmeContent.slice((readmeContent.indexOf('---', 3) + 3)).trimStart()
+					: readmeContent
+
+				// Skip the top-level # heading line, then grab up to the next ## or 4 non-empty lines
+				const bodyLines = body.split('\n')
+				let started = false
+				const gistLines: string[] = []
+				for (const l of bodyLines) {
+					if (!started && l.startsWith('# ')) { started = true; continue }
+					if (l.startsWith('## ')) break
+					const trimmed = l.trim()
+					if (trimmed) {
+						gistLines.push(trimmed)
+						if (gistLines.length >= 4) break
+					}
+				}
+				if (gistLines.length > 0) {
+					snapshots.push({ name: e.name, gist: gistLines.join(' ').slice(0, 200) })
+				}
+			}
+
+			if (snapshots.length > 0) {
+				lines.push('')
+				lines.push('#### Project Snapshots')
+				for (const s of snapshots) {
+					lines.push(`- **${s.name}** — ${s.gist}`)
+				}
+			}
+
+			// ── Channel-matched project drill-down ────────────────────────
+			// If the current channel name resembles a workspace project folder,
+			// include a 1-level directory listing of that project so the AI
+			// has immediate structural context without needing to call a tool.
+			if (channel?.name) {
+				/** Normalize a string for fuzzy matching: lowercase, strip
+				 *  all non-alphanumeric characters so "project-one",
+				 *  "project_one", "Project One", and "projectone" all match. */
+				const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+				const channelNorm = normalize(channel.name)
+
+				const matchedProject = projectEntries.find(e => {
+					const projectNorm = normalize(e.name)
+					return (
+						projectNorm === channelNorm ||
+						projectNorm.includes(channelNorm) ||
+						channelNorm.includes(projectNorm)
+					)
+				})
+
+				if (matchedProject) {
+					const matchedDir = join(workspacePath, matchedProject.name)
+					const matchedEntries = listDir(matchedDir)
+					const skipNoise = new Set(['node_modules', '.git', 'dist', 'build', '.next', '__pycache__'])
+					const visible = matchedEntries.filter(e =>
+						!e.name.startsWith('.') && !(e.isDir && skipNoise.has(e.name))
+					)
+					if (visible.length > 0) {
+						lines.push('')
+						lines.push(`#### Active Project: ${matchedProject.name}/ (matched channel #${channel.name})`)
+						lines.push('```')
+						for (const e of visible) lines.push(e.isDir ? `${e.name}/` : e.name)
+						lines.push('```')
+					}
+				}
+			}
+		}
+	}
+
+	return lines.join('\n')
+}
+
 /** Build a full system prompt from persona files.
- * When `agentDir` is provided, SOUL.md / IDENTITY.md / MEMORY.md
+ * Six tiers in order: IDENTITY & ROLE → USER → ENVIRONMENT → PERSISTENT KNOWLEDGE →
+ * SKILLS CATALOG → AGENTIC PROTOCOL.
+ *
+ * When `agentDir` is provided, IDENTITY.md / USER.md / MEMORY.md
  * are loaded from that directory first, falling back to global if absent.
  *
  * Uses the token budget system for structure-first assembly with graceful trimming.
@@ -180,7 +359,7 @@ export function buildSystemPrompt(
 	summary?: string,
 	channel?: { id: string, userId?: string, name?: string, authorName?: string, isSubagent?: boolean },
 	agentDir?: string,
-	opts?: { modelContextWindow?: number; projectContext?: string },
+	opts?: { modelContextWindow?: number; projectContext?: string; cwd?: string },
 ): string {
 	// Helper: read from agentDir (if supplied) first, then global MEMORY_DIR
 	const readLayered = (name: string): string | null => {
@@ -191,138 +370,146 @@ export function buildSystemPrompt(
 		return readPersonaFile(name)
 	}
 
-	const files = readAllPersonaFiles()
-
-	// ── Dynamic variable injection ────────────────────────────────────────────
+	// ── Dynamic variable injection ─────────────────────────────────────────
 	const ctxVars = getContextVariables(channel?.id)
-	for (const key of Object.keys(files)) {
-		files[key] = injectDynamicVariables(files[key], ctxVars)
-	}
+
+	const inject = (content: string) => injectDynamicVariables(content, ctxVars)
 
 	const tiers: ContextTier[] = []
 
-	// ── TIER 0: Identity (P=0, never trimmed) ─────────────────────────────────
+	// ── TIER 0: Identity & Role (P=0, never trimmed) ──────────────────────
 	const identity = readLayered('IDENTITY.md')
 	if (identity) {
-		tiers.push({ name: 'identity', content: identity, priority: 0, trimmable: false })
-	}
-
-	// ── TIER 1: Soul (P=1, never trimmed) ─────────────────────────────────────
-	const soul = readLayered('SOUL.md')
-	if (soul) {
-		tiers.push({ name: 'soul', content: soul, priority: 1, trimmable: false })
-	}
-
-	// ── TIER 2: User Profile (P=2, never trimmed) ────────────────────────────
-	if (files['USER.md']) {
-		tiers.push({ name: 'user-profile', content: files['USER.md'], priority: 2, trimmable: false })
-	}
-
-	// ── TIER 3: System Framework (P=3, never trimmed) ────────────────────────
-	const systemContent: string[] = []
-
-	systemContent.push(`# Memory Location\n\nYour memory and persona files (USER.md, IDENTITY.md, SOUL.md, AGENTS.md, MEMORY.md, and daily logs) are persistently stored at \`${MEMORY_DIR}\` (which can also be accessed via \`~/.tamias/memory\`).
-When reading or updating your memory, you can use either the absolute path or the home-relative path (e.g., \`~/.tamias/memory/USER.md\`.)`)
-
-	const workspacePath = getWorkspacePath()
-	systemContent.push(
-		`# Workspace & File Creation Policy (ENFORCED)\n\n` +
-		`**All files you create MUST be stored inside \`${TAMIAS_DIR}\`. Writing outside this directory is forbidden.**\n\n` +
-		`- Your current workspace: \`${workspacePath}\`\n` +
-		`- Default location for new documents: \`${TAMIAS_DIR}/workspace/\`\n` +
-		`- For project-specific work, use a subfolder: \`${TAMIAS_DIR}/workspace/<project-name>/\`\n` +
-		`- **Never** write to \`~/Desktop\`, \`~/Documents\`, \`~/Downloads\`, or anywhere outside \`${TAMIAS_DIR}\`.\n` +
-		`- When unsure where to save, use \`tamias__get_workspace_path\` then save into that directory.`
-	)
-
-	if (agentDir) {
-		const agentSlug = agentDir.split('/').pop()
-		systemContent.push(`# Named Agent Context\n\nYou are running as the named agent **${agentSlug}**. Your persona files live at \`${agentDir}\`. Files found there override the global defaults.`)
-	}
-
-	if (files['SYSTEM.md']) systemContent.push(files['SYSTEM.md'])
-
-	tiers.push({ name: 'system-framework', content: systemContent.join('\n\n'), priority: 3, trimmable: false })
-
-	// ── TIER 4: Long-term Memory (P=4, trimmable) ────────────────────────────
-	const memory = readLayered('MEMORY.md')
-	if (memory) {
 		tiers.push({
-			name: 'long-term-memory',
-			content: '# Long-Term Memory\n\n' + memory,
-			priority: 4,
-			trimmable: true,
-			minContent: '# Long-Term Memory\n\nRefer to MEMORY.md in ~/.tamias/memory/ for full context.',
-		})
-	}
-
-	// ── TIER 5: Operating Manual (P=5, trimmable) ────────────────────────────
-	if (files['AGENTS.md']) {
-		tiers.push({
-			name: 'operating-manual',
-			content: files['AGENTS.md'],
-			priority: 5,
-			trimmable: true,
-			minContent: '# Operating Manual\n\nRefer to AGENTS.md in ~/.tamias/memory/ for full details.',
-		})
-	}
-
-	// ── TIER 6: Channel + Sub-agent Context (P=6, never trimmed) ─────────────
-	if (channel) {
-		const platformNames: Record<string, string> = { discord: 'Discord', telegram: 'Telegram', terminal: 'Terminal', whatsapp: 'WhatsApp' }
-		const platformLabel = platformNames[channel.id] ?? channel.id
-		let channelSection = `# Channel Context\n\nYou are currently communicating via **${platformLabel}**`
-		if (channel.name) channelSection += `, in the **${channel.name}** channel`
-		channelSection += '.'
-		if (channel.userId) channelSection += ` Session Identifier: \`${channel.userId}\`.`
-		if (channel.authorName) channelSection += `\nCurrent interlocutor: **${channel.authorName}**.`
-
-		if (channel.isSubagent) {
-			channelSection += `\n\n# SUB-AGENT MODE\nYou are currently operating as a **sub-agent**. Your goal is to complete the specific task delegated to you and then report your findings back to the main agent.
-Be concise, accurate, and focus ONLY on the assigned task. Your final response will be automatically delivered to the parent agent.`
-		}
-
-		tiers.push({ name: 'channel-context', content: channelSection, priority: 6, trimmable: false })
-	}
-
-	// ── TIER 7: Project Context (P=7, trimmable) ─────────────────────────────
-	if (opts?.projectContext) {
-		tiers.push({
-			name: 'project-context',
-			content: opts.projectContext,
-			priority: 7,
-			trimmable: true,
-			minContent: '# Projects\n\nProjects are available. Use the project tools or read ~/.tamias/projects/ for details.',
-		})
-	}
-
-	// ── TIER 8: Session Summary (P=8, never trimmed) ─────────────────────────
-	if (summary) {
-		tiers.push({
-			name: 'session-summary',
-			content: `# Current Session Summary\n\n${summary}`,
-			priority: 8,
+			name: 'identity-role',
+			content: inject(identity),
+			priority: 0,
 			trimmable: false,
 		})
 	}
 
-	// ── TIER 9: Available Skills (P=9, trimmable) ────────────────────────────
+	// ── TIER 1: User (P=1, never trimmed) ────────────────────────────────
+	const user = readLayered('USER.md')
+	if (user) {
+		tiers.push({
+			name: 'user',
+			content: inject(user),
+			priority: 1,
+			trimmable: false,
+		})
+	}
+
+	// ── TIER 2: Environment (P=2, never trimmed — built dynamically) ──────
+	// Determine active project directory
+	let activeProjectDir: string | undefined
+	try {
+		const memContent = readPersonaFile('MEMORY.md')
+		if (memContent) {
+			// Try to find a folder path in SETTINGS.md or MEMORY.md
+			const match = memContent.match(/\|\s*([~/][^|]+?)\s*\|/)
+			if (match) activeProjectDir = match[1].replace(/^~/, process.env.HOME ?? '')
+		}
+	} catch { /* ignore */ }
+
+	const envSection = buildEnvironmentSection(channel, opts?.cwd, activeProjectDir)
+
+	const workspacePolicy =
+		`\n\n## File & Document Storage Policy\n\n` +
+		`**All files you create MUST be stored inside \`${TAMIAS_DIR}\`.**\n\n` +
+		`- Your authorized workspace: \`${getWorkspacePath()}\`\n` +
+		`- Default location for new documents: \`${TAMIAS_DIR}/workspace/\`\n` +
+		`- **Never** write to \`~/Desktop\`, \`~/Documents\`, or anywhere outside \`${TAMIAS_DIR}\`.`
+
+	let envContent = envSection + workspacePolicy
+
+	if (agentDir) {
+		const agentSlug = agentDir.split('/').pop()
+		envContent += `\n\n## Named Agent Context\n\nYou are running as the named agent **${agentSlug}**. Your persona files live at \`${agentDir}\`. Files found there override the global defaults.`
+	}
+
+	if (channel?.isSubagent) {
+		envContent += `\n\n## SUB-AGENT MODE\nYou are operating as a **sub-agent**. Complete the specific task delegated to you and report findings back to the main agent. Be concise and focus ONLY on the assigned task.`
+	}
+
+	tiers.push({ name: 'environment', content: envContent, priority: 2, trimmable: false })
+
+	// ── TIER 3: Persistent Knowledge (P=3) ────────────────────────────────
+	// 3a: SETTINGS.md (global + project-level)
+	const settingsGlobal = readLayered('SETTINGS.md')
+	const settingsProject = opts?.projectContext
+		? opts.projectContext.includes('SETTINGS') ? opts.projectContext : null
+		: null
+
+	let persistentContent = ''
+
+	if (settingsGlobal || settingsProject) {
+		persistentContent += `## PROJECT CONSTITUTION (SETTINGS.md)\n\n`
+		if (settingsGlobal) persistentContent += inject(settingsGlobal)
+		if (settingsProject) persistentContent += `\n\n---\n\n*Project override:*\n${settingsProject}`
+	}
+
+	// 3b: MEMORY.md snippet (trimmable)
+	const memory = readLayered('MEMORY.md')
+	if (memory) {
+		const memSnippet = inject(memory)
+		if (persistentContent) persistentContent += `\n\n---\n\n`
+		persistentContent += `## RECENT ACTIVITY & LESSONS (MEMORY.md)\n\n${memSnippet}`
+	}
+
+	// 3c: Project context (if not already consumed above)
+	if (opts?.projectContext && !settingsProject) {
+		persistentContent += `\n\n---\n\n${opts.projectContext}`
+	}
+
+	if (persistentContent) {
+		tiers.push({
+			name: 'persistent-knowledge',
+			content: `# PERSISTENT KNOWLEDGE (MEMORY)\n\nThe following data is retrieved from your local long-term storage. Treat these as "Ground Truth":\n\n${persistentContent}`,
+			priority: 3,
+			trimmable: true,
+			minContent: `# PERSISTENT KNOWLEDGE (MEMORY)\n\nRefer to SETTINGS.md and MEMORY.md in ${MEMORY_DIR} for full context.`,
+		})
+	}
+
+	// ── TIER 4: Skills Catalog (P=4, trimmable) ────────────────────────────
 	const skills = getLoadedSkills()
 	if (skills.length > 0) {
 		const skillsList = skills.map(s => {
 			const modelHint = s.model ? ` [preferred model: ${s.model}]` : ''
-			return `- \`${s.name}\` (at \`${s.sourceDir}/SKILL.md\`)${modelHint}: ${s.description}`
+			return `- **${s.name}**${modelHint}: ${s.description}`
 		}).join('\n')
 		tiers.push({
-			name: 'available-skills',
-			content: `# Available Skills\n\nYou have access to the following skills. Skills are **reference documents** — they teach you HOW to approach a task. Read their \`SKILL.md\` file when a task matches a skill's description. Skills are NOT agents or sub-agents; execute the instructions yourself unless the skill explicitly tells you to delegate a step. If a skill specifies a preferred model and you choose to spawn a sub-agent for a step, use that model.\n\n${skillsList}`,
-			priority: 9,
+			name: 'skills-catalog',
+			content: `## SKILLS CATALOG (ON-DEMAND)\n\nYou have "Expertise Packages." To use one, call \`tamias__load_skill(name)\`.\n\n${skillsList}\n\n- **skill-manager:** Use this to CREATE or EDIT skills in \`~/.tamias/skills/\``,
+			priority: 4,
 			trimmable: true,
-			minContent: `# Available Skills\n\n${skills.map(s => `- \`${s.name}\`: ${s.description}`).join('\n')}`,
+			minContent: `## SKILLS CATALOG\n\n${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}`,
 		})
 	}
 
-	// ── Assemble with token budget ────────────────────────────────────────────
+	// ── TIER 5: Agentic Protocol (P=5, never trimmed) ─────────────────────
+	const protocol = readPersonaFile('PROTOCOL.md')
+	if (protocol) {
+		tiers.push({
+			name: 'agentic-protocol',
+			content: inject(protocol),
+			priority: 5,
+			trimmable: false,
+		})
+	}
+
+	// ── TIER 6: Session Backstory (P=6, never trimmed) ───────────────────
+	if (summary) {
+		const backstoryLines = summary.trim().split('\n').map((l: string) => `> ${l}`).join('\n')
+		tiers.push({
+			name: 'session-summary',
+			content: `### SESSION BACKSTORY (COMPACTED)\nBelow is the summary of the project progress and decisions made prior to the current active window:\n\n${backstoryLines}`,
+			priority: 6,
+			trimmable: false,
+		})
+	}
+
+	// ── Assemble with token budget ────────────────────────────────────────
 	const modelContextWindow = opts?.modelContextWindow ?? 128000
 	const maxSystemTokens = getSystemPromptBudget(modelContextWindow)
 
@@ -334,6 +521,7 @@ Be concise, accurate, and focus ONLY on the assigned task. Your final response w
 
 	return result.systemPrompt
 }
+
 
 
 

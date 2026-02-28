@@ -1,6 +1,6 @@
 {
 	"name": "tamias",
-	"version": "26.2.27.5",
+	"version": "26.2.28.3",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
@@ -20,6 +20,7 @@
 		"dev": "bun --hot src/index.ts",
 		"install-it": "chmod +x install.sh && ./install.sh",
 		"test": "bun test --preload ./src/tests/setup.ts src/tests/*.test.ts src/utils/*.test.ts",
+		"test:coverage": "bun test --coverage --preload ./src/tests/setup.ts src/tests/*.test.ts src/utils/*.test.ts",
 		"test:integration": "./test/integration/run.sh",
 		"typecheck": "bunx tsc --noEmit",
 		"typecheck:all": "bunx tsc --noEmit && bunx tsc --noEmit -p src/dashboard/tsconfig.json",
@@ -37,6 +38,7 @@
 		"typescript": "^5.0.0"
 	},
 	"dependencies": {
+		"@whiskeysockets/baileys": "7.0.0-rc.9",
 		"@ai-sdk/anthropic": "^3.0.46",
 		"@ai-sdk/google": "^3.0.30",
 		"@ai-sdk/openai": "^3.0.30",
@@ -56,7 +58,10 @@
 		"marked": "^17.0.3",
 		"marked-terminal": "^7.0.0",
 		"picocolors": "^1.1.1",
+		"pino": "^9.0.0",
 		"playwright": "^1.58.2",
+		"qr-image": "^3.2.0",
+		"qrcode-terminal": "^0.12.0",
 		"wavefile": "^11.0.0",
 		"zod": "^4.3.6"
 	}

@@ -1,30 +1,20 @@
 ---
-summary: "Living project registry and rolling recent activity log"
-read_when:
-  - Every main session
+summary: "Recent activity, lessons learned, and pending items — rewritten by compaction"
+scaffold: once
 ---
 
-# MEMORY.md - Living Memory
+# MEMORY.md — Recent Activity & Lessons
 
-_This file is fully rewritten on every compaction. It holds: (1) current active projects, and (2) a rolling 7-day activity log. Entries older than 7 days are dropped from here — they live in the daily logs._
+*This file is rewritten on every compaction. It captures what happened recently, lessons worth carrying forward, and open threads.*
 
-## Active Projects
+## Last Session
 
-| Project | Description | Folder | Channel |
-|---------|-------------|--------|---------|
-| | | | |
+*(Filled in after the first compaction — what was discussed, what was accomplished.)*
 
-_(One row per project. Keep descriptions short. Add Discord/channel IDs when relevant.)_
+## Lessons Learned
 
-## Recent Activity
+- *(Things discovered that should guide future work: API quirks, user preferences, bugs found, conventions to follow.)*
 
-_Rolling 7-day log. Format: `[DATE TIME] (Project): task description`. Drop entries older than 7 days on each rewrite._
+## Pending
 
-<!-- Example:
-[2026-02-26 14:30] (investment-research): Completed 10-step master-research run on IONQ/RGTI/NVTS, posted final report to #investment-research
-[2026-02-25 09:00] (LiveCase): Improved Playwright tests for AI chat grading
--->
-
-## Notes & Context
-
-_(Catch-all for anything worth remembering that doesn't fit the above — decisions made, things to follow up on, ongoing threads.)_
+- *(Tasks or reminders that carry over to the next session.)*

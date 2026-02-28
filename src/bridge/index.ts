@@ -43,6 +43,15 @@ export class BridgeManager {
 			}
 		}
 
+		// Initialize all WhatsApp Unofficial (Baileys) instances
+		for (const [key, cfg] of Object.entries((bridgesDef as any)?.whatsappUnofficials ?? {}) as [string, { enabled?: boolean }][]) {
+			if (cfg.enabled) {
+				const { WhatsAppUnofficialBridge } = await import('./channels/whatsapp-unofficial')
+				const waUnoffBridge = new WhatsAppUnofficialBridge(key)
+				await this.startBridge(waUnoffBridge, config, onMessage)
+			}
+		}
+
 		// Terminal bridge logic is heavily coupled with HTTP SSE in `start.ts` currently,
 		// but eventually we can load it here.
 	}
@@ -104,6 +113,26 @@ export class BridgeManager {
 			}
 		}
 		return undefined
+	}
+
+	/**
+	 * Finds an unofficial WhatsApp bridge instance by its key.
+	 */
+	findWhatsAppUnofficialByKey(key: string): any | undefined {
+		return this.activeBridges.get(`whatsapp-unofficial:${key}`)
+	}
+
+	/**
+	 * Returns all unofficial WhatsApp bridge instances.
+	 */
+	getAllWhatsAppUnofficialBridges(): Array<{ key: string; bridge: any }> {
+		const results: Array<{ key: string; bridge: any }> = []
+		for (const [name, bridge] of this.activeBridges) {
+			if (name.startsWith('whatsapp-unofficial:')) {
+				results.push({ key: name.replace('whatsapp-unofficial:', ''), bridge })
+			}
+		}
+		return results
 	}
 
 	/**

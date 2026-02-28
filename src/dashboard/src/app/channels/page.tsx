@@ -10,16 +10,26 @@ export type BotInstanceConfig = {
 	mode?: 'full' | 'mention-only' | 'listen-only'
 }
 
+export type WhatsAppUnofficialInstanceConfig = {
+	enabled: boolean
+	mode?: 'full' | 'read-only'
+	allowedGroups?: string[]
+	allowedContacts?: string[]
+	linked?: boolean
+}
+
 export type BridgesConfig = {
 	terminal: { enabled: boolean }
 	discords: Record<string, BotInstanceConfig>
 	telegrams: Record<string, BotInstanceConfig>
+	whatsappUnofficials: Record<string, WhatsAppUnofficialInstanceConfig>
 }
 
 const DEFAULT_BRIDGES: BridgesConfig = {
 	terminal: { enabled: true },
 	discords: {},
 	telegrams: {},
+	whatsappUnofficials: {},
 }
 
 // ─── Reusable Bot Card ────────────────────────────────────────────────────────
@@ -134,15 +144,118 @@ function BotCard({
 	)
 }
 
+// ─── WhatsApp Unofficial Card ─────────────────────────────────────────────────
+
+function WhatsAppUnofficialCard({
+	instanceKey,
+	config,
+	onChange,
+	onRemove,
+}: {
+	instanceKey: string
+	config: WhatsAppUnofficialInstanceConfig
+	onChange: (updated: WhatsAppUnofficialInstanceConfig) => void
+	onRemove: () => void
+}) {
+	const accentClass = config.enabled ? 'border-green-500' : 'border-base-300 opacity-70'
+
+	return (
+		<div className={`card bg-base-200 border ${accentClass} transition-all`}>
+			<div className="card-body p-6">
+				<div className="flex items-center justify-between mb-4">
+					<div className="flex items-center gap-4">
+						<div className="w-12 h-12 bg-green-500/20 text-green-400 rounded-xl flex items-center justify-center text-3xl">
+							📱
+						</div>
+						<div>
+							<h2 className="text-xl font-bold font-sans">WhatsApp (Personal)</h2>
+							<p className="text-xs text-base-content/50 uppercase tracking-widest mt-1 font-bold">
+								Instance: <span className="text-base-content/70">{instanceKey}</span>
+								{config.linked && <span className="ml-2 badge badge-success badge-xs">linked</span>}
+								{!config.linked && <span className="ml-2 badge badge-warning badge-xs">not linked</span>}
+							</p>
+						</div>
+					</div>
+					<div className="flex items-center gap-3">
+						<input
+							type="checkbox"
+							className="toggle toggle-success"
+							checked={config.enabled}
+							onChange={e => onChange({ ...config, enabled: e.target.checked })}
+						/>
+						<button
+							onClick={onRemove}
+							className="btn btn-ghost btn-sm text-error hover:bg-error/10"
+							title="Remove this instance"
+						>
+							🗑
+						</button>
+					</div>
+				</div>
+
+				<div className="space-y-4 pt-4 border-t border-base-300/50">
+					{!config.linked && (
+						<div className="alert alert-warning">
+							<span>Not linked yet. Use the CLI (<code>tamias channels</code>) or ask Tamias to &quot;set up WhatsApp&quot; from any channel to scan a QR code.</span>
+						</div>
+					)}
+
+					<div className="flex items-center gap-4">
+						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-32 shrink-0">Mode</span>
+						<select
+							className="select select-sm select-bordered w-full"
+							value={config.mode ?? 'read-only'}
+							onChange={e => onChange({ ...config, mode: e.target.value as 'full' | 'read-only' })}
+						>
+							<option value="read-only">Read-only (receive messages, no replies)</option>
+							<option value="full">Full (send and receive)</option>
+						</select>
+					</div>
+
+					<div className="flex items-start gap-4">
+						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-32 shrink-0 mt-2">Groups</span>
+						<div className="flex-1">
+							<textarea
+								placeholder="120363022222222222@g.us  or  *  for all"
+								className="textarea textarea-bordered textarea-sm w-full font-mono"
+								value={(config.allowedGroups ?? []).join('\n')}
+								onChange={e => onChange({ ...config, allowedGroups: e.target.value.split('\n').map(l => l.trim()).filter(Boolean) })}
+								rows={3}
+							/>
+							<p className="text-[10px] text-base-content/40 mt-1">One group JID per line. Use * to monitor all groups. Leave empty to ignore groups.</p>
+						</div>
+					</div>
+
+					<div className="flex items-start gap-4">
+						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-32 shrink-0 mt-2">DM Contacts</span>
+						<div className="flex-1">
+							<textarea
+								placeholder="+1234567890  or  *  for all"
+								className="textarea textarea-bordered textarea-sm w-full font-mono"
+								value={(config.allowedContacts ?? []).join('\n')}
+								onChange={e => onChange({ ...config, allowedContacts: e.target.value.split('\n').map(l => l.trim()).filter(Boolean) })}
+								rows={2}
+							/>
+							<p className="text-[10px] text-base-content/40 mt-1">Phone numbers (E.164) for allowed DMs. Use * for all. Leave empty to ignore DMs.</p>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	)
+}
+
 // ─── Add Instance Modal / Prompt ──────────────────────────────────────────────
 
 function AddInstanceInput({ platform, existing, onAdd }: {
-	platform: 'discord' | 'telegram'
+	platform: 'discord' | 'telegram' | 'whatsapp-unofficial'
 	existing: string[]
 	onAdd: (key: string) => void
 }) {
 	const [value, setValue] = useState('')
 	const [error, setError] = useState('')
+
+	const platformLabel = platform === 'discord' ? 'Discord' : platform === 'telegram' ? 'Telegram' : 'WhatsApp'
 
 	const handleAdd = () => {
 		const key = value.trim()
@@ -168,7 +281,7 @@ function AddInstanceInput({ platform, existing, onAdd }: {
 				{error && <p className="text-[10px] text-error mt-1">{error}</p>}
 			</div>
 			<button onClick={handleAdd} className="btn btn-sm btn-outline btn-primary whitespace-nowrap">
-				➕ Add {platform === 'discord' ? 'Discord' : 'Telegram'} Bot
+				➕ Add {platformLabel} Instance
 			</button>
 		</div>
 	)
@@ -198,10 +311,17 @@ export default function ChannelsPage() {
 						{ ...(cfg as BotInstanceConfig), mode: (cfg as BotInstanceConfig).mode ?? 'full' },
 					])
 				)
+				const whatsappUnofficials = Object.fromEntries(
+					Object.entries(b.whatsappUnofficials ?? {}).map(([key, cfg]) => [
+						key,
+						{ ...(cfg as WhatsAppUnofficialInstanceConfig), mode: (cfg as WhatsAppUnofficialInstanceConfig).mode ?? 'read-only' },
+					])
+				)
 				setBridges({
 					terminal: b.terminal ?? { enabled: true },
 					discords,
 					telegrams,
+					whatsappUnofficials,
 				})
 			})
 	}, [])
@@ -226,6 +346,10 @@ export default function ChannelsPage() {
 		setBridges(b => ({ ...b, telegrams: { ...b.telegrams, [key]: { enabled: true, botToken: '', allowedChats: [], mode: 'full' } } }))
 	}
 
+	const addWhatsAppUnofficial = (key: string) => {
+		setBridges(b => ({ ...b, whatsappUnofficials: { ...b.whatsappUnofficials, [key]: { enabled: true, mode: 'read-only', allowedGroups: [], allowedContacts: [], linked: false } } }))
+	}
+
 	const removeDiscord = (key: string) => {
 		setBridges(b => {
 			const { [key]: _, ...rest } = b.discords
@@ -237,6 +361,13 @@ export default function ChannelsPage() {
 		setBridges(b => {
 			const { [key]: _, ...rest } = b.telegrams
 			return { ...b, telegrams: rest }
+		})
+	}
+
+	const removeWhatsAppUnofficial = (key: string) => {
+		setBridges(b => {
+			const { [key]: _, ...rest } = b.whatsappUnofficials
+			return { ...b, whatsappUnofficials: rest }
 		})
 	}
 
@@ -316,6 +447,26 @@ export default function ChannelsPage() {
 					platform="telegram"
 					existing={Object.keys(bridges.telegrams)}
 					onAdd={addTelegram}
+				/>
+			</section>
+
+			{/* WhatsApp Unofficial */}
+			<section className="space-y-4">
+				<h2 className="text-xs font-bold uppercase tracking-widest text-base-content/40">WhatsApp (Personal)</h2>
+				<p className="text-xs text-base-content/40 -mt-2">Connect your personal WhatsApp account via QR code. No Meta Business account needed.</p>
+				{Object.entries(bridges.whatsappUnofficials).map(([key, cfg]) => (
+					<WhatsAppUnofficialCard
+						key={key}
+						instanceKey={key}
+						config={cfg}
+						onChange={updated => setBridges(b => ({ ...b, whatsappUnofficials: { ...b.whatsappUnofficials, [key]: updated } }))}
+						onRemove={() => removeWhatsAppUnofficial(key)}
+					/>
+				))}
+				<AddInstanceInput
+					platform="whatsapp-unofficial"
+					existing={Object.keys(bridges.whatsappUnofficials)}
+					onAdd={addWhatsAppUnofficial}
 				/>
 			</section>
 		</div>

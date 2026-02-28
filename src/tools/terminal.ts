@@ -323,6 +323,91 @@ export const terminalTools = {
 			}
 		},
 	}),
+
+	search_grep: tool({
+		description: 'Search for a regex/text pattern in files. Uses ripgrep (rg) if available, falls back to grep. Returns raw match output capped at 200 lines.',
+		inputSchema: z.object({
+			pattern: z.string().describe('Regex or literal text to search for'),
+			path: z.string().optional().describe('Directory or file to search in (defaults to process.cwd())'),
+			include_extension: z.string().optional().describe('Limit search to files with this extension, e.g. "ts" or "md"'),
+			case_insensitive: z.boolean().optional().describe('Case-insensitive search (default: false)'),
+		}),
+		execute: async ({ pattern, path, include_extension, case_insensitive }: { pattern: string; path?: string; include_extension?: string; case_insensitive?: boolean }) => {
+			try {
+				const targetPath = path ? validatePath(path) : process.cwd()
+				const caseFlag = case_insensitive ? '-i' : ''
+				const extFilter = include_extension ? `--include="*.${include_extension}"` : ''
+
+				// Try ripgrep first, fall back to grep
+				let command: string
+				try {
+					execSync('which rg', { encoding: 'utf-8' })
+					const rgExt = include_extension ? `-g "*.${include_extension}"` : ''
+					const rgCase = case_insensitive ? '-i' : ''
+					command = `rg -n ${rgCase} ${rgExt} ${JSON.stringify(pattern)} ${JSON.stringify(targetPath)} 2>/dev/null | head -200 || true`
+				} catch {
+					command = `grep -rn ${caseFlag} ${extFilter} ${JSON.stringify(pattern)} ${JSON.stringify(targetPath)} 2>/dev/null | head -200 || true`
+				}
+
+				auditCommand(command)
+				const output = execSync(command, { encoding: 'utf-8', maxBuffer: 1024 * 1024 * 5 })
+				return { success: true, output: output.trim(), pattern, path: targetPath }
+			} catch (err) {
+				return { success: false, error: String(err), output: '' }
+			}
+		},
+	}),
+
+	read_lines: tool({
+		description: 'Read a specific line range from a file (1-indexed). Useful for inspecting large files without loading everything.',
+		inputSchema: z.object({
+			path: z.string().describe('Path to the file'),
+			start_line: z.number().int().min(1).describe('First line to read (1-indexed)'),
+			end_line: z.number().int().min(1).describe('Last line to read (1-indexed, inclusive)'),
+		}),
+		execute: async ({ path, start_line, end_line }: { path: string; start_line: number; end_line: number }) => {
+			try {
+				const fullPath = validatePath(path)
+				const raw = readFileSync(fullPath, 'utf-8')
+				const allLines = raw.split('\n')
+				const total_lines = allLines.length
+				const sliced = allLines.slice(start_line - 1, end_line)
+				return {
+					success: true,
+					content: sliced.join('\n'),
+					start_line,
+					end_line: Math.min(end_line, total_lines),
+					total_lines,
+				}
+			} catch (err) {
+				return { success: false, error: String(err) }
+			}
+		},
+	}),
+
+	list_recent_files: tool({
+		description: 'List files modified within the last N hours, sorted newest first. Excludes .git, node_modules, dist, .next.',
+		inputSchema: z.object({
+			path: z.string().optional().describe('Root directory to search from (defaults to process.cwd())'),
+			hours: z.number().optional().describe('How many hours back to look (default: 24)'),
+			limit: z.number().int().optional().describe('Maximum number of files to return (default: 30)'),
+		}),
+		execute: async ({ path, hours, limit }: { path?: string; hours?: number; limit?: number }) => {
+			try {
+				const targetPath = path ? validatePath(path) : process.cwd()
+				const h = hours ?? 24
+				const l = limit ?? 30
+				const minutes = Math.round(h * 60)
+				const command = `find ${JSON.stringify(targetPath)} -not -path "*/.git/*" -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/.next/*" -type f -mmin -${minutes} -printf "%T@ %p\\n" 2>/dev/null | sort -rn | head -${l} | awk '{print $2}' || true`
+				auditCommand(command)
+				const output = execSync(command, { encoding: 'utf-8', maxBuffer: 1024 * 1024 })
+				const files = output.trim().split('\n').filter(Boolean)
+				return { success: true, files, hours: h, count: files.length }
+			} catch (err) {
+				return { success: false, error: String(err), files: [] }
+			}
+		},
+	}),
 }
 
 export const TERMINAL_TOOL_NAME = 'terminal'

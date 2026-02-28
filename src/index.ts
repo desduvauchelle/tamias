@@ -18,6 +18,7 @@ import { runWorkspaceCommand } from './commands/workspace.ts'
 import { runUninstallCommand, runBackupCommand, runRestoreCommand } from './commands/maintenance.ts'
 import { agentsCommand } from './commands/agents.ts'
 import { runReadmeCommand } from './commands/readme.ts'
+import { runPromptCommand } from './commands/prompt.ts'
 import { runDoctorCommand } from './commands/doctor.ts'
 import { runHistoryCommand } from './commands/history.ts'
 import { runRestartCommand } from './commands/restart.ts'
@@ -311,6 +312,12 @@ program
 	.command('readme')
 	.description('View the Tamias README.md with terminal formatting')
 	.action(runReadmeCommand)
+
+program
+	.command('prompt')
+	.description('Preview the fully assembled system prompt sent to the AI')
+	.option('--raw', 'Output plain text without color formatting')
+	.action((opts) => runPromptCommand(opts))
 
 // ─── tamias doctor ────────────────────────────────────────────────────────────
 program

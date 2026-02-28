@@ -4,10 +4,13 @@ import {
 	getBridgesConfig,
 	setBridgesConfig,
 	getBotTokenForInstance,
+	TAMIAS_DIR,
 } from '../utils/config.ts'
 import { setEnv, removeEnv, generateSecureEnvKey, getEnv } from '../utils/env.ts'
 import { runRestartCommand } from './restart.ts'
 import { isDaemonRunning } from '../utils/daemon.ts'
+import { join } from 'path'
+import { existsSync, rmSync } from 'fs'
 
 // ─── Health checks ─────────────────────────────────────────────────────────────
 
@@ -133,6 +136,28 @@ export const runChannelsListCommand = async () => {
 		}
 	}
 
+	// WhatsApp Unofficial instances
+	const waUnofficials = (bridges as any).whatsappUnofficials ?? {}
+	if (Object.keys(waUnofficials).length === 0) {
+		console.log(`  ${pc.bold(pc.cyan('whatsapp-unofficial'))}  ${pc.dim('(none configured)')}`)
+	} else {
+		for (const [key, cfg] of Object.entries(waUnofficials) as [string, any][]) {
+			const status = cfg.enabled ? pc.green('enabled') : pc.red('disabled')
+			const modeLabel = cfg.mode === 'full' ? 'full' : 'read-only'
+			const authDir = cfg.authDir ?? join(TAMIAS_DIR, 'whatsapp-auth', key)
+			const linked = existsSync(join(authDir, 'creds.json')) ? pc.green('linked') : pc.yellow('not linked')
+			console.log(`  ${pc.bold(pc.cyan('wa-unofficial'))}:${pc.bold(key)}  [${status}]  ${pc.dim(`mode=${modeLabel}`)}  [${linked}]`)
+			if (cfg.allowedGroups?.length) {
+				const groupLabel = cfg.allowedGroups.includes('*') ? 'ALL' : cfg.allowedGroups.length + ' group(s)'
+				console.log(`     ${pc.dim('↳')} Groups: ${groupLabel}`)
+			}
+			if (cfg.allowedContacts?.length) {
+				const contactLabel = cfg.allowedContacts.includes('*') ? 'ALL' : cfg.allowedContacts.length + ' contact(s)'
+				console.log(`     ${pc.dim('↳')} DMs: ${contactLabel}`)
+			}
+		}
+	}
+
 	console.log('')
 	p.outro(pc.dim('Run `tamias channels edit` to modify configurations.'))
 }
@@ -156,6 +181,7 @@ async function editChannelFlow(isAdding: boolean) {
 		options: [
 			{ value: 'discord', label: 'Discord' },
 			{ value: 'telegram', label: 'Telegram' },
+			{ value: 'whatsapp-unofficial', label: 'WhatsApp (Unofficial / Personal)' },
 			{ value: 'terminal', label: 'Terminal (Local)' },
 		],
 	})
@@ -172,6 +198,12 @@ async function editChannelFlow(isAdding: boolean) {
 		config.terminal = { ...config.terminal, enabled: enabled as boolean }
 		setBridgesConfig(config)
 		p.outro(pc.green(`✅ Terminal channel set to ${enabled ? 'enabled' : 'disabled'}.`))
+		return
+	}
+
+	// ─── WhatsApp Unofficial Flow ────────────────────────────────────────────
+	if (platform === 'whatsapp-unofficial') {
+		await editWhatsAppUnofficialFlow(config, isAdding)
 		return
 	}
 
@@ -314,6 +346,250 @@ async function editChannelFlow(isAdding: boolean) {
 	}
 }
 
+// ─── WhatsApp Unofficial (Baileys) Flow ───────────────────────────────────────
+
+async function editWhatsAppUnofficialFlow(config: any, isAdding: boolean) {
+	const existingInstances = config.whatsappUnofficials ?? {}
+	const existingKeys = Object.keys(existingInstances)
+
+	// Pick or create an instance key
+	let instanceKey: string
+
+	if (isAdding || existingKeys.length === 0) {
+		const keyInput = await p.text({
+			message: 'Name for this WhatsApp connection (e.g. "default", "personal", "work"):',
+			placeholder: existingKeys.length === 0 ? 'default' : 'personal',
+			validate: (v) => {
+				if (!v?.trim()) return 'Name is required.'
+				if (!/^[a-z0-9_-]+$/i.test(v.trim())) return 'Only letters, numbers, hyphens and underscores allowed.'
+				if (isAdding && existingKeys.includes(v.trim())) return `Instance "${v.trim()}" already exists.`
+			},
+		})
+		if (p.isCancel(keyInput)) { p.cancel('Cancelled.'); process.exit(0) }
+		instanceKey = (keyInput as string).trim()
+	} else {
+		const selection = await p.select({
+			message: 'Which WhatsApp instance do you want to edit?',
+			options: [
+				...existingKeys.map(k => ({ value: k, label: k })),
+				{ value: '__new__', label: '➕ Add a new instance' },
+			],
+		})
+		if (p.isCancel(selection)) { p.cancel('Cancelled.'); process.exit(0) }
+
+		if (selection === '__new__') {
+			const keyInput = await p.text({
+				message: 'Name for this new WhatsApp connection:',
+				placeholder: 'personal',
+				validate: (v) => {
+					if (!v?.trim()) return 'Name is required.'
+					if (!/^[a-z0-9_-]+$/i.test(v.trim())) return 'Only letters, numbers, hyphens and underscores allowed.'
+					if (existingKeys.includes(v.trim())) return `Instance "${v.trim()}" already exists.`
+				},
+			})
+			if (p.isCancel(keyInput)) { p.cancel('Cancelled.'); process.exit(0) }
+			instanceKey = (keyInput as string).trim()
+		} else {
+			instanceKey = selection as string
+		}
+	}
+
+	const currentCfg = existingInstances[instanceKey] ?? { enabled: false, mode: 'read-only' }
+	const authDir = currentCfg.authDir ?? join(TAMIAS_DIR, 'whatsapp-auth', instanceKey)
+	const isLinked = existsSync(join(authDir, 'creds.json'))
+
+	// Enable/Disable
+	const enableOpts = await p.confirm({
+		message: `Enable whatsapp-unofficial:${instanceKey}?`,
+		initialValue: currentCfg.enabled ?? true,
+	})
+	if (p.isCancel(enableOpts)) { p.cancel('Cancelled.'); process.exit(0) }
+
+	// Mode selection
+	const modeSelection = await p.select({
+		message: 'Channel mode:',
+		options: [
+			{ value: 'read-only', label: 'Read-only (receive messages, no replies)', hint: 'recommended' },
+			{ value: 'full', label: 'Full (send and receive messages)' },
+		],
+		initialValue: currentCfg.mode ?? 'read-only',
+	})
+	if (p.isCancel(modeSelection)) { p.cancel('Cancelled.'); process.exit(0) }
+
+	// QR Linking (if enabled and not yet linked)
+	if (enableOpts && !isLinked) {
+		p.note(
+			'This will connect your personal WhatsApp account via QR code scanning.\n' +
+			'No Meta Business account is needed — this uses the WhatsApp Web protocol.\n\n' +
+			'You\'ll need to scan a QR code with WhatsApp on your phone.',
+			'WhatsApp Web Linking'
+		)
+
+		const doLink = await p.confirm({
+			message: 'Link WhatsApp now? (QR code will appear)',
+			initialValue: true,
+		})
+
+		if (!p.isCancel(doLink) && doLink) {
+			const spinner = p.spinner()
+			spinner.start('Generating QR code...')
+
+			try {
+				// Create a temporary bridge for QR login
+				const { WhatsAppUnofficialBridge } = await import('../bridge/channels/whatsapp-unofficial')
+				const bridge = new WhatsAppUnofficialBridge(instanceKey)
+
+				// Save config first so bridge can initialize
+				if (!config.whatsappUnofficials) config.whatsappUnofficials = {}
+				config.whatsappUnofficials[instanceKey] = {
+					enabled: enableOpts as boolean,
+					mode: modeSelection as string,
+				}
+				setBridgesConfig(config)
+
+				const fullConfig = { bridges: config } as any
+				await bridge.initialize(fullConfig, () => true)
+				const qrResult = await bridge.loginWithQr()
+
+				if (qrResult) {
+					spinner.stop('QR code ready — scan with WhatsApp:')
+					await bridge.printQrInTerminal()
+					console.log('')
+
+					const waitSpinner = p.spinner()
+					waitSpinner.start('Waiting for you to scan the QR code...')
+					const connected = await bridge.waitForConnection(120_000)
+
+					if (connected) {
+						waitSpinner.stop(pc.green('✅ WhatsApp linked successfully!'))
+
+						// Discover and select groups
+						const groups = await bridge.discoverGroups()
+						if (groups.length > 0) {
+							const groupOptions = groups.map(g => ({
+								value: g.jid,
+								label: `${g.name} (${g.participantCount} members)`,
+							}))
+
+							const selectedGroups = await p.multiselect({
+								message: 'Select groups to monitor (Space to toggle, Enter to confirm):',
+								options: [
+									{ value: '*', label: '⭐ All groups' },
+									...groupOptions,
+								],
+								required: false,
+							})
+
+							if (!p.isCancel(selectedGroups)) {
+								const groupList = selectedGroups as string[]
+								if (groupList.includes('*')) {
+									await bridge.updateAllowedGroups(['*'])
+								} else if (groupList.length > 0) {
+									await bridge.updateAllowedGroups(groupList)
+								}
+							}
+						}
+
+						// DM policy
+						const allowDms = await p.confirm({
+							message: 'Allow direct messages (1:1 chats)?',
+							initialValue: false,
+						})
+
+						if (!p.isCancel(allowDms) && allowDms) {
+							const contactsInput = await p.text({
+								message: 'Allowed phone numbers (comma-separated E.164, or "*" for all):',
+								placeholder: '+1234567890, +0987654321  or  *',
+								initialValue: '*',
+							})
+							if (!p.isCancel(contactsInput)) {
+								const raw = (contactsInput as string).trim()
+								if (raw === '*') {
+									await bridge.updateAllowedContacts(['*'])
+								} else {
+									const nums = raw.split(',').map(s => s.trim()).filter(Boolean)
+									if (nums.length > 0) await bridge.updateAllowedContacts(nums)
+								}
+							}
+						}
+
+						await bridge.destroy()
+					} else {
+						waitSpinner.stop(pc.yellow('⏰ QR code expired. Try again later.'))
+						await bridge.destroy()
+					}
+				} else {
+					spinner.stop(pc.yellow('Could not generate QR code. Try again later.'))
+				}
+			} catch (err: any) {
+				spinner.stop(pc.red(`❌ QR login failed: ${err?.message ?? err}`))
+			}
+		}
+	} else if (enableOpts && isLinked) {
+		// Already linked — allow editing groups/contacts
+		p.note(pc.green('✅ WhatsApp is linked.'), 'Status')
+
+		const editGroups = await p.confirm({
+			message: 'Edit allowed groups?',
+			initialValue: false,
+		})
+
+		if (!p.isCancel(editGroups) && editGroups) {
+			const groupsInput = await p.text({
+				message: 'Allowed group JIDs (comma-separated, or "*" for all):',
+				placeholder: '120363022222222222@g.us  or  *',
+				initialValue: (currentCfg.allowedGroups ?? []).join(', '),
+			})
+			if (!p.isCancel(groupsInput)) {
+				const raw = (groupsInput as string).trim()
+				if (raw === '*') {
+					currentCfg.allowedGroups = ['*']
+				} else {
+					currentCfg.allowedGroups = raw.split(',').map((s: string) => s.trim()).filter(Boolean)
+				}
+			}
+		}
+
+		const editContacts = await p.confirm({
+			message: 'Edit allowed DM contacts?',
+			initialValue: false,
+		})
+
+		if (!p.isCancel(editContacts) && editContacts) {
+			const contactsInput = await p.text({
+				message: 'Allowed phone numbers (comma-separated E.164, or "*" for all):',
+				placeholder: '+1234567890  or  *',
+				initialValue: (currentCfg.allowedContacts ?? []).join(', '),
+			})
+			if (!p.isCancel(contactsInput)) {
+				const raw = (contactsInput as string).trim()
+				if (raw === '*') {
+					currentCfg.allowedContacts = ['*']
+				} else {
+					currentCfg.allowedContacts = raw.split(',').map((s: string) => s.trim()).filter(Boolean)
+				}
+			}
+		}
+	}
+
+	// Save config
+	if (!config.whatsappUnofficials) config.whatsappUnofficials = {}
+	config.whatsappUnofficials[instanceKey] = {
+		...currentCfg,
+		enabled: enableOpts as boolean,
+		mode: modeSelection as string,
+	}
+	setBridgesConfig(config)
+	p.outro(pc.green(`✅ Channel 'whatsapp-unofficial:${instanceKey}' updated.`))
+
+	if (await isDaemonRunning()) {
+		p.note('Applying channel changes by restarting daemon...', 'Apply Changes')
+		await runRestartCommand()
+	} else {
+		p.note('Daemon is not running. Changes will apply on next `tamias start`.', 'Apply Changes')
+	}
+}
+
 // ─── Remove/Disable ────────────────────────────────────────────────────────
 
 export const runChannelsRemoveCommand = async (platformArg?: string) => {
@@ -328,9 +604,12 @@ export const runChannelsRemoveCommand = async (platformArg?: string) => {
 	for (const key of Object.keys(config.telegrams ?? {})) {
 		options.push({ value: `telegram:${key}`, label: `Telegram — ${key}` })
 	}
+	for (const key of Object.keys((config as any).whatsappUnofficials ?? {})) {
+		options.push({ value: `whatsapp-unofficial:${key}`, label: `WhatsApp Unofficial — ${key}` })
+	}
 
 	if (options.length === 0) {
-		p.outro(pc.yellow('No Discord or Telegram channels are configured.'))
+		p.outro(pc.yellow('No channels are configured.'))
 		return
 	}
 
@@ -368,6 +647,11 @@ export const runChannelsRemoveCommand = async (platformArg?: string) => {
 		const envKey = config.telegrams[instanceKey].envKeyName
 		if (envKey) removeEnv(envKey)
 		delete config.telegrams[instanceKey]
+	} else if (plat === 'whatsapp-unofficial' && (config as any).whatsappUnofficials?.[instanceKey]) {
+		// Delete auth directory
+		const authDir = (config as any).whatsappUnofficials[instanceKey].authDir ?? join(TAMIAS_DIR, 'whatsapp-auth', instanceKey)
+		try { rmSync(authDir, { recursive: true, force: true }) } catch { /* ignore */ }
+		delete (config as any).whatsappUnofficials[instanceKey]
 	}
 
 	setBridgesConfig(config)
