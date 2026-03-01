@@ -194,6 +194,22 @@ export const TamiasConfigSchema = z.object({
 	messageTokenRatio: z.number().min(0.1).max(0.6).default(0.30).optional(),
 	/** Tokens reserved for the model's response (default 8192) */
 	responseTokenReserve: z.number().int().positive().default(8192).optional(),
+	/** Vector store (semantic memory) configuration */
+	vectorStore: z.object({
+		/** Master switch to enable/disable the vector store */
+		enabled: z.boolean().default(true),
+		/** Maximum number of vectors to store (oldest evicted when full) */
+		maxEntries: z.number().int().positive().default(5000),
+		/** Whether compaction summaries and insights are auto-indexed into the vector store */
+		autoIndexCompaction: z.boolean().default(true),
+		/** Embedding model name (Xenova/transformers format) */
+		embeddingModel: z.string().default('Xenova/all-MiniLM-L6-v2'),
+	}).default({
+		enabled: true,
+		maxEntries: 5000,
+		autoIndexCompaction: true,
+		embeddingModel: 'Xenova/all-MiniLM-L6-v2',
+	}).optional(),
 })
 
 export type TamiasConfig = z.infer<typeof TamiasConfigSchema>
@@ -550,6 +566,17 @@ export const setCompactionModel = (model: string): void => {
 	const c = loadConfig()
 	c.compactionModel = model
 	saveConfig(c)
+}
+
+/** Return the vector store configuration with defaults */
+export const getVectorStoreConfig = () => {
+	const config = loadConfig()
+	return config.vectorStore ?? {
+		enabled: true,
+		maxEntries: 5000,
+		autoIndexCompaction: true,
+		embeddingModel: 'Xenova/all-MiniLM-L6-v2',
+	}
 }
 
 /** Return all "nickname/modelId" pairs from all connections */

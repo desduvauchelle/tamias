@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Features
+- enhance documentation, pricing utilities, and image generation cost handling
+- add compaction model configuration and web search tool
 - enhance audio attachment handling and transcription error management
 - add search, read, and recent file listing tools for terminal and workspace
 - Enhance Cron Job Management and Session Tools

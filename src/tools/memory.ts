@@ -1,6 +1,7 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { getVectorStore } from '../utils/vectors.ts'
+import { getVectorStoreConfig } from '../utils/config.ts'
 
 export const MEMORY_TOOL_NAME = 'memory'
 export const MEMORY_TOOL_LABEL = '🧠 Semantic Memory (long-term RAG)'
@@ -85,14 +86,16 @@ export const memoryTools = {
 			try {
 				const store = await getVectorStore()
 				const stats = store.getStats()
+				const cfg = getVectorStoreConfig()
+				const maxVectors = cfg.maxEntries ?? 5000
 				return {
 					success: true,
 					...stats,
 					sizeHuman: stats.sizeBytes < 1024 * 1024
 						? `${(stats.sizeBytes / 1024).toFixed(1)}KB`
 						: `${(stats.sizeBytes / (1024 * 1024)).toFixed(1)}MB`,
-					maxVectors: 5000,
-					usage: `${stats.count}/5000`,
+					maxVectors,
+					usage: `${stats.count}/${maxVectors}`,
 				}
 			} catch (err: unknown) {
 				return { success: false, error: (err as Error).message }

@@ -1117,6 +1117,44 @@ ${keptHistoryText}`
 			}
 			// Apply the pre-computed trim: keep only the recent messages, drop the compacted portion
 			session.messages = messagesToKeep as any
+
+			// ── Auto-index compaction artifacts into vector store ──────────────
+			try {
+				const { getVectorStoreConfig } = await import('../utils/config')
+				const vectorCfg = getVectorStoreConfig()
+				if (vectorCfg.enabled && vectorCfg.autoIndexCompaction) {
+					const { getVectorStore } = await import('../utils/vectors')
+					const vectorStore = await getVectorStore()
+					const sessionTag = session.name || session.id
+
+					// Index the compaction summary
+					if (object.summary?.trim()) {
+						await vectorStore.upsert(
+							object.summary.trim(),
+							'compaction',
+							['summary', sessionTag]
+						)
+					}
+
+					// Index individual insights
+					if (object.insights && object.insights.length > 0) {
+						for (const insight of object.insights) {
+							if (insight.content?.trim()) {
+								await vectorStore.upsert(
+									insight.content.trim(),
+									'insight',
+									['insight', sessionTag]
+								)
+							}
+						}
+					}
+
+					console.log(`[AIService] Auto-indexed compaction artifacts into vector store for session '${sessionTag}'.`)
+				}
+			} catch (vecErr) {
+				// Vector store failures must never break compaction
+				console.warn('[AIService] Failed to auto-index compaction into vector store:', vecErr)
+			}
 		} catch (err) {
 			console.error('Failed to compact session:', err)
 		}

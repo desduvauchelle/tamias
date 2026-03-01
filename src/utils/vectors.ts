@@ -16,6 +16,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, unlinkSync } from 'fs'
 import { TAMIAS_DIR } from './config.ts'
+import { getVectorStoreConfig } from './config.ts'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,24 +45,39 @@ export interface VectorStats {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const EMBEDDING_DIM = 384          // all-MiniLM-L6-v2 dimension
-const MAX_VECTORS = 5000           // per-store cap to prevent bloat
+const DEFAULT_MAX_VECTORS = 5000   // per-store cap to prevent bloat
 const BYTES_PER_VECTOR = EMBEDDING_DIM * 4 // Float32
-const MODEL_NAME = 'Xenova/all-MiniLM-L6-v2'
+const DEFAULT_MODEL_NAME = 'Xenova/all-MiniLM-L6-v2'
 
 // ─── Embedding pipeline (lazy singleton) ──────────────────────────────────────
 
 let embedPipeline: any = null
+let currentModelName: string | null = null
 
 async function getEmbedder() {
+	const cfg = getVectorStoreConfig()
+	const modelName = cfg.embeddingModel || DEFAULT_MODEL_NAME
+
+	// If model changed, clear the pipeline so it re-loads
+	if (embedPipeline && currentModelName !== modelName) {
+		embedPipeline = null
+	}
 	if (embedPipeline) return embedPipeline
-	const { pipeline, env } = await import('@xenova/transformers')
-	env.cacheDir = join(TAMIAS_DIR, '.model-cache')
-	env.allowLocalModels = true
-	env.allowRemoteModels = true
-	console.log(`[vectors] Loading embedding model ${MODEL_NAME}...`)
-	embedPipeline = await pipeline('feature-extraction', MODEL_NAME)
-	console.log(`[vectors] Embedding model ready.`)
-	return embedPipeline
+
+	try {
+		const { pipeline, env } = await import('@xenova/transformers')
+		env.cacheDir = join(TAMIAS_DIR, '.model-cache')
+		env.allowLocalModels = true
+		env.allowRemoteModels = true
+		console.log(`[vectors] Loading embedding model ${modelName}...`)
+		embedPipeline = await pipeline('feature-extraction', modelName)
+		currentModelName = modelName
+		console.log(`[vectors] Embedding model ready.`)
+		return embedPipeline
+	} catch (err) {
+		console.error(`[vectors] Failed to load embedding model '${modelName}':`, err)
+		throw new Error(`Embedding model '${modelName}' failed to load. If offline, the model may need to be downloaded first.`)
+	}
 }
 
 /** Generate a normalised embedding vector for the given text */
@@ -73,7 +89,7 @@ export async function embed(text: string): Promise<Float32Array> {
 
 // ─── Cosine similarity ───────────────────────────────────────────────────────
 
-function cosineSimilarity(a: Float32Array, b: Float32Array): number {
+export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
 	let dot = 0, normA = 0, normB = 0
 	for (let i = 0; i < a.length; i++) {
 		dot += a[i] * b[i]
@@ -92,11 +108,14 @@ export class VectorStore {
 	private entries: VectorEntry[] = []
 	private embeddings: Float32Array = new Float32Array(0)
 	private dirty = false
+	private maxVectors: number
 
-	constructor(baseDir?: string) {
+	constructor(baseDir?: string, maxVectors?: number) {
 		this.dir = baseDir ? join(baseDir, 'vectors') : join(TAMIAS_DIR, 'vectors')
 		this.indexPath = join(this.dir, 'index.json')
 		this.embeddingsPath = join(this.dir, 'embeddings.bin')
+		const cfg = getVectorStoreConfig()
+		this.maxVectors = maxVectors ?? cfg.maxEntries ?? DEFAULT_MAX_VECTORS
 	}
 
 	/** Initialize the store — creates directory and loads existing data */
@@ -167,7 +186,7 @@ export class VectorStore {
 		}
 
 		// Enforce cap — evict oldest entries if at limit
-		while (this.entries.length >= MAX_VECTORS) {
+		while (this.entries.length >= this.maxVectors) {
 			this.evictOldest()
 		}
 
@@ -260,9 +279,10 @@ export class VectorStore {
 	}
 
 	/** Prune old entries to stay within limit */
-	prune(maxEntries = MAX_VECTORS): number {
-		if (this.entries.length <= maxEntries) return 0
-		const toRemove = this.entries.length - maxEntries
+	prune(maxEntries?: number): number {
+		const limit = maxEntries ?? this.maxVectors
+		if (this.entries.length <= limit) return 0
+		const toRemove = this.entries.length - limit
 		// Remove oldest entries
 		for (let i = 0; i < toRemove; i++) {
 			this.removeAtIndex(0)
@@ -330,6 +350,10 @@ let defaultStore: VectorStore | null = null
 
 /** Get (or create) the default vector store for the active tenant */
 export async function getVectorStore(baseDir?: string): Promise<VectorStore> {
+	const cfg = getVectorStoreConfig()
+	if (!cfg.enabled) {
+		throw new Error('Vector store is disabled in config. Enable it via vectorStore.enabled.')
+	}
 	if (!defaultStore) {
 		defaultStore = new VectorStore(baseDir)
 		await defaultStore.init()
