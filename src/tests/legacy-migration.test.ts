@@ -9,7 +9,7 @@ import {
 	writeFileSync,
 	copyFileSync,
 } from 'fs'
-import { loadConfig, saveConfig } from '../utils/config'
+import { loadConfig, saveConfig, invalidateConfigCache } from '../utils/config'
 import { getEnv, removeEnv, setEnv } from '../utils/env'
 import { runMigrations, getMigrationStatus } from '../utils/migrations/index'
 import { Database } from 'bun:sqlite'
@@ -20,6 +20,7 @@ const envKeysCreated: string[] = []
 
 function writeTestConfig(cfg: Record<string, unknown>) {
 	writeFileSync(process.env.TAMIAS_CONFIG_PATH!, JSON.stringify(cfg))
+	invalidateConfigCache()
 }
 
 function readRawConfig(): Record<string, any> {
@@ -31,7 +32,7 @@ afterEach(() => {
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 1. Connection secret migrations
+// 1. Connection secret migrations - moving plaintext API keys and tokens to environment variables
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('Legacy: connection secret migration', () => {
