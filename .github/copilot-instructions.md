@@ -118,3 +118,15 @@ Run `bun test --coverage` to verify coverage. New files should have meaningful n
 ## openclaw-main
 
 Is another project that is in the codebase for reference ONLY. You can search and read, but otherwise should be ignored. Do NOT import from it or write tests for it. It is not part of the Tamias codebase, just a reference implementation of an agentic architecture.
+
+
+# README
+
+You are responsible for the readme, which is the main source of documentation for users. It should be clear, concise, and comprehensive. It should cover:
+- What Tamias is and what it can do
+- How to install and run it
+- How to configure it
+- How to use the dashboard
+
+- Code structure and architecture overview for developers
+- How to add new channels,tools, skills, etc.

@@ -739,17 +739,17 @@ export class AIService {
 					suppressed = true
 				}
 
-				const usage = await Promise.race([
-					result.usage,
-					new Promise(resolve => setTimeout(() => resolve({}), 2000))
-				]).catch((err) => { console.warn('[AIService] Failed to retrieve usage stats:', err); return {} }) as any
-
-				const providerCostUsd =
-					typeof usage?.cost === 'number' ? usage.cost
-						: typeof usage?.totalCost === 'number' ? usage.totalCost
-							: typeof usage?.estimatedCost === 'number' ? usage.estimatedCost
-								: typeof usage?.costUsd === 'number' ? usage.costUsd
-									: undefined
+				// Await totalUsage (sums ALL multi-step tool-call rounds, not just the last step)
+				const usage = await Promise.resolve(result.totalUsage).catch((err: unknown) => {
+					console.warn('[AIService] Failed to retrieve usage stats:', err)
+					return {
+						inputTokens: undefined,
+						outputTokens: undefined,
+						totalTokens: undefined,
+						inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+						outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+					} satisfies import('ai').LanguageModelUsage
+				})
 
 				const response = await Promise.resolve(result.response).catch(() => null)
 				const fullMessages = response?.messages ?? []
@@ -779,8 +779,7 @@ export class AIService {
 					tenantId: (session as any).tenantId,
 					agentId: session.agentId,
 					channelId: session.channelId,
-					cachedPromptTokens: usage?.cachedInputTokens,
-					providerCostUsd,
+					cachedPromptTokens: usage?.inputTokenDetails?.cacheReadTokens,
 				})
 
 				if (config.debug) {
@@ -1059,6 +1058,8 @@ ${keptHistoryText}`
 				action: 'compact',
 				durationMs: Date.now() - startTime,
 				tokens: {
+					prompt: usage?.inputTokens,
+					completion: usage?.outputTokens,
 					total: usage?.totalTokens,
 				},
 				messages: [

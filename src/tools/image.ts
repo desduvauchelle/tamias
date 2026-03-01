@@ -6,6 +6,8 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import type { AIService } from '../services/aiService'
 import { loadConfig, getApiKeyForConnection, getDefaultImageModels, type ConnectionConfig } from '../utils/config'
 import type { DaemonEvent } from '../bridge/types'
+import { logAiRequest } from '../utils/logger'
+import { getImageCost } from '../utils/pricing'
 
 export const IMAGE_TOOL_NAME = 'image'
 export const IMAGE_TOOL_LABEL = '🖼️ Image (AI image generation)'
@@ -82,6 +84,7 @@ export function createImageTools(aiService: AIService, sessionId: string) {
 							session.emitter.emit('event', { type: 'chunk', text: msg } as DaemonEvent)
 						}
 
+						const startTime = Date.now()
 						const result = await generateImage({
 							model: imageModel,
 							prompt: imagePrompt,
@@ -90,6 +93,20 @@ export function createImageTools(aiService: AIService, sessionId: string) {
 
 						const image = result.image
 						const fileName = `generated_${Date.now()}.png`
+
+						// Log image generation cost
+						const imageCost = getImageCost(modelId, size)
+						logAiRequest({
+							timestamp: new Date().toISOString(),
+							sessionId,
+							model: modelStr,
+							provider: nickname,
+							action: 'image',
+							durationMs: Date.now() - startTime,
+							messages: [{ role: 'user', content: typeof imagePrompt === 'string' ? imagePrompt : imagePrompt.text }],
+							response: `Generated image: ${fileName}`,
+							providerCostUsd: imageCost,
+						})
 
 						// Emit file event to send the image back to the channel
 						session.emitter.emit('event', {

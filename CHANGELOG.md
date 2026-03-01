@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- enhance audio attachment handling and transcription error management
 - add search, read, and recent file listing tools for terminal and workspace
 - Enhance Cron Job Management and Session Tools
 - Enhance history logging and API with rich tracing fields

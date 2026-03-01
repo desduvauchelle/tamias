@@ -129,6 +129,7 @@ View or set the default AI model
 | `tamias model` | View or set the default AI model |
 | `tamias model set` | Interactively set the default model |
 | `tamias model set-image` | Interactively set the default image model priority |
+| `tamias model set-compaction` | Set the model for session compaction (cheap model recommended) |
 
 ### `tamias onboarding`
 
