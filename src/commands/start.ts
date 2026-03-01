@@ -707,7 +707,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				try {
 					const bridgeTargets = await bridgeManager.getCronTargets()
 					const sessionTargets = aiService.getAllSessions()
-						.filter(s => s.channelId === 'discord' && s.channelUserId)
+					.filter(s => s.channelId?.startsWith('discord:') && s.channelUserId)
 						.map(s => ({
 							target: `discord:${s.channelUserId}`,
 							label: s.channelName ? `Discord ${s.channelName}` : `Discord #${s.channelUserId}`,

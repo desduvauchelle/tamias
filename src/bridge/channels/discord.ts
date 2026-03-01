@@ -15,13 +15,14 @@ interface DiscordChannelState {
 }
 
 export class DiscordBridge implements IBridge {
-	name = 'discord'
+	name: string
 	private instanceKey: string
 	private client?: Client
 	private onMessage?: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean
 
 	constructor(key = 'discord') {
 		this.instanceKey = key
+		this.name = `discord:${key}`
 	}
 	/** Map of channelId → channel orchestration state (set when a Discord message arrives) */
 	private channelStates = new Map<string, DiscordChannelState>()
@@ -157,7 +158,7 @@ export class DiscordBridge implements IBridge {
 			}
 
 			const bridgeMsg: BridgeMessage = {
-				channelId: 'discord',
+				channelId: this.name,
 				channelUserId: channelId,
 				channelName,
 				authorId: message.author.id,
