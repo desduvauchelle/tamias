@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- update pre-commit hooks and add vector store configuration to changelog
 - add config cache invalidation to improve test reliability
 - implement vector store configuration and auto-indexing for compaction artifacts
 - enhance documentation, pricing utilities, and image generation cost handling

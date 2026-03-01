@@ -1,4 +1,4 @@
-bun run typecheck:all && bun run test
+bun run typecheck:all
 bun run test
 bun run bump-version
 bun run changelog

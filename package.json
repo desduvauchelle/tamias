@@ -1,6 +1,6 @@
 {
 	"name": "tamias",
-	"version": "26.2.28.12",
+	"version": "26.2.28.13",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
@@ -22,6 +22,8 @@
 		"test": "bun test --preload ./src/tests/setup.ts src/tests/*.test.ts src/utils/*.test.ts",
 		"test:coverage": "bun test --coverage --preload ./src/tests/setup.ts src/tests/*.test.ts src/utils/*.test.ts",
 		"test:integration": "./test/integration/run.sh",
+		"test:onboarding": "./docker/test-onboarding.sh",
+		"test:onboarding:rebuild": "./docker/test-onboarding.sh --rebuild",
 		"typecheck": "bunx tsc --noEmit",
 		"typecheck:all": "bunx tsc --noEmit && bunx tsc --noEmit -p src/dashboard/tsconfig.json",
 		"prepare": "husky",

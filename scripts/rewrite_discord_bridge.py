@@ -1,4 +1,11 @@
-import { Client, GatewayIntentBits, Events, type Message } from 'discord.js'
+#!/usr/bin/env python3
+"""One-shot script to rewrite discord.ts with the new threading model."""
+import os
+
+TARGET = os.path.join(os.path.dirname(__file__), '..', 'src', 'bridge', 'channels', 'discord.ts')
+TARGET = os.path.normpath(TARGET)
+
+NEW_CONTENT = r"""import { Client, GatewayIntentBits, Events, type Message } from 'discord.js'
 import { getBotTokenForInstance, type TamiasConfig } from '../../utils/config.ts'
 import { VERSION } from '../../utils/version.ts'
 import type { BridgeMessage, DaemonEvent, IBridge } from '../types.ts'
@@ -596,3 +603,9 @@ function splitText(text: string, maxLen: number): string[] {
 	}
 	return chunks
 }
+"""
+
+with open(TARGET, 'w') as f:
+    f.write(NEW_CONTENT)
+
+print(f"Written {len(NEW_CONTENT)} chars to {TARGET}")

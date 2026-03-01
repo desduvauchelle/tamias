@@ -1,0 +1,50 @@
+# docker/Dockerfile.onboarding
+# ─── Tamias Onboarding Test — Docker Image ──────────────────────────────────
+#
+# Bakes source + dependencies into the image for a truly hermetic environment.
+# Each container run starts with a completely fresh ~/.tamias — identical to a
+# brand-new machine that has never seen Tamias before.
+#
+# Build once, run many times:
+#   ./docker/test-onboarding.sh            # (re)build if needed, then run
+#   ./docker/test-onboarding.sh --rebuild  # force a full image rebuild
+#   ./docker/test-onboarding.sh --shell    # drop into bash for debugging
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV HOME=/root
+
+# ── System deps ──────────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y \
+	curl \
+	unzip \
+	git \
+	ca-certificates \
+	&& rm -rf /var/lib/apt/lists/*
+
+# ── Bun ──────────────────────────────────────────────────────────────────────
+RUN curl -fsSL https://bun.sh/install | bash
+ENV BUN_INSTALL="/root/.bun"
+ENV PATH="$BUN_INSTALL/bin:$PATH"
+RUN bun --version
+
+# ── App ──────────────────────────────────────────────────────────────────────
+WORKDIR /tamias-app
+
+# Install deps first (better layer caching — only re-runs when lockfile changes)
+COPY package.json bun.lockb ./
+RUN bun install --frozen-lockfile
+
+# Copy the rest of the source (excludes files in .dockerignore)
+COPY . .
+
+# Create ~/Documents so the optional shortcut step in onboarding works silently
+RUN mkdir -p /root/Documents
+
+COPY docker/onboarding-entrypoint.sh /onboarding-entrypoint.sh
+RUN chmod +x /onboarding-entrypoint.sh
+
+ENTRYPOINT ["/onboarding-entrypoint.sh"]

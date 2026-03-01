@@ -1,0 +1,32 @@
+# ─── Docker ignore — onboarding test image ───────────────────────────────────
+# Excludes large / irrelevant paths so `docker build` has a lean context.
+
+# Dependencies — bun install runs inside the container
+node_modules
+src/dashboard/node_modules
+src/dashboard/.next
+src/dashboard/out
+
+# Git
+.git
+.gitignore
+
+# Local binaries (the container builds from source)
+tamias
+tamias-darwin-arm64
+tamias-linux-x64
+tamias-linux-arm64
+
+# Temp / test artefacts
+temp.aiff
+test_audio.ogg
+*.aiff
+*.ogg
+
+# Local config / secrets — the container gets a fresh ~/.tamias
+.env
+.env.*
+
+# Editor
+.DS_Store
+.vscode

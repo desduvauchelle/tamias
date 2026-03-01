@@ -6,11 +6,11 @@ import type { BridgeMessage, DaemonEvent, IBridge } from '../types.ts'
 interface DiscordChannelState {
 	/** Queue of messages awaiting processing for this channel */
 	queue: Message[]
-	/** The user's original message — persists until the entire turn completes */
+	/** The message currently being responded to (the user's original message — persists until the full turn is complete) */
 	currentMessage?: Message
-	/** Unified turn thread anchored on the user's message; created when the first sub-agent starts */
+	/** Thread created on the user's message for all mid-task output */
 	currentThread?: any
-	/** Count of in-flight sub-agents for the current turn */
+	/** Number of in-flight sub-agents for the current turn */
 	pendingSubagents: number
 	/** typing keepalive interval */
 	typingInterval?: ReturnType<typeof setInterval>
@@ -28,7 +28,7 @@ export class DiscordBridge implements IBridge {
 		this.instanceKey = key
 		this.name = `discord:${key}`
 	}
-	/** Map of channelId → channel orchestration state */
+	/** Map of channelId → channel orchestration state (set when a Discord message arrives) */
 	private channelStates = new Map<string, DiscordChannelState>()
 	/** Map of channelId → sessionId */
 	private channelSessions = new Map<string, string>()
@@ -206,27 +206,23 @@ export class DiscordBridge implements IBridge {
 					this.cronBuffers.set(channelId, '')
 				}
 				if (state) {
-					// If currentMessage is already set this is a continuation of the same turn
-					// (e.g. parent processing a sub-agent report). Do NOT pop from queue — the
-					// anchor message must persist until the full turn completes.
-					if (!state.currentMessage) {
-						const message = state.queue.shift()
-						if (!message) {
-							console.error(`[Discord Bridge] 'start' event received but no message in queue for channel ${channelId}`)
-							return
-						}
-						state.currentMessage = message
-						await this.clearStatusReactions(message)
+				// If currentMessage is already set this is a continuation of the same turn
+				// (e.g. parent processing a sub-agent report). Do NOT pop from queue — the
+				// anchor message must persist until the full turn completes.
+				if (!state.currentMessage) {
+					// First start for this turn — pop the next user message from the queue
+					const message = state.queue.shift()
+					if (!message) {
+						console.error(`[Discord Bridge] 'start' event received but no message in queue for channel ${channelId}`)
+						return
 					}
-					const message = state.currentMessage!
-					state.buffer = ''
-
-					// Start typing indicator
-					if (state.typingInterval) clearInterval(state.typingInterval)
-					const channel = message.channel
-					if ('sendTyping' in channel) {
-						channel.sendTyping().catch(() => { })
+					state.currentMessage = message
+					await this.clearStatusReactions(message)
+				}
+				const message = state.currentMessage
+				state.buffer = ''
 						const intervalId = setInterval(() => {
+							// Self-cancel if no longer processing or if interval was replaced
 							if (!state || state.currentMessage === undefined || state.typingInterval !== intervalId) {
 								clearInterval(intervalId)
 								if (state && state.typingInterval === intervalId) state.typingInterval = undefined
@@ -277,88 +273,47 @@ export class DiscordBridge implements IBridge {
 				}
 				// ── Reply-to-message path (normal Discord conversation) ──────────
 				if (state) {
-					if (!state.currentMessage) break
-
-					const fullText = state.buffer
-					const ctxMessage = state.currentMessage
-					state.buffer = ''
-
-					if (state.pendingSubagents > 0) {
-						// Mid-turn: sub-agents are still running. This is Chip's intermediate
-						// commentary ("I'm delegating to Cody...") — route to thread only.
-						// Do NOT clear currentMessage; the turn isn't over yet.
-						if (state.typingInterval) {
-							clearInterval(state.typingInterval)
-							state.typingInterval = undefined
-						}
-						const thread = state.currentThread
-						if (thread && fullText.trim()) {
-							try {
-								const chunks = splitText(fullText, 1900)
-								for (const chunk of chunks) await thread.send(chunk)
-							} catch (err) {
-								console.error(`[Discord Bridge] Failed to send intermediate response to thread:`, err)
-							}
-						} else if (!thread && fullText.trim()) {
-							// Thread creation failed — fall back to main channel
-							try {
-								const chunks = splitText(fullText, 1900)
-								for (const chunk of chunks) await (ctxMessage.channel as any).send?.(chunk)
-							} catch (err) {
-								console.error(`[Discord Bridge] Failed to send intermediate response (fallback) to ${channelId}:`, err)
-							}
-						}
-						break
-					}
-
-					// Final response for this turn (pendingSubagents === 0)
-					console.log(`[Discord Bridge] Sending final response to ${channelId} (${fullText.length} chars)`)
 					if (state.typingInterval) {
 						clearInterval(state.typingInterval)
 						state.typingInterval = undefined
 					}
+
+					if (!state.currentMessage) break
+
+					const fullText = state.buffer
+					const ctxMessage = state.currentMessage
+					console.log(`[Discord Bridge] Sending response to ${channelId} (${fullText.length} chars)`)
+
 					await this.clearStatusReactions(ctxMessage)
 
 					if (fullText.trim()) {
-						const thread = state.currentThread
-						if (thread) {
-							// Post final answer to thread for full audit trail
-							try {
+						try {
+							const channel = ctxMessage.channel
+							const anyChannel = channel as any
+							if (typeof anyChannel.send === 'function') {
 								const chunks = splitText(fullText, 1900)
-								for (const chunk of chunks) await thread.send(chunk)
-							} catch (err) {
-								console.error(`[Discord Bridge] Failed to post final answer to thread:`, err)
-							}
-							// Reply to user's original message in main channel with thread reference
-							try {
-								const summaryChunks = splitText(fullText, 1850)
-								for (let i = 0; i < summaryChunks.length; i++) {
-									const isLast = i === summaryChunks.length - 1
-									const text = isLast ? summaryChunks[i] + '\n\n_[Full work log in thread ↑]_' : summaryChunks[i]
-									await (ctxMessage as any).reply(text)
+								for (const chunk of chunks) {
+									await anyChannel.send(chunk)
 								}
-							} catch (err) {
-								console.error(`[Discord Bridge] Failed to reply with final answer to ${channelId}:`, err)
 							}
-						} else {
-							// No thread (simple conversation with no sub-agents) — send to main channel as before
-							try {
-								const anyChannel = ctxMessage.channel as any
-								if (typeof anyChannel.send === 'function') {
-									const chunks = splitText(fullText, 1900)
-									for (const chunk of chunks) await anyChannel.send(chunk)
-								}
-							} catch (err) {
-								console.error(`[Discord Bridge] Failed to send to ${channelId}:`, err)
-							}
+						} catch (err) {
+							console.error(`[Discord Bridge] Failed to send to ${channelId}:`, err)
 						}
 					}
 
-					// Clean up turn state
+					// Clean up current message
 					state.currentMessage = undefined
-					state.currentThread = undefined
-					state.pendingSubagents = 0
+					state.buffer = ''
 					await this.promoteNextQueuedMessage(state)
+
+					// Clean up progress thread for this session
+					const doneSessionId = sessionContext?.sessionId ?? channelId
+					if (this.progressThreads.has(doneSessionId)) {
+						this.progressThreads.delete(doneSessionId)
+					}
+
+					// If queue is empty, we can potentially remove the state, but better to keep it for future messages
+					// until destroy() is called or it times out (optional)
 				}
 				break
 			}
@@ -371,20 +326,12 @@ export class DiscordBridge implements IBridge {
 					if (!state.currentMessage) break
 					const ctxMessage = state.currentMessage
 					await this.clearStatusReactions(ctxMessage)
-					const errorMsg = `⚠️ Error [v${VERSION}]: ${event.message}`
 					try {
-						// Always send error to main channel so user sees it;
-						// also post to thread if one is open for context
-						if (state.currentThread) {
-							await state.currentThread.send(errorMsg).catch(() => { })
-						}
-						await (ctxMessage.channel as any).send?.(errorMsg)
+						await (ctxMessage.channel as any).send?.(`⚠️ Error [v${VERSION}]: ${event.message}`)
 					} catch (err) {
 						console.error(`[Discord Bridge] Failed to send error notification to channel ${channelId}:`, err)
 					}
 					state.currentMessage = undefined
-					state.currentThread = undefined
-					state.pendingSubagents = 0
 					state.buffer = ''
 					await this.promoteNextQueuedMessage(state)
 				}
@@ -411,33 +358,31 @@ export class DiscordBridge implements IBridge {
 				break
 			}
 			case 'subagent-status': {
-				// All sub-agent lifecycle events are routed to the unified turn thread.
-				// The thread is lazily created on the user's own message when the first
-				// sub-agent is spawned — Discord's sidebar shows the user's question as the thread name.
 				if (event.status === 'started') {
-					if (state) state.pendingSubagents++
-
-					// Create the turn thread on the user's message if it doesn't exist yet
-					if (state && !state.currentThread && state.currentMessage &&
-						typeof (state.currentMessage as any).startThread === 'function') {
+					// Try to create a Discord thread from the message that triggered the parent.
+					// state.currentMessage is still set because the parent is still streaming.
+					const triggeringMessage = state?.currentMessage
+					if (triggeringMessage && typeof (triggeringMessage as any).startThread === 'function') {
 						try {
-							const threadName = (state.currentMessage.content || 'Task').slice(0, 100)
-							state.currentThread = await (state.currentMessage as any).startThread({
+							const threadName = event.task.slice(0, 100)
+							const thread = await (triggeringMessage as any).startThread({
 								name: threadName,
 								autoArchiveDuration: 60,
 							})
-							console.log(`[Discord Bridge] Created turn thread "${threadName}" for channel ${channelId}`)
+							this.subagentThreads.set(event.subagentId, thread)
+							await thread.send(`🧠 **Sub-agent started**\n📋 ${event.task}\n🔑 Session: \`${event.subagentId}\``)
 						} catch (err) {
-							console.warn(`[Discord Bridge] Could not create turn thread for channel ${channelId}:`, err)
+							console.warn(`[Discord Bridge] Could not create thread for sub-agent ${event.subagentId}:`, err)
+							// Fallback: post in-channel with session ID
+							try {
+								const channel = await this.client!.channels.fetch(channelId)
+								if (channel && 'send' in channel) {
+									await (channel as any).send(`🧠 *Working on:* _${event.task}_…\n🔑 Session: \`${event.subagentId}\``)
+								}
+							} catch { }
 						}
-					}
-
-					const statusMsg = `🧠 **Sub-agent started**\n📋 ${event.task}\n🔑 Session: \`${event.subagentId}\``
-					const thread = state?.currentThread
-					if (thread) {
-						await thread.send(statusMsg).catch(console.error)
 					} else {
-						// DM or thread creation failed — fall back to main channel
+						// DM or no current message — post to channel with session ID
 						try {
 							const channel = await this.client!.channels.fetch(channelId)
 							if (channel && 'send' in channel) {
@@ -448,18 +393,16 @@ export class DiscordBridge implements IBridge {
 						}
 					}
 				} else if (event.status === 'progress') {
-					const thread = state?.currentThread
-					if (thread) {
-						await thread.send(`⏳ ${event.message}`).catch(console.error)
-					} else {
-						const channel = await this.client!.channels.fetch(channelId).catch(() => null)
-						if (channel && 'send' in channel) await (channel as any).send(`⏳ ${event.message}`).catch(console.error)
+					const thread = this.subagentThreads.get(event.subagentId)
+					const target = thread ?? await this.client!.channels.fetch(channelId).catch(() => null)
+					if (target && 'send' in target) {
+						await (target as any).send(`⏳ ${event.message}`).catch(console.error)
 					}
 				} else if (event.status === 'completed') {
-					if (state && state.pendingSubagents > 0) state.pendingSubagents--
-					const thread = state?.currentThread
+					const thread = this.subagentThreads.get(event.subagentId)
 					if (thread) {
 						await thread.send('✅ Done — main agent is processing the results.').catch(console.error)
+						this.subagentThreads.delete(event.subagentId)
 					} else {
 						const channel = await this.client!.channels.fetch(channelId).catch(() => null)
 						if (channel && 'send' in channel) {
@@ -467,37 +410,66 @@ export class DiscordBridge implements IBridge {
 						}
 					}
 				} else if (event.status === 'failed') {
-					if (state && state.pendingSubagents > 0) state.pendingSubagents--
+					const thread = this.subagentThreads.get(event.subagentId)
 					const msg = `❌ *Sub-agent failed:* ${event.message}`
-					const thread = state?.currentThread
 					if (thread) {
 						await thread.send(msg).catch(console.error)
+						this.subagentThreads.delete(event.subagentId)
 					} else {
 						const channel = await this.client!.channels.fetch(channelId).catch(() => null)
-						if (channel && 'send' in channel) await (channel as any).send(msg).catch(console.error)
+						if (channel && 'send' in channel) {
+							await (channel as any).send(msg).catch(console.error)
+						}
 					}
 				}
 				break
 			}
 			case 'progress-update': {
+				const sessionId = sessionContext?.sessionId ?? channelId
 				const stepLabel = event.step && event.totalSteps
 					? ` (${event.step}/${event.totalSteps})`
 					: event.step ? ` (step ${event.step})` : ''
 				const updateMsg = `📋${stepLabel} ${event.message}`
-				// Route to the unified turn thread if it exists, otherwise fall back to main channel
-				const progressThread = state?.currentThread
-				if (progressThread) {
+
+				// Try to reuse an existing progress thread for this session
+				let thread = this.progressThreads.get(sessionId)
+				if (thread) {
 					try {
-						await progressThread.send(updateMsg)
-					} catch (err) {
-						console.warn(`[Discord Bridge] Failed to send progress update to thread:`, err)
+						await thread.send(updateMsg)
+					} catch {
+						this.progressThreads.delete(sessionId)
+						thread = null
 					}
-				} else {
-					try {
-						const ch = await this.client!.channels.fetch(channelId)
-						if (ch && 'send' in ch) await (ch as any).send(updateMsg)
-					} catch (err) {
-						console.error(`[Discord Bridge] Failed to send progress update to ${channelId}:`, err)
+				}
+
+				// Create a new thread if none exists
+				if (!thread) {
+					const triggerMsg = state?.currentMessage
+					if (triggerMsg && typeof (triggerMsg as any).startThread === 'function') {
+						try {
+							const threadName = (event.title || 'Task Progress').slice(0, 100)
+							thread = await (triggerMsg as any).startThread({
+								name: threadName,
+								autoArchiveDuration: 60,
+							})
+							this.progressThreads.set(sessionId, thread)
+							await thread.send(updateMsg)
+						} catch (err) {
+							console.warn(`[Discord Bridge] Could not create progress thread:`, err)
+							// Fallback: post in channel
+							try {
+								const ch = await this.client!.channels.fetch(channelId)
+								if (ch && 'send' in ch) await (ch as any).send(updateMsg)
+							} catch { }
+						}
+					} else {
+						// DM or no current message — post in channel
+						try {
+							const ch = await this.client!.channels.fetch(channelId)
+							if (ch && 'send' in ch) await (ch as any).send(updateMsg)
+						} catch (err) {
+							console.error(`[Discord Bridge] Failed to send progress update to ${channelId}:`, err)
+						}
 					}
 				}
 				break
@@ -508,26 +480,16 @@ export class DiscordBridge implements IBridge {
 					`**To:** ${event.toAgent}\n` +
 					`**Reason:** ${event.reason}\n\n` +
 					`_The conversation is now being handled by **${event.toAgent}**._`
-				// Handoffs are part of the work log — route to thread if available
-				const handoffThread = state?.currentThread
-				if (handoffThread) {
-					try {
-						await handoffThread.send(handoffMsg)
-					} catch (err) {
-						console.error(`[Discord Bridge] Failed to send handoff to thread in ${channelId}:`, err)
+				try {
+					if (state?.currentMessage) {
+						const channel = state.currentMessage.channel as any
+						if (typeof channel.send === 'function') await channel.send(handoffMsg)
+					} else {
+						const channel = await this.client!.channels.fetch(channelId)
+						if (channel && 'send' in channel) await (channel as any).send(handoffMsg)
 					}
-				} else {
-					try {
-						if (state?.currentMessage) {
-							const channel = state.currentMessage.channel as any
-							if (typeof channel.send === 'function') await channel.send(handoffMsg)
-						} else {
-							const channel = await this.client!.channels.fetch(channelId)
-							if (channel && 'send' in channel) await (channel as any).send(handoffMsg)
-						}
-					} catch (err) {
-						console.error(`[Discord Bridge] Failed to send handoff notification to ${channelId}:`, err)
-					}
+				} catch (err) {
+					console.error(`[Discord Bridge] Failed to send handoff notification to ${channelId}:`, err)
 				}
 				break
 			}
@@ -578,6 +540,8 @@ export class DiscordBridge implements IBridge {
 			}
 			this.client.destroy()
 			this.seenMessageIds.clear()
+			this.subagentThreads.clear()
+			this.progressThreads.clear()
 			console.log('[Discord Bridge] Stopped.')
 		}
 	}
