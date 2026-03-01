@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- implement vector store configuration and auto-indexing for compaction artifacts
 - enhance documentation, pricing utilities, and image generation cost handling
 - add compaction model configuration and web search tool
 - enhance audio attachment handling and transcription error management
