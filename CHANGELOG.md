@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Features
+- Implement Discord Bridge with thread-per-turn messaging model and enhance testing for sub-agent interactions
+- implement MEMORY.md migration to new format and update changelog
 - update pre-commit hooks and add vector store configuration to changelog
 - add config cache invalidation to improve test reliability
 - implement vector store configuration and auto-indexing for compaction artifacts
