@@ -5,8 +5,75 @@
  */
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
-import { TAMIAS_DIR } from '../utils/config.ts'
+import { generateText } from 'ai'
+import { createOpenAI } from '@ai-sdk/openai'
+import { createAnthropic } from '@ai-sdk/anthropic'
+import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { createOpenRouter } from '@openrouter/ai-sdk-provider'
+import {
+	TAMIAS_DIR,
+	getAllConnections,
+	getApiKeyForConnection,
+	getCompactionModel,
+	getDefaultModel,
+	getAllModelOptions,
+} from '../utils/config.ts'
 import { runMigrations, getMigrationStatus } from '../utils/migrations/index.ts'
+import type { AiGenerateFn } from '../utils/migrations/types.ts'
+
+/**
+ * Build a lightweight AI text-generation function from the configured models.
+ * Prefers the compaction model (cheapest) → default model → first available.
+ * Returns undefined if no model/connection can be resolved.
+ */
+function buildAiGenerate(): AiGenerateFn | undefined {
+	const modelStr = getCompactionModel() ?? getDefaultModel() ?? getAllModelOptions()[0]
+	if (!modelStr) return undefined
+
+	const [nickname, ...rest] = modelStr.split('/')
+	const modelId = rest.join('/')
+	if (!nickname || !modelId) return undefined
+
+	const connections = getAllConnections()
+	const conn = connections.find(c => c.nickname === nickname)
+	if (!conn) return undefined
+
+	const apiKey = getApiKeyForConnection(nickname)
+
+	let model: ReturnType<ReturnType<typeof createOpenAI>>
+	try {
+		switch (conn.provider) {
+			case 'openai':
+				model = createOpenAI({ apiKey })(modelId)
+				break
+			case 'anthropic':
+				model = createAnthropic({ apiKey })(modelId) as any
+				break
+			case 'google':
+				model = createGoogleGenerativeAI({ apiKey })(modelId) as any
+				break
+			case 'openrouter':
+				model = createOpenRouter({ apiKey })(modelId) as any
+				break
+			case 'ollama': {
+				let baseURL = (conn as any).baseUrl || 'http://127.0.0.1:11434'
+				baseURL = baseURL.replace(/\/$/, '')
+				if (!baseURL.endsWith('/v1')) baseURL += '/v1'
+				model = createOpenAI({ baseURL, apiKey: apiKey || 'ollama' }).chat(modelId)
+				break
+			}
+			default:
+				return undefined
+		}
+	} catch {
+		return undefined
+	}
+
+	return async (prompt: string) => {
+		const result = await generateText({ model, prompt })
+		return result.text
+	}
+}
 
 export async function runMigrateStatusCommand() {
 	p.intro(pc.bgBlue(pc.white(' Tamias — Migration Status ')))
@@ -54,7 +121,12 @@ export async function runMigrateRunCommand(opts: { dryRun?: boolean; tenant?: st
 		p.note('No changes will be written to disk.', 'Dry Run Mode')
 	}
 
-	const report = await runMigrations(targetDir, undefined, opts.dryRun)
+	const aiGenerate = opts.dryRun ? undefined : buildAiGenerate()
+	if (aiGenerate) {
+		p.log.info(`Using configured model for AI-assisted migrations.`)
+	}
+
+	const report = await runMigrations(targetDir, aiGenerate, opts.dryRun)
 
 	if (report.applied.length > 0) {
 		const lines = report.applied.map(m => {
