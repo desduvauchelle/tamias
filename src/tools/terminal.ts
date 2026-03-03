@@ -197,7 +197,9 @@ export const terminalTools = {
 			try {
 				const fullPath = validatePath(path)
 				mkdirSync(dirname(fullPath), { recursive: true })
-				writeFileSync(fullPath, content, 'utf-8')
+				// Normalize literal escape sequences that some models emit instead of real characters
+				const normalizedContent = content.replace(/\\n/g, '\n').replace(/\\t/g, '\t')
+				writeFileSync(fullPath, normalizedContent, 'utf-8')
 				return { success: true }
 			} catch (err) {
 				return { success: false, error: String(err) }
@@ -216,10 +218,14 @@ export const terminalTools = {
 			try {
 				const fullPath = validatePath(path)
 				const original = readFileSync(fullPath, 'utf-8')
-				if (!original.includes(target)) {
+				// Normalize literal escape sequences that some models emit instead of real characters
+				const normalizeEscapes = (s: string) => s.replace(/\\n/g, '\n').replace(/\\t/g, '\t')
+				const normTarget = normalizeEscapes(target)
+				const normReplacement = normalizeEscapes(replacement)
+				if (!original.includes(normTarget)) {
 					return { success: false, error: 'Target string not found in file.' }
 				}
-				writeFileSync(fullPath, original.replace(target, replacement), 'utf-8')
+				writeFileSync(fullPath, original.replace(normTarget, normReplacement), 'utf-8')
 				return { success: true }
 			} catch (err) {
 				return { success: false, error: String(err) }

@@ -71,7 +71,9 @@ export const workspaceTools = {
 			try {
 				const absolutePath = validatePath(path)
 				mkdirSync(dirname(absolutePath), { recursive: true })
-				writeFileSync(absolutePath, content, 'utf-8')
+				// Normalize literal escape sequences that some models emit instead of real characters
+				const normalizedContent = (content as string).replace(/\\n/g, '\n').replace(/\\t/g, '\t')
+				writeFileSync(absolutePath, normalizedContent, 'utf-8')
 				return { success: true }
 			} catch (err) {
 				return { success: false, error: String(err) }
@@ -90,10 +92,14 @@ export const workspaceTools = {
 			try {
 				const absolutePath = validatePath(path)
 				const original = readFileSync(absolutePath, 'utf-8')
-				if (!original.includes(target)) {
+				// Normalize literal escape sequences that some models emit instead of real characters
+				const normalizeEscapes = (s: string) => s.replace(/\\n/g, '\n').replace(/\\t/g, '\t')
+				const normTarget = normalizeEscapes(target as string)
+				const normReplacement = normalizeEscapes(replacement as string)
+				if (!original.includes(normTarget)) {
 					return { success: false, error: 'Target string not found in file.' }
 				}
-				writeFileSync(absolutePath, original.replace(target, replacement), 'utf-8')
+				writeFileSync(absolutePath, original.replace(normTarget, normReplacement), 'utf-8')
 				return { success: true }
 			} catch (err) {
 				return { success: false, error: String(err) }

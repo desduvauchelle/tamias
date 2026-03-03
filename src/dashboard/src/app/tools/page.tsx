@@ -48,6 +48,7 @@ function FunctionRulesSection({
 
 export type EmailAccountConfig = {
 	nickname: string
+	email?: string
 	enabled: boolean
 	envKeyName?: string
 	accountName: string
@@ -121,38 +122,58 @@ function EmailAccountCard({
 	onRemove: () => void
 }) {
 	const [isModalOpen, setIsModalOpen] = useState(false)
+	const [draft, setDraft] = useState<EmailAccountConfig>(config)
+	const [whitelistText, setWhitelistText] = useState(config.permissions.whitelist.join(', '))
+
+	const openModal = () => {
+		setDraft(config)
+		setWhitelistText(config.permissions.whitelist.join(', '))
+		setIsModalOpen(true)
+	}
+
+	const saveModal = () => {
+		const whitelist = whitelistText.split(',').map(s => s.trim()).filter(Boolean)
+		onChange({ ...draft, permissions: { ...draft.permissions, whitelist } })
+		setIsModalOpen(false)
+	}
+
+	const closeModal = () => {
+		setIsModalOpen(false)
+	}
 
 	return (
 		<div className={`card bg-base-200 border ${config.enabled ? 'border-info/40' : 'border-base-300 opacity-60 hover:opacity-100'} transition-all`}>
 			<div className="card-body p-4 space-y-3">
 				<div className="flex items-center gap-4">
 					<span className="text-3xl w-10 text-center shrink-0">📧</span>
-					<div className="flex-1">
+					<div className="flex-1 min-w-0">
 						<div className="flex items-center gap-2">
 							<div className="font-mono font-bold text-sm text-info truncate">{config.nickname}</div>
 							{config.isDefault && <span className="badge badge-info badge-xs uppercase font-bold text-[8px]">Default</span>}
 						</div>
-						<div className="text-[10px] text-base-content/60 lowercase">{config.accountName || 'no account id'}</div>
+						{config.email && (
+							<div className="text-[11px] text-base-content/70 font-mono truncate">{config.email}</div>
+						)}
+						<div className="text-[10px] text-base-content/40 lowercase">{config.accountName || 'no account id'}</div>
 					</div>
-					<div className="flex flex-col items-end gap-2">
+					<div className="flex flex-col items-end gap-2 shrink-0">
 						<input
 							type="checkbox"
-							className="toggle toggle-info toggle-sm shrink-0"
+							className="toggle toggle-info toggle-sm"
 							checked={config.enabled}
 							onChange={e => onChange({ ...config, enabled: e.target.checked })}
 						/>
-						<button onClick={onRemove} className="btn btn-xs btn-ghost text-error opacity-20 hover:opacity-100">✕</button>
 					</div>
 				</div>
 				<div className="text-[10px] text-base-content/50 flex items-center justify-between pt-1 border-t border-base-content/5">
 					<span>{config.permissions.canSend ? 'Open send permissions' : `${config.permissions.whitelist.length} whitelisted recipients`}</span>
-					<button onClick={() => setIsModalOpen(true)} className="btn btn-xs btn-ghost">Edit Details</button>
+					<button onClick={openModal} className="btn btn-xs btn-ghost">Edit Details</button>
 				</div>
 			</div>
 
 			<Modal
 				isOpen={isModalOpen}
-				onClose={() => setIsModalOpen(false)}
+				onClose={closeModal}
 				title={<h3 className="text-lg font-semibold">Email Account Settings</h3>}
 				className="w-11/12 max-w-3xl"
 			>
@@ -162,8 +183,18 @@ function EmailAccountCard({
 						<input
 							type="text"
 							className="input input-sm input-bordered font-mono"
-							value={config.nickname}
-							onChange={e => onChange({ ...config, nickname: e.target.value })}
+							value={draft.nickname}
+							onChange={e => setDraft({ ...draft, nickname: e.target.value })}
+						/>
+					</div>
+					<div className="form-control">
+						<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Email Address</span></label>
+						<input
+							type="email"
+							placeholder="e.g. me@example.com"
+							className="input input-sm input-bordered font-mono"
+							value={draft.email || ''}
+							onChange={e => setDraft({ ...draft, email: e.target.value })}
 						/>
 					</div>
 					<div className="form-control">
@@ -172,8 +203,8 @@ function EmailAccountCard({
 							type="text"
 							placeholder="e.g. personal"
 							className="input input-sm input-bordered font-mono"
-							value={config.accountName}
-							onChange={e => onChange({ ...config, accountName: e.target.value })}
+							value={draft.accountName}
+							onChange={e => setDraft({ ...draft, accountName: e.target.value })}
 						/>
 					</div>
 					<div className="flex items-center justify-between">
@@ -181,8 +212,8 @@ function EmailAccountCard({
 						<input
 							type="checkbox"
 							className="checkbox checkbox-sm checkbox-info"
-							checked={config.isDefault}
-							onChange={e => onChange({ ...config, isDefault: e.target.checked })}
+							checked={draft.isDefault}
+							onChange={e => setDraft({ ...draft, isDefault: e.target.checked })}
 						/>
 					</div>
 					<div className="flex items-center justify-between">
@@ -190,25 +221,34 @@ function EmailAccountCard({
 						<input
 							type="checkbox"
 							className="checkbox checkbox-sm checkbox-info"
-							checked={config.permissions.canSend}
-							onChange={e => onChange({ ...config, permissions: { ...config.permissions, canSend: e.target.checked } })}
+							checked={draft.permissions.canSend}
+							onChange={e => setDraft({ ...draft, permissions: { ...draft.permissions, canSend: e.target.checked } })}
 						/>
 					</div>
-					{!config.permissions.canSend && (
+					{!draft.permissions.canSend && (
 						<div className="form-control">
 							<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Destination Whitelist</span></label>
 							<textarea
 								placeholder="Limit to: boss@company.com, assistant@company.com"
 								className="textarea textarea-bordered w-full font-mono text-xs min-h-15"
-								value={config.permissions.whitelist.join(', ')}
-								onChange={e => {
-									const val = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-									onChange({ ...config, permissions: { ...config.permissions, whitelist: val } })
-								}}
+								value={whitelistText}
+								onChange={e => setWhitelistText(e.target.value)}
 							/>
 							<p className="text-[10px] text-base-content/40 mt-1">Comma-separated email addresses</p>
 						</div>
 					)}
+					<div className="flex items-center justify-between pt-4 border-t border-base-content/10">
+						<button
+							onClick={() => { onRemove(); setIsModalOpen(false) }}
+							className="btn btn-sm btn-error btn-outline"
+						>
+							Delete Account
+						</button>
+						<div className="flex gap-2">
+							<button onClick={closeModal} className="btn btn-sm btn-ghost">Cancel</button>
+							<button onClick={saveModal} className="btn btn-sm btn-info">Save</button>
+						</div>
+					</div>
 				</div>
 			</Modal>
 		</div>

@@ -47,6 +47,7 @@
 - (breaking) Refactor agents API to use core operation registry
 
 ### Maintenance
+- update version numbers in package.json files to 26.2.28.14 and enhance changelog entries
 - bump version to 26.2.26.6 in package.json and dashboard package.json; update AGENTS.md formatting
 - bump version to 26.2.25.7 in package.json files
 - bump version to 26.2.25.5 in package.json files and improve code formatting
@@ -153,6 +154,21 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.2.28.15] - 2026-02-28
+
+### Features
+- Implement Discord Bridge with thread-per-turn messaging model and enhance testing for sub-agent interactions
+- implement MEMORY.md migration to new format and update changelog
+- update pre-commit hooks and add vector store configuration to changelog
+- add config cache invalidation to improve test reliability
+- implement vector store configuration and auto-indexing for compaction artifacts
+- enhance documentation, pricing utilities, and image generation cost handling
+- add compaction model configuration and web search tool
+- enhance audio attachment handling and transcription error management
+
+### Maintenance
+- update version numbers in package.json files to 26.2.28.14 and enhance changelog entries
 
 ## [v26.2.28.3] - 2026-02-28
 
