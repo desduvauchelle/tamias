@@ -294,13 +294,34 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	// Cron setup
 	const onCronTrigger = async (job: CronJob) => {
 		const now = new Date().toISOString()
-		console.log(`[Cron] ${now} Triggering job: "${job.name}" (id=${job.id}, type=${job.type ?? 'ai'}, target=${job.target})`)
+		console.log(`[Cron] ${now} Triggering job: "${job.name}" (id=${job.id}, type=${job.type ?? 'ai'})`)
 		let session: Session | undefined
 		let runStatus: 'success' | 'error' = 'success'
 		let runError: string | undefined
 
 		try {
-			if (job.target === 'last') {
+			if (job.delivery) {
+				// ── Structured delivery (preferred) ────────────────────────────────
+				// bridgeName is the exact key in activeBridges, e.g. "discord:main".
+				// Using it verbatim as session.channelId ensures dispatchEvent() finds the bridge.
+				const { bridgeName, channelId: targetChannelId } = job.delivery
+				const activeNames = bridgeManager.getActiveChannelIds()
+				if (!activeNames.includes(bridgeName)) {
+					console.error(
+						`[Cron] ${now} Bridge "${bridgeName}" is not registered. ` +
+						`Active bridges: [${activeNames.join(', ') || 'NONE'}]. ` +
+						`Check the bridgeName field of job "${job.name}".`
+					)
+				}
+				session = aiService.getSessionForBridge(bridgeName, targetChannelId ?? '')
+				if (!session) {
+					console.log(`[Cron] ${now} No existing session for bridge "${bridgeName}" — creating new session`)
+					session = aiService.createSession({ channelId: bridgeName, channelUserId: targetChannelId })
+				} else {
+					console.log(`[Cron] ${now} Found existing session: ${session.id} (channelId=${session.channelId})`)
+				}
+			} else if (job.target === 'last') {
+				// ── Legacy: most-recently-active session ───────────────────────────
 				const allSessions = aiService.getAllSessions()
 				console.log(`[Cron] ${now} target=last — ${allSessions.length} session(s) available`)
 				session = allSessions.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]
@@ -310,12 +331,23 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					console.log(`[Cron] ${now} No existing sessions found — will create a new one`)
 				}
 			} else if (job.target?.includes(':')) {
-				const [channelId, channelUserId] = job.target.split(':')
-				console.log(`[Cron] ${now} target split → channelId="${channelId}", channelUserId="${channelUserId}"`)
-				session = aiService.getSessionForBridge(channelId, channelUserId)
+				// ── Legacy: "platform:channelId" string ────────────────────────────
+				// DEPRECATED — migrateLegacyTarget() converts these to delivery on load.
+				// This branch only runs if migration was somehow bypassed.
+				const colonIdx = job.target.indexOf(':')
+				const platform = job.target.slice(0, colonIdx)
+				const targetChannelId = job.target.slice(colonIdx + 1) || undefined
+				// Attempt to find a registered bridge whose name starts with the platform prefix.
+				const activeNames = bridgeManager.getActiveChannelIds()
+				const matchedBridge = activeNames.find(n => n.startsWith(`${platform}:`)) ?? platform
+				console.warn(
+					`[Cron] ${now} Legacy target format "${job.target}" — resolved bridge name to "${matchedBridge}". ` +
+					`Update this job to use the delivery field instead.`
+				)
+				session = aiService.getSessionForBridge(matchedBridge, targetChannelId ?? '')
 				if (!session) {
-					console.log(`[Cron] ${now} No existing session for bridge — creating new session`)
-					session = aiService.createSession({ channelId, channelUserId })
+					console.log(`[Cron] ${now} No existing session — creating new session for bridge "${matchedBridge}"`)
+					session = aiService.createSession({ channelId: matchedBridge, channelUserId: targetChannelId })
 				} else {
 					console.log(`[Cron] ${now} Found existing session: ${session.id}`)
 				}
@@ -707,7 +739,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				try {
 					const bridgeTargets = await bridgeManager.getCronTargets()
 					const sessionTargets = aiService.getAllSessions()
-					.filter(s => s.channelId?.startsWith('discord:') && s.channelUserId)
+						.filter(s => s.channelId?.startsWith('discord:') && s.channelUserId)
 						.map(s => ({
 							target: `discord:${s.channelUserId}`,
 							label: s.channelName ? `Discord ${s.channelName}` : `Discord #${s.channelUserId}`,

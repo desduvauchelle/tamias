@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- enhance migration commands with AI-assisted migration functionality
 - Implement Discord Bridge with thread-per-turn messaging model and enhance testing for sub-agent interactions
 - implement MEMORY.md migration to new format and update changelog
 - update pre-commit hooks and add vector store configuration to changelog

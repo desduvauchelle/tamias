@@ -581,3 +581,239 @@ describe('Session channel fields (for /sessions endpoint)', () => {
 		expect(mapped.channelUserId).toBeUndefined()
 	})
 })
+// ─── CronJobSchema delivery field ─────────────────────────────────────────────
+
+describe('CronJobSchema delivery field', () => {
+	test('accepts a delivery object with bridgeName only', () => {
+		const job = CronJobSchema.parse({
+			id: '1',
+			name: 'test',
+			schedule: '1h',
+			prompt: 'do stuff',
+			enabled: true,
+			createdAt: new Date().toISOString(),
+			delivery: { bridgeName: 'discord:main' },
+		})
+		expect(job.delivery?.bridgeName).toBe('discord:main')
+		expect(job.delivery?.channelId).toBeUndefined()
+	})
+
+	test('accepts a delivery object with bridgeName + channelId', () => {
+		const job = CronJobSchema.parse({
+			id: '1',
+			name: 'test',
+			schedule: '30m',
+			prompt: 'ping',
+			enabled: true,
+			createdAt: new Date().toISOString(),
+			delivery: { bridgeName: 'discord:main', channelId: '1234567890' },
+		})
+		expect(job.delivery?.bridgeName).toBe('discord:main')
+		expect(job.delivery?.channelId).toBe('1234567890')
+	})
+
+	test('delivery is optional — job without it still parses', () => {
+		const job = CronJobSchema.parse({
+			id: '1',
+			name: 'legacy',
+			schedule: '30m',
+			prompt: 'x',
+			enabled: true,
+			createdAt: new Date().toISOString(),
+			target: 'last',
+		})
+		expect(job.delivery).toBeUndefined()
+		expect(job.target).toBe('last')
+	})
+
+	test('rejects delivery without bridgeName', () => {
+		expect(() =>
+			CronJobSchema.parse({
+				id: '1',
+				name: 'bad',
+				schedule: '1h',
+				prompt: 'x',
+				enabled: true,
+				createdAt: new Date().toISOString(),
+				delivery: { channelId: '123' }, // missing bridgeName
+			})
+		).toThrow()
+	})
+})
+
+// ─── onCronTrigger delivery routing — fixed dispatch ─────────────────────────
+
+describe('onCronTrigger delivery routing — fixed dispatch', () => {
+	/**
+	 * Mirrors the FIXED version of onCronTrigger from start.ts.
+	 * When job.delivery is set, session.channelId must equal delivery.bridgeName
+	 * (not "discord", not "terminal" — the full registered bridge key).
+	 */
+	type MockSession = { id: string; channelId: string; channelUserId?: string; updatedAt: Date }
+
+	function buildFixedTrigger(opts: {
+		sessions: MockSession[]
+		created: MockSession[]
+		enqueued: Array<{ sessionId: string; prompt: string }>
+		directEmits: Array<{ sessionId: string; type: string; text?: string }>
+		activeBridgeNames?: string[]
+		bridgeNotFoundErrors?: string[]
+	}) {
+		const activeBridgeNames = opts.activeBridgeNames ?? []
+
+		const getSessionForBridge = (channelId: string, channelUserId: string) =>
+			opts.sessions.find(s => s.channelId === channelId && s.channelUserId === channelUserId)
+
+		const createSession = (o: { channelId?: string; channelUserId?: string }) => {
+			const s: MockSession = {
+				id: `sess_${Math.random().toString(36).slice(2, 8)}`,
+				channelId: o.channelId ?? 'terminal',
+				channelUserId: o.channelUserId,
+				updatedAt: new Date(),
+			}
+			// @ts-ignore
+			s.emitter = { emit: (_event: string, data: any) => { opts.directEmits.push({ sessionId: s.id, type: data.type, text: data.text }) } }
+			opts.created.push(s)
+			return s
+		}
+
+		const enqueueMessage = async (sessionId: string, prompt: string) => {
+			opts.enqueued.push({ sessionId, prompt })
+		}
+
+		return async (job: CronJob) => {
+			let session: MockSession | undefined
+
+			if (job.delivery) {
+				// ── Fixed path: use bridgeName directly ───────────────────────────
+				const { bridgeName, channelId: targetChannelId } = job.delivery
+				if (!activeBridgeNames.includes(bridgeName)) {
+					opts.bridgeNotFoundErrors?.push(bridgeName)
+				}
+				session = getSessionForBridge(bridgeName, targetChannelId ?? '')
+				if (!session) {
+					session = createSession({ channelId: bridgeName, channelUserId: targetChannelId })
+				}
+			} else if (job.target === 'last') {
+				session = [...opts.sessions, ...opts.created].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]
+			} else if (job.target?.includes(':')) {
+				const colonIdx = job.target.indexOf(':')
+				const platform = job.target.slice(0, colonIdx)
+				const targetChannelId = job.target.slice(colonIdx + 1) || undefined
+				const matchedBridge = activeBridgeNames.find(n => n.startsWith(`${platform}:`)) ?? platform
+				session = getSessionForBridge(matchedBridge, targetChannelId ?? '')
+				if (!session) {
+					session = createSession({ channelId: matchedBridge, channelUserId: targetChannelId })
+				}
+			}
+
+			if (!session) {
+				session = createSession({})
+			}
+
+			if (job.type === 'message') {
+				; (session as any).emitter.emit('event', { type: 'start', sessionId: session.id })
+					; (session as any).emitter.emit('event', { type: 'chunk', text: job.prompt })
+					; (session as any).emitter.emit('event', { type: 'done', sessionId: session.id })
+			} else {
+				await enqueueMessage(session.id, job.prompt)
+			}
+		}
+	}
+
+	test('delivery.bridgeName is used verbatim as session.channelId — NOT split on colon', async () => {
+		const created: MockSession[] = []
+		const trigger = buildFixedTrigger({
+			sessions: [], created, enqueued: [], directEmits: [],
+			activeBridgeNames: ['discord:main'],
+		})
+		const job = makeJob({ type: 'ai', delivery: { bridgeName: 'discord:main', channelId: '987654321' } })
+
+		await trigger(job)
+
+		expect(created.length).toBe(1)
+		// Key assertion: session.channelId must be the FULL bridge name, not "discord"
+		expect(created[0].channelId).toBe('discord:main')
+		expect(created[0].channelUserId).toBe('987654321')
+	})
+
+	test('delivery.channelId is used as session.channelUserId', async () => {
+		const created: MockSession[] = []
+		const enqueued: Array<{ sessionId: string; prompt: string }> = []
+		const trigger = buildFixedTrigger({
+			sessions: [], created, enqueued, directEmits: [],
+			activeBridgeNames: ['terminal:main'],
+		})
+		const job = makeJob({ type: 'ai', delivery: { bridgeName: 'terminal:main', channelId: 'chan-abc' } })
+
+		await trigger(job)
+
+		expect(created[0].channelUserId).toBe('chan-abc')
+		expect(enqueued[0].sessionId).toBe(created[0].id)
+	})
+
+	test('logs error when delivery.bridgeName is not in active bridges', async () => {
+		const bridgeNotFoundErrors: string[] = []
+		const trigger = buildFixedTrigger({
+			sessions: [], created: [], enqueued: [], directEmits: [],
+			activeBridgeNames: ['terminal:main'], // discord:main not registered
+			bridgeNotFoundErrors,
+		})
+		const job = makeJob({ type: 'message', delivery: { bridgeName: 'discord:main', channelId: '111' } })
+
+		await trigger(job)
+
+		expect(bridgeNotFoundErrors).toContain('discord:main')
+	})
+
+	test('reuses existing session when bridgeName + channelId match', async () => {
+		const now = new Date()
+		const existingSession: MockSession = { id: 'existing', channelId: 'discord:main', channelUserId: '555', updatedAt: now }
+			; (existingSession as any).emitter = { emit: () => { } }
+		const created: MockSession[] = []
+		const enqueued: Array<{ sessionId: string; prompt: string }> = []
+		const trigger = buildFixedTrigger({
+			sessions: [existingSession], created, enqueued, directEmits: [],
+			activeBridgeNames: ['discord:main'],
+		})
+		const job = makeJob({ type: 'ai', delivery: { bridgeName: 'discord:main', channelId: '555' } })
+
+		await trigger(job)
+
+		expect(created.length).toBe(0) // no new session
+		expect(enqueued[0].sessionId).toBe('existing')
+	})
+
+	test('type "message" emits chunk event when delivery is used', async () => {
+		const directEmits: Array<{ sessionId: string; type: string; text?: string }> = []
+		const trigger = buildFixedTrigger({
+			sessions: [], created: [], enqueued: [], directEmits,
+			activeBridgeNames: ['terminal:main'],
+		})
+		const job = makeJob({ type: 'message', delivery: { bridgeName: 'terminal:main' }, prompt: 'Hello from cron!' })
+
+		await trigger(job)
+
+		expect(directEmits.some(e => e.type === 'chunk' && e.text === 'Hello from cron!')).toBe(true)
+		expect(directEmits.some(e => e.type === 'done')).toBe(true)
+	})
+})
+
+// ─── CronManager end-to-end — real timer, fires once ─────────────────────────
+
+describe('CronManager real timer — fires exactly once', () => {
+	test('10s schedule fires exactly once after 10 seconds', async () => {
+		const triggered: CronJob[] = []
+		const job = makeJob({ id: 'real-timer-test', schedule: '10s', delivery: { bridgeName: 'terminal:main' } })
+
+		const mgr = new CronManager(async (j) => { triggered.push(j) }, () => [job])
+		mgr.start()
+
+		// Wait 12s — enough for exactly one fire but not two
+		await new Promise<void>(resolve => setTimeout(resolve, 12_000))
+		mgr.stop()
+
+		expect(triggered.length).toBe(1)
+		expect(triggered[0].id).toBe('real-timer-test')
+	}, { timeout: 15_000 })
+})

@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { loadConfig, getInternalToolConfig, type ToolFunctionConfig, type McpServerConfig } from './config.ts'
 import { terminalTools, TERMINAL_TOOL_NAME } from '../tools/terminal.ts'
 import { createTamiasTools, TAMIAS_TOOL_NAME } from '../tools/tamias.ts'
-import { cronTools, CRON_TOOL_NAME } from '../tools/cron.ts'
+import { createCronTools, CRON_TOOL_NAME } from '../tools/cron.ts'
 import { emailTools, EMAIL_TOOL_NAME } from '../tools/email.ts'
 import { githubTools, GITHUB_TOOL_NAME } from '../tools/github.ts'
 import { workspaceTools, WORKSPACE_TOOL_NAME } from '../tools/workspace.ts'
@@ -84,7 +84,7 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 	const internalCatalog: Record<string, ToolSet> = {
 		[TERMINAL_TOOL_NAME]: terminalTools as ToolSet,
 		[TAMIAS_TOOL_NAME]: createTamiasTools(aiService, sessionId) as ToolSet,
-		[CRON_TOOL_NAME]: cronTools as ToolSet,
+		[CRON_TOOL_NAME]: createCronTools(aiService, sessionId) as ToolSet,
 		[EMAIL_TOOL_NAME]: emailTools as ToolSet,
 		[GITHUB_TOOL_NAME]: githubTools as ToolSet,
 		[WORKSPACE_TOOL_NAME]: workspaceTools as ToolSet,
