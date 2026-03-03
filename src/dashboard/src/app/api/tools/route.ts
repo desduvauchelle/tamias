@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
-import { getTamiasConfig, saveTamiasConfig } from '../tamias'
+import { getTamiasConfig, saveTamiasConfig, setTamiasEnvVar } from '../tamias'
 import { readdir, readFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
+import { randomBytes } from 'crypto'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,7 +83,22 @@ export async function POST(request: Request) {
 
 		if (internalTools) config.internalTools = internalTools
 		if (mcpServers) config.mcpServers = mcpServers
-		if (emails) config.emails = emails
+		if (emails) {
+			// Handle app passwords: write to .env and strip from config
+			const processedEmails: Record<string, unknown> = {}
+			for (const [id, account] of Object.entries(emails) as [string, Record<string, unknown>][]) {
+				if (account.appPassword && typeof account.appPassword === 'string') {
+					const envKey = (account.envKeyName as string | undefined)
+						|| `TAMIAS_EMAIL_${id.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_${randomBytes(4).toString('hex').toUpperCase()}`
+					await setTamiasEnvVar(envKey, account.appPassword)
+					const { appPassword: _pw, ...rest } = account
+					processedEmails[id] = { ...rest, envKeyName: envKey }
+				} else {
+					processedEmails[id] = account
+				}
+			}
+			config.emails = processedEmails
+		}
 		if (defaultImageModels !== undefined) config.defaultImageModels = defaultImageModels
 
 		await saveTamiasConfig(config)

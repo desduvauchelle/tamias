@@ -250,7 +250,7 @@ export default function SkillsPage() {
 								<label className="label"><span className="label-text">Skill Name</span></label>
 								<input
 									type="text"
-									className="input input-bordered focus:input-primary transition-colors"
+									className="input input-bordered w-full focus:input-primary transition-colors"
 									placeholder="e.g. summarize-texts"
 									value={formName}
 									onChange={e => setFormName(e.target.value)}
@@ -261,7 +261,7 @@ export default function SkillsPage() {
 								<label className="label"><span className="label-text">Description</span></label>
 								<input
 									type="text"
-									className="input input-bordered focus:input-primary transition-colors"
+									className="input input-bordered w-full focus:input-primary transition-colors"
 									placeholder="Briefly describe what this skill does"
 									value={formDescription}
 									onChange={e => setFormDescription(e.target.value)}

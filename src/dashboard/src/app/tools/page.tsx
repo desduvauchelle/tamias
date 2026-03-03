@@ -49,8 +49,10 @@ function FunctionRulesSection({
 export type EmailAccountConfig = {
 	nickname: string
 	email?: string
+	service?: 'gmail' | 'outlook' | 'icloud' | 'other'
 	enabled: boolean
 	envKeyName?: string
+	appPassword?: string
 	accountName: string
 	isDefault: boolean
 	permissions: {
@@ -112,6 +114,48 @@ function ToolFunctionRow({
 	)
 }
 
+const SERVICE_GUIDES: Record<string, { label: string; url: string; steps: string[] }> = {
+	gmail: {
+		label: 'Gmail App Password',
+		url: 'https://myaccount.google.com/apppasswords',
+		steps: [
+			'Go to myaccount.google.com → Security',
+			'Enable 2-Step Verification if not already active',
+			'Search for "App passwords" and open it',
+			'Under Select app → choose "Mail"; under Select device → choose "Other" and type "Tamias"',
+			'Click Generate — copy the 16-character password and paste it in the App Password field',
+		],
+	},
+	outlook: {
+		label: 'Outlook App Password',
+		url: 'https://account.microsoft.com/security',
+		steps: [
+			'Go to account.microsoft.com → Security → Advanced security options',
+			'Under "App passwords", click "Create a new app password"',
+			'Copy the generated password and paste it in the App Password field',
+		],
+	},
+	icloud: {
+		label: 'iCloud App-Specific Password',
+		url: 'https://appleid.apple.com',
+		steps: [
+			'Go to appleid.apple.com and sign in',
+			'Under Security → App-Specific Passwords, click "Generate Password"',
+			'Enter a label like "Tamias" and click Create',
+			'Copy the generated password and paste it in the App Password field',
+		],
+	},
+	other: {
+		label: 'Custom IMAP/SMTP',
+		url: '',
+		steps: [
+			'Enter your email address and your regular account password (or an app password if your provider offers one)',
+			'Tamias uses the himalaya CLI — it will auto-configure the IMAP/SMTP settings',
+			'For custom providers, make sure IMAP access is enabled in your mail settings',
+		],
+	},
+}
+
 function EmailAccountCard({
 	config,
 	onChange,
@@ -124,22 +168,29 @@ function EmailAccountCard({
 	const [isModalOpen, setIsModalOpen] = useState(false)
 	const [draft, setDraft] = useState<EmailAccountConfig>(config)
 	const [whitelistText, setWhitelistText] = useState(config.permissions.whitelist.join(', '))
+	const [draftPassword, setDraftPassword] = useState('')
+	const [showGuide, setShowGuide] = useState(false)
+
+	const hasPassword = !!config.envKeyName
+	const guide = SERVICE_GUIDES[draft.service || 'gmail']
 
 	const openModal = () => {
 		setDraft(config)
 		setWhitelistText(config.permissions.whitelist.join(', '))
+		setDraftPassword('')
+		setShowGuide(false)
 		setIsModalOpen(true)
 	}
 
 	const saveModal = () => {
 		const whitelist = whitelistText.split(',').map(s => s.trim()).filter(Boolean)
-		onChange({ ...draft, permissions: { ...draft.permissions, whitelist } })
+		const updated: EmailAccountConfig = { ...draft, permissions: { ...draft.permissions, whitelist } }
+		if (draftPassword) updated.appPassword = draftPassword
+		onChange(updated)
 		setIsModalOpen(false)
 	}
 
-	const closeModal = () => {
-		setIsModalOpen(false)
-	}
+	const closeModal = () => setIsModalOpen(false)
 
 	return (
 		<div className={`card bg-base-200 border ${config.enabled ? 'border-info/40' : 'border-base-300 opacity-60 hover:opacity-100'} transition-all`}>
@@ -150,11 +201,18 @@ function EmailAccountCard({
 						<div className="flex items-center gap-2">
 							<div className="font-mono font-bold text-sm text-info truncate">{config.nickname}</div>
 							{config.isDefault && <span className="badge badge-info badge-xs uppercase font-bold text-[8px]">Default</span>}
+							{config.service && <span className="badge badge-ghost badge-xs font-mono uppercase">{config.service}</span>}
 						</div>
 						{config.email && (
 							<div className="text-[11px] text-base-content/70 font-mono truncate">{config.email}</div>
 						)}
-						<div className="text-[10px] text-base-content/40 lowercase">{config.accountName || 'no account id'}</div>
+						<div className="flex items-center gap-2 mt-0.5">
+							<div className="text-[10px] text-base-content/40 lowercase">{config.accountName || 'no account id'}</div>
+							{hasPassword
+								? <span className="text-[10px] text-success">● password saved</span>
+								: <span className="text-[10px] text-warning">⚠ no password</span>
+							}
+						</div>
 					</div>
 					<div className="flex flex-col items-end gap-2 shrink-0">
 						<input
@@ -178,35 +236,105 @@ function EmailAccountCard({
 				className="w-11/12 max-w-3xl"
 			>
 				<div className="space-y-4">
-					<div className="form-control">
-						<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Display Name</span></label>
+
+					{/* Setup guide */}
+					<div className="rounded-lg border border-base-content/10 bg-base-300/40 overflow-hidden">
+						<button
+							className="w-full flex items-center justify-between px-3 py-2 text-left"
+							onClick={() => setShowGuide(g => !g)}
+						>
+							<span className="text-[10px] font-bold uppercase text-base-content/40 flex items-center gap-1.5">
+								<span>📖</span> How to connect — {guide.label}
+							</span>
+							<span className="text-[10px] text-base-content/40">{showGuide ? '▲ hide' : '▼ show'}</span>
+						</button>
+						{showGuide && (
+							<div className="px-3 pb-3 space-y-2">
+								<ol className="list-decimal list-inside space-y-1.5">
+									{guide.steps.map((step, i) => (
+										<li key={i} className="text-[11px] text-base-content/70 leading-relaxed">{step}</li>
+									))}
+								</ol>
+								{guide.url && (
+									<a href={guide.url} target="_blank" rel="noreferrer" className="btn btn-xs btn-outline btn-info mt-1">
+										Open {guide.label} page ↗
+									</a>
+								)}
+							</div>
+						)}
+					</div>
+
+					{/* Service */}
+					<div className="flex flex-col gap-1">
+						<label className="text-xs uppercase font-bold text-base-content/50">Email Provider</label>
+						<select
+							className="select select-sm select-bordered w-full font-mono"
+							value={draft.service || 'gmail'}
+							onChange={e => setDraft({ ...draft, service: e.target.value as EmailAccountConfig['service'] })}
+						>
+							<option value="gmail">Gmail</option>
+							<option value="outlook">Outlook / Microsoft 365</option>
+							<option value="icloud">iCloud Mail</option>
+							<option value="other">Other (custom IMAP/SMTP)</option>
+						</select>
+					</div>
+
+					{/* Display name */}
+					<div className="flex flex-col gap-1">
+						<label className="text-xs uppercase font-bold text-base-content/50">Display Name</label>
 						<input
 							type="text"
-							className="input input-sm input-bordered font-mono"
+							className="input input-sm input-bordered w-full font-mono"
 							value={draft.nickname}
 							onChange={e => setDraft({ ...draft, nickname: e.target.value })}
 						/>
 					</div>
-					<div className="form-control">
-						<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Email Address</span></label>
+
+					{/* Email address */}
+					<div className="flex flex-col gap-1">
+						<label className="text-xs uppercase font-bold text-base-content/50">Email Address</label>
 						<input
 							type="email"
-							placeholder="e.g. me@example.com"
-							className="input input-sm input-bordered font-mono"
+							placeholder="me@example.com"
+							className="input input-sm input-bordered w-full font-mono"
 							value={draft.email || ''}
 							onChange={e => setDraft({ ...draft, email: e.target.value })}
 						/>
 					</div>
-					<div className="form-control">
-						<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Himalaya Account ID</span></label>
+
+					{/* App password */}
+					<div className="flex flex-col gap-1">
+						<label className="text-xs uppercase font-bold text-base-content/50 flex items-center gap-2">
+							App Password
+							{hasPassword
+								? <span className="normal-case font-normal text-success text-[10px]">● saved — leave blank to keep</span>
+								: <span className="normal-case font-normal text-warning text-[10px]">⚠ not set yet</span>
+							}
+						</label>
+						<input
+							type="password"
+							placeholder={hasPassword ? 'Leave blank to keep current password' : 'Paste your app password here'}
+							className="input input-sm input-bordered w-full font-mono"
+							value={draftPassword}
+							onChange={e => setDraftPassword(e.target.value)}
+							autoComplete="new-password"
+						/>
+					</div>
+
+					{/* Himalaya account ID */}
+					<div className="flex flex-col gap-1">
+						<label className="text-xs uppercase font-bold text-base-content/50">Himalaya Account ID</label>
 						<input
 							type="text"
 							placeholder="e.g. personal"
-							className="input input-sm input-bordered font-mono"
+							className="input input-sm input-bordered w-full font-mono"
 							value={draft.accountName}
 							onChange={e => setDraft({ ...draft, accountName: e.target.value })}
 						/>
+						<p className="text-[10px] text-base-content/40">Internal ID for the himalaya CLI config — defaults to your email address if left unchanged</p>
 					</div>
+
+					{/* Default account toggle */}
 					<div className="flex items-center justify-between">
 						<span className="text-xs uppercase font-bold text-base-content/50">Default Account</span>
 						<input
@@ -216,8 +344,10 @@ function EmailAccountCard({
 							onChange={e => setDraft({ ...draft, isDefault: e.target.checked })}
 						/>
 					</div>
+
+					{/* Send permissions toggle */}
 					<div className="flex items-center justify-between">
-						<span className="text-xs uppercase font-bold text-base-content/50">Authorize anyone to receive emails</span>
+						<span className="text-xs uppercase font-bold text-base-content/50">Anyone can receive emails</span>
 						<input
 							type="checkbox"
 							className="checkbox checkbox-sm checkbox-info"
@@ -225,18 +355,22 @@ function EmailAccountCard({
 							onChange={e => setDraft({ ...draft, permissions: { ...draft.permissions, canSend: e.target.checked } })}
 						/>
 					</div>
+
+					{/* Whitelist */}
 					{!draft.permissions.canSend && (
-						<div className="form-control">
-							<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Destination Whitelist</span></label>
+						<div className="flex flex-col gap-1">
+							<label className="text-xs uppercase font-bold text-base-content/50">Destination Whitelist</label>
 							<textarea
-								placeholder="Limit to: boss@company.com, assistant@company.com"
-								className="textarea textarea-bordered w-full font-mono text-xs min-h-15"
+								placeholder="boss@company.com, assistant@company.com"
+								className="textarea textarea-bordered w-full font-mono text-xs min-h-20"
 								value={whitelistText}
 								onChange={e => setWhitelistText(e.target.value)}
 							/>
-							<p className="text-[10px] text-base-content/40 mt-1">Comma-separated email addresses</p>
+							<p className="text-[10px] text-base-content/40">Comma-separated email addresses. Leave empty for no restriction.</p>
 						</div>
 					)}
+
+					{/* Footer */}
 					<div className="flex items-center justify-between pt-4 border-t border-base-content/10">
 						<button
 							onClick={() => { onRemove(); setIsModalOpen(false) }}
