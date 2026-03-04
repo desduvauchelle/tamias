@@ -29,6 +29,19 @@ export interface IBridge {
 	name: string
 
 	/**
+	 * The platform type — "discord", "telegram", "whatsapp", "whatsapp-unofficial", "terminal".
+	 * Stable regardless of the instance key name the user chose.
+	 */
+	platform: string
+
+	/**
+	 * The bot's own user ID as assigned by the platform (e.g. Discord bot snowflake,
+	 * Telegram bot numeric ID). Set after login/ready, so may be undefined briefly at startup.
+	 * Stable forever — does not change when the user renames their instance key.
+	 */
+	platformAccountId?: string
+
+	/**
 	 * Called when the daemon starts up or the bridge is enabled.
 	 *
 	 * @param config The entire `TamiasConfig` or bridge-specific config slice.

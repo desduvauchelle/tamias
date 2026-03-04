@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
-import { CronJobSchema, type CronJob } from '../utils/cronStore'
+import { CronJobSchema, type CronJob, migrateLegacyTarget } from '../utils/cronStore'
 import { CronManager } from '../bridge/cronManager'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -584,7 +584,7 @@ describe('Session channel fields (for /sessions endpoint)', () => {
 // ─── CronJobSchema delivery field ─────────────────────────────────────────────
 
 describe('CronJobSchema delivery field', () => {
-	test('accepts a delivery object with bridgeName only', () => {
+	test('accepts a delivery object with platform + channelId', () => {
 		const job = CronJobSchema.parse({
 			id: '1',
 			name: 'test',
@@ -592,13 +592,14 @@ describe('CronJobSchema delivery field', () => {
 			prompt: 'do stuff',
 			enabled: true,
 			createdAt: new Date().toISOString(),
-			delivery: { bridgeName: 'discord:main' },
+			delivery: { platform: 'discord', channelId: '987654321' },
 		})
-		expect(job.delivery?.bridgeName).toBe('discord:main')
-		expect(job.delivery?.channelId).toBeUndefined()
+		expect(job.delivery?.platform).toBe('discord')
+		expect(job.delivery?.channelId).toBe('987654321')
+		expect(job.delivery?.platformAccountId).toBeUndefined()
 	})
 
-	test('accepts a delivery object with bridgeName + channelId', () => {
+	test('accepts a delivery object with platform + platformAccountId + channelId', () => {
 		const job = CronJobSchema.parse({
 			id: '1',
 			name: 'test',
@@ -606,9 +607,10 @@ describe('CronJobSchema delivery field', () => {
 			prompt: 'ping',
 			enabled: true,
 			createdAt: new Date().toISOString(),
-			delivery: { bridgeName: 'discord:main', channelId: '1234567890' },
+			delivery: { platform: 'discord', platformAccountId: 'bot-id-999', channelId: '1234567890' },
 		})
-		expect(job.delivery?.bridgeName).toBe('discord:main')
+		expect(job.delivery?.platform).toBe('discord')
+		expect(job.delivery?.platformAccountId).toBe('bot-id-999')
 		expect(job.delivery?.channelId).toBe('1234567890')
 	})
 
@@ -626,7 +628,7 @@ describe('CronJobSchema delivery field', () => {
 		expect(job.target).toBe('last')
 	})
 
-	test('rejects delivery without bridgeName', () => {
+	test('rejects delivery without channelId', () => {
 		expect(() =>
 			CronJobSchema.parse({
 				id: '1',
@@ -635,9 +637,64 @@ describe('CronJobSchema delivery field', () => {
 				prompt: 'x',
 				enabled: true,
 				createdAt: new Date().toISOString(),
-				delivery: { channelId: '123' }, // missing bridgeName
+				delivery: { platform: 'discord' }, // missing channelId
 			})
 		).toThrow()
+	})
+})
+
+// ─── migrateLegacyTarget ──────────────────────────────────────────────────────
+
+describe('migrateLegacyTarget', () => {
+	test('pass-through: new-format job with platform field is unchanged', () => {
+		const job = makeJob({ delivery: { platform: 'discord', channelId: '111' } })
+		const result = migrateLegacyTarget(job)
+		expect(result).toBe(job) // exact same reference
+		expect(result.delivery?.platform).toBe('discord')
+	})
+
+	test('v1 migration: old bridgeName delivery → platform extracted from key', () => {
+		// Simulate a v1 job stored in cron.json — bypass schema parse since old format fails new validation
+		const job = {
+			id: crypto.randomUUID(), name: 'v1 job', schedule: '30m', type: 'ai',
+			prompt: 'do stuff', target: 'last', enabled: true, createdAt: new Date().toISOString(),
+			delivery: { bridgeName: 'discord:main', channelId: '987' },
+		} as unknown as CronJob
+		const result = migrateLegacyTarget(job)
+		expect(result.delivery?.platform).toBe('discord')
+		expect(result.delivery?.channelId).toBe('987')
+		expect((result.delivery as any)?.bridgeName).toBeUndefined()
+	})
+
+	test('v1 migration: bridgeName without channelId → empty channelId', () => {
+		const job = {
+			id: crypto.randomUUID(), name: 'v1 job 2', schedule: '30m', type: 'ai',
+			prompt: 'do stuff', target: 'last', enabled: true, createdAt: new Date().toISOString(),
+			delivery: { bridgeName: 'telegram:bot' },
+		} as unknown as CronJob
+		const result = migrateLegacyTarget(job)
+		expect(result.delivery?.platform).toBe('telegram')
+		expect(result.delivery?.channelId).toBe('')
+	})
+
+	test('legacy target string "discord:channelId" → delivery with platform + channelId', () => {
+		const job = makeJob({ delivery: undefined, target: 'discord:123456' })
+		const result = migrateLegacyTarget(job)
+		expect(result.delivery?.platform).toBe('discord')
+		expect(result.delivery?.channelId).toBe('123456')
+	})
+
+	test('legacy target "last" → no delivery created', () => {
+		const job = makeJob({ delivery: undefined, target: 'last' })
+		const result = migrateLegacyTarget(job)
+		expect(result.delivery).toBeUndefined()
+		expect(result.target).toBe('last')
+	})
+
+	test('missing target → no delivery created', () => {
+		const job = makeJob({ delivery: undefined, target: undefined })
+		const result = migrateLegacyTarget(job)
+		expect(result.delivery).toBeUndefined()
 	})
 })
 
@@ -645,9 +702,10 @@ describe('CronJobSchema delivery field', () => {
 
 describe('onCronTrigger delivery routing — fixed dispatch', () => {
 	/**
-	 * Mirrors the FIXED version of onCronTrigger from start.ts.
-	 * When job.delivery is set, session.channelId must equal delivery.bridgeName
-	 * (not "discord", not "terminal" — the full registered bridge key).
+	 * Mirrors the stable-ID version of onCronTrigger from start.ts.
+	 * When job.delivery is set, the bridge is resolved at runtime via
+	 * findBridgeByAccount(platform, platformAccountId) — session.channelId
+	 * is set to bridge.name (the registered key), not the platform string.
 	 */
 	type MockSession = { id: string; channelId: string; channelUserId?: string; updatedAt: Date }
 
@@ -656,10 +714,17 @@ describe('onCronTrigger delivery routing — fixed dispatch', () => {
 		created: MockSession[]
 		enqueued: Array<{ sessionId: string; prompt: string }>
 		directEmits: Array<{ sessionId: string; type: string; text?: string }>
-		activeBridgeNames?: string[]
+		bridges?: Array<{ platform: string; platformAccountId?: string; name: string }>
 		bridgeNotFoundErrors?: string[]
 	}) {
-		const activeBridgeNames = opts.activeBridgeNames ?? []
+		const bridges = opts.bridges ?? []
+
+		const findBridgeByAccount = (platform: string, platformAccountId?: string) =>
+			bridges.find(b => {
+				if (b.platform !== platform) return false
+				if (platformAccountId && b.platformAccountId && b.platformAccountId !== platformAccountId) return false
+				return true
+			})
 
 		const getSessionForBridge = (channelId: string, channelUserId: string) =>
 			opts.sessions.find(s => s.channelId === channelId && s.channelUserId === channelUserId)
@@ -685,14 +750,18 @@ describe('onCronTrigger delivery routing — fixed dispatch', () => {
 			let session: MockSession | undefined
 
 			if (job.delivery) {
-				// ── Fixed path: use bridgeName directly ───────────────────────────
-				const { bridgeName, channelId: targetChannelId } = job.delivery
-				if (!activeBridgeNames.includes(bridgeName)) {
-					opts.bridgeNotFoundErrors?.push(bridgeName)
-				}
-				session = getSessionForBridge(bridgeName, targetChannelId ?? '')
-				if (!session) {
-					session = createSession({ channelId: bridgeName, channelUserId: targetChannelId })
+				// ── Stable-ID path: resolve bridge at runtime via platform identifiers ─
+				const { platform, platformAccountId, channelId: targetChannelId } = job.delivery
+				const bridge = findBridgeByAccount(platform, platformAccountId)
+				if (!bridge) {
+					opts.bridgeNotFoundErrors?.push(platform)
+					session = createSession({})
+				} else {
+					const bridgeName = bridge.name
+					session = getSessionForBridge(bridgeName, targetChannelId)
+					if (!session) {
+						session = createSession({ channelId: bridgeName, channelUserId: targetChannelId })
+					}
 				}
 			} else if (job.target === 'last') {
 				session = [...opts.sessions, ...opts.created].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]
@@ -700,10 +769,11 @@ describe('onCronTrigger delivery routing — fixed dispatch', () => {
 				const colonIdx = job.target.indexOf(':')
 				const platform = job.target.slice(0, colonIdx)
 				const targetChannelId = job.target.slice(colonIdx + 1) || undefined
-				const matchedBridge = activeBridgeNames.find(n => n.startsWith(`${platform}:`)) ?? platform
-				session = getSessionForBridge(matchedBridge, targetChannelId ?? '')
+				const bridge = findBridgeByAccount(platform)
+				const matchedBridgeName = bridge?.name ?? platform
+				session = getSessionForBridge(matchedBridgeName, targetChannelId ?? '')
 				if (!session) {
-					session = createSession({ channelId: matchedBridge, channelUserId: targetChannelId })
+					session = createSession({ channelId: matchedBridgeName, channelUserId: targetChannelId })
 				}
 			}
 
@@ -721,18 +791,18 @@ describe('onCronTrigger delivery routing — fixed dispatch', () => {
 		}
 	}
 
-	test('delivery.bridgeName is used verbatim as session.channelId — NOT split on colon', async () => {
+	test('delivery.platform+channelId resolves bridge and sets session.channelId to bridge.name', async () => {
 		const created: MockSession[] = []
 		const trigger = buildFixedTrigger({
 			sessions: [], created, enqueued: [], directEmits: [],
-			activeBridgeNames: ['discord:main'],
+			bridges: [{ platform: 'discord', name: 'discord:main' }],
 		})
-		const job = makeJob({ type: 'ai', delivery: { bridgeName: 'discord:main', channelId: '987654321' } })
+		const job = makeJob({ type: 'ai', delivery: { platform: 'discord', channelId: '987654321' } })
 
 		await trigger(job)
 
 		expect(created.length).toBe(1)
-		// Key assertion: session.channelId must be the FULL bridge name, not "discord"
+		// Key assertion: session.channelId is the bridge's registered name, resolved at runtime
 		expect(created[0].channelId).toBe('discord:main')
 		expect(created[0].channelUserId).toBe('987654321')
 	})
@@ -742,9 +812,9 @@ describe('onCronTrigger delivery routing — fixed dispatch', () => {
 		const enqueued: Array<{ sessionId: string; prompt: string }> = []
 		const trigger = buildFixedTrigger({
 			sessions: [], created, enqueued, directEmits: [],
-			activeBridgeNames: ['terminal:main'],
+			bridges: [{ platform: 'terminal', name: 'terminal:main' }],
 		})
-		const job = makeJob({ type: 'ai', delivery: { bridgeName: 'terminal:main', channelId: 'chan-abc' } })
+		const job = makeJob({ type: 'ai', delivery: { platform: 'terminal', channelId: 'chan-abc' } })
 
 		await trigger(job)
 
@@ -752,21 +822,21 @@ describe('onCronTrigger delivery routing — fixed dispatch', () => {
 		expect(enqueued[0].sessionId).toBe(created[0].id)
 	})
 
-	test('logs error when delivery.bridgeName is not in active bridges', async () => {
+	test('logs error when no bridge found for platform', async () => {
 		const bridgeNotFoundErrors: string[] = []
 		const trigger = buildFixedTrigger({
 			sessions: [], created: [], enqueued: [], directEmits: [],
-			activeBridgeNames: ['terminal:main'], // discord:main not registered
+			bridges: [{ platform: 'terminal', name: 'terminal:main' }], // discord not registered
 			bridgeNotFoundErrors,
 		})
-		const job = makeJob({ type: 'message', delivery: { bridgeName: 'discord:main', channelId: '111' } })
+		const job = makeJob({ type: 'message', delivery: { platform: 'discord', channelId: '111' } })
 
 		await trigger(job)
 
-		expect(bridgeNotFoundErrors).toContain('discord:main')
+		expect(bridgeNotFoundErrors).toContain('discord')
 	})
 
-	test('reuses existing session when bridgeName + channelId match', async () => {
+	test('reuses existing session when platform + channelId match resolved bridge', async () => {
 		const now = new Date()
 		const existingSession: MockSession = { id: 'existing', channelId: 'discord:main', channelUserId: '555', updatedAt: now }
 			; (existingSession as any).emitter = { emit: () => { } }
@@ -774,9 +844,9 @@ describe('onCronTrigger delivery routing — fixed dispatch', () => {
 		const enqueued: Array<{ sessionId: string; prompt: string }> = []
 		const trigger = buildFixedTrigger({
 			sessions: [existingSession], created, enqueued, directEmits: [],
-			activeBridgeNames: ['discord:main'],
+			bridges: [{ platform: 'discord', name: 'discord:main' }],
 		})
-		const job = makeJob({ type: 'ai', delivery: { bridgeName: 'discord:main', channelId: '555' } })
+		const job = makeJob({ type: 'ai', delivery: { platform: 'discord', channelId: '555' } })
 
 		await trigger(job)
 
@@ -788,9 +858,9 @@ describe('onCronTrigger delivery routing — fixed dispatch', () => {
 		const directEmits: Array<{ sessionId: string; type: string; text?: string }> = []
 		const trigger = buildFixedTrigger({
 			sessions: [], created: [], enqueued: [], directEmits,
-			activeBridgeNames: ['terminal:main'],
+			bridges: [{ platform: 'terminal', name: 'terminal:main' }],
 		})
-		const job = makeJob({ type: 'message', delivery: { bridgeName: 'terminal:main' }, prompt: 'Hello from cron!' })
+		const job = makeJob({ type: 'message', delivery: { platform: 'terminal', channelId: 'terminal' }, prompt: 'Hello from cron!' })
 
 		await trigger(job)
 
@@ -804,7 +874,7 @@ describe('onCronTrigger delivery routing — fixed dispatch', () => {
 describe('CronManager real timer — fires exactly once', () => {
 	test('10s schedule fires exactly once after 10 seconds', async () => {
 		const triggered: CronJob[] = []
-		const job = makeJob({ id: 'real-timer-test', schedule: '10s', delivery: { bridgeName: 'terminal:main' } })
+		const job = makeJob({ id: 'real-timer-test', schedule: '10s', delivery: { platform: 'terminal', channelId: 'terminal' } })
 
 		const mgr = new CronManager(async (j) => { triggered.push(j) }, () => [job])
 		mgr.start()

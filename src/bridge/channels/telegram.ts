@@ -26,13 +26,16 @@ interface MessageIdentity {
 }
 
 export class TelegramBridge implements IBridge {
-	name = 'telegram'
+	name: string
+	platform = 'telegram'
+	platformAccountId?: string
 	private instanceKey: string
 	private bot?: Bot
 	private onMessage?: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean
 
 	constructor(key = 'telegram') {
 		this.instanceKey = key
+		this.name = `telegram:${key}`
 	}
 	/** Map of chatId → per-chat orchestration state */
 	private chatStates = new Map<string, TelegramChatState>()
@@ -307,7 +310,10 @@ export class TelegramBridge implements IBridge {
 		})
 
 		this.bot.start({
-			onStart: (botInfo) => console.log(`[Telegram Bridge] Started as @${botInfo.username}`),
+			onStart: (botInfo) => {
+				this.platformAccountId = String(botInfo.id)
+				console.log(`[Telegram Bridge] Started as @${botInfo.username} (platformAccountId=${botInfo.id})`)
+			},
 		})
 	}
 

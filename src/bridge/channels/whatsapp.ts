@@ -30,6 +30,8 @@ interface WhatsAppConfig {
 
 export class WhatsAppBridge implements IBridge {
 	name: string
+	platform = 'whatsapp'
+	platformAccountId?: string
 	private instanceKey: string
 	private phoneNumberId = ''
 	private accessToken = ''

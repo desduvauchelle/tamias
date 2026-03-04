@@ -103,6 +103,10 @@ export class AIService {
 		this.bridgeManager = bridgeManager
 	}
 
+	public getBridgeManager(): BridgeManager {
+		return this.bridgeManager
+	}
+
 	public async initialize() {
 		scaffoldFromTemplates()
 		const config = loadConfig()

@@ -103,6 +103,37 @@ export class BridgeManager {
 	}
 
 	/**
+	 * Returns the bridge registered under the given name key, or undefined.
+	 */
+	getBridgeByName(name: string): IBridge | undefined {
+		return this.activeBridges.get(name)
+	}
+
+	/**
+	 * Finds a bridge by its stable platform identifiers.
+	 *
+	 * Matching rules (migration-safe):
+	 * - `platform` must match exactly.
+	 * - If `platformAccountId` is provided AND the bridge also has a `platformAccountId`,
+	 *   they must be equal. If either side is missing, any bridge for the platform matches.
+	 *
+	 * This means jobs created before `platformAccountId` was tracked will still
+	 * resolve correctly as long as there is exactly one bridge for that platform.
+	 */
+	findBridgeByAccount(platform: string, platformAccountId?: string): IBridge | undefined {
+		for (const bridge of this.activeBridges.values()) {
+			if (bridge.platform !== platform) continue
+			if (
+				platformAccountId &&
+				bridge.platformAccountId &&
+				bridge.platformAccountId !== platformAccountId
+			) continue
+			return bridge
+		}
+		return undefined
+	}
+
+	/**
 	 * Finds a WhatsApp bridge instance by its webhook path.
 	 * Returns undefined if no match or if bridge is not a WhatsApp bridge.
 	 */

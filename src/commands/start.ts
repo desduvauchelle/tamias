@@ -301,22 +301,24 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 
 		try {
 			if (job.delivery) {
-				// ── Structured delivery (preferred) ────────────────────────────────
-				// bridgeName is the exact key in activeBridges, e.g. "discord:main".
-				// Using it verbatim as session.channelId ensures dispatchEvent() finds the bridge.
-				const { bridgeName, channelId: targetChannelId } = job.delivery
-				const activeNames = bridgeManager.getActiveChannelIds()
-				if (!activeNames.includes(bridgeName)) {
+				// ── Stable-ID delivery (preferred) ─────────────────────────────────
+				// Resolves bridge at runtime via platform + platformAccountId so the
+				// job survives config key renames and bot account changes.
+				const { platform, platformAccountId, channelId: targetChannelId, channelName } = job.delivery
+				const bridge = bridgeManager.findBridgeByAccount(platform, platformAccountId)
+				if (!bridge) {
+					const activeNames = bridgeManager.getActiveChannelIds()
 					console.error(
-						`[Cron] ${now} Bridge "${bridgeName}" is not registered. ` +
-						`Active bridges: [${activeNames.join(', ') || 'NONE'}]. ` +
-						`Check the bridgeName field of job "${job.name}".`
+						`[Cron] ${now} No active bridge for platform="${platform}" accountId="${platformAccountId ?? 'any'}". ` +
+						`Active: [${activeNames.join(', ') || 'NONE'}]. Skipping job "${job.name}".`
 					)
+					throw new Error(`No active bridge for platform "${platform}" — skipping cron job "${job.name}"`)
 				}
-				session = aiService.getSessionForBridge(bridgeName, targetChannelId ?? '')
+				const bridgeName = bridge.name // resolved at runtime — survives key renames
+				session = aiService.getSessionForBridge(bridgeName, targetChannelId)
 				if (!session) {
 					console.log(`[Cron] ${now} No existing session for bridge "${bridgeName}" — creating new session`)
-					session = aiService.createSession({ channelId: bridgeName, channelUserId: targetChannelId })
+					session = aiService.createSession({ channelId: bridgeName, channelUserId: targetChannelId, channelName })
 				} else {
 					console.log(`[Cron] ${now} Found existing session: ${session.id} (channelId=${session.channelId})`)
 				}

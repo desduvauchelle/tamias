@@ -57,6 +57,8 @@ function computeBackoff(attempt: number): number {
 
 export class WhatsAppUnofficialBridge implements IBridge {
 	name: string
+	platform = 'whatsapp-unofficial'
+	platformAccountId?: string
 	private instanceKey: string
 	private mode: 'full' | 'read-only' = 'read-only'
 	private allowedGroups: string[] = []

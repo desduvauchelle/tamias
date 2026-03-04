@@ -20,6 +20,8 @@ interface DiscordChannelState {
 
 export class DiscordBridge implements IBridge {
 	name: string
+	platform = 'discord'
+	platformAccountId?: string
 	private instanceKey: string
 	private client?: Client
 	private onMessage?: (msg: BridgeMessage, sessionId: string) => Promise<boolean> | boolean
@@ -179,7 +181,8 @@ export class DiscordBridge implements IBridge {
 		})
 
 		this.client.once(Events.ClientReady, (c) => {
-			console.log(`[Discord Bridge] Started as ${c.user.tag}`)
+			this.platformAccountId = c.user.id
+			console.log(`[Discord Bridge] Started as ${c.user.tag} (platformAccountId=${c.user.id})`)
 		})
 
 		await this.client.login(token)

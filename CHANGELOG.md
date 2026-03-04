@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- enhance cron job delivery handling and update related schemas
 - normalize escape sequences in file writing operations and update changelog
 - enhance migration commands with AI-assisted migration functionality
 - Implement Discord Bridge with thread-per-turn messaging model and enhance testing for sub-agent interactions

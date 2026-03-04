@@ -7,16 +7,23 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 /**
  * Structured delivery target for a cron job.
  *
- * `bridgeName` is the full registered bridge key (e.g. "discord:main", "terminal:main").
- * This must exactly match the key in `activeBridges` inside BridgeManager — it is
- * used verbatim as `session.channelId` so dispatchEvent can find the bridge.
+ * Uses stable platform-assigned identifiers that survive config key renames:
  *
- * `channelId` is the platform-level recipient (Discord channel ID, Telegram chat ID,
- * WhatsApp group JID, etc.). Leave undefined for bridges that don't need it (terminal).
+ * - `platform`          — constant platform type: "discord", "telegram", "whatsapp", etc.
+ * - `platformAccountId` — the bot's own user ID as assigned by the platform (Snowflake,
+ *                         Telegram bot ID, etc.). Never changes. Used to disambiguate when
+ *                         multiple bot accounts are registered for the same platform.
+ * - `channelId`         — the platform's channel/chat/group ID to deliver into.
+ * - `channelName`       — human-readable name, informational only (not used for routing).
+ *
+ * At trigger time, BridgeManager.findBridgeByAccount(platform, platformAccountId) resolves
+ * the live bridge instance — no config key name is stored in the job.
  */
 export const CronDeliverySchema = z.object({
-	bridgeName: z.string().describe('Full bridge key e.g. "discord:main", "terminal:main"'),
-	channelId: z.string().optional().describe('Platform channel/chat/group ID'),
+	platform: z.string().describe('Platform type: "discord", "telegram", "whatsapp", etc.'),
+	platformAccountId: z.string().optional().describe("Bot's own user ID from the platform — stable identifier, never changes"),
+	channelId: z.string().describe('Platform channel/chat/group ID'),
+	channelName: z.string().optional().describe('Human-readable channel name — informational only, not used for routing'),
 })
 
 export type CronDelivery = z.infer<typeof CronDeliverySchema>
@@ -32,8 +39,8 @@ export const CronJobSchema = z.object({
 	type: z.enum(['ai', 'message']).default('ai'),
 	prompt: z.string(),
 	/**
-	 * Structured delivery target. When present, `bridgeName` is used directly as
-	 * the session channelId so BridgeManager.dispatchEvent can find the right bridge.
+	 * Structured delivery target using stable platform identifiers.
+	 * BridgeManager.findBridgeByAccount() resolves the live bridge at trigger time.
 	 * Preferred over the legacy `target` string.
 	 */
 	delivery: CronDeliverySchema.optional(),
@@ -60,29 +67,49 @@ const getCronPath = () => {
 }
 
 /**
- * Converts a legacy `target` string to the structured `delivery` format.
+ * Migrates a cron job to the current stable-ID delivery format.
  *
- * Legacy formats:
- *   "last"                    → no delivery object (use 'last' logic)
- *   "discord:channelId"       → { bridgeName: "discord:main", channelId: "channelId" }
- *   "terminal:channelUserId"  → { bridgeName: "terminal:main", channelId: "channelUserId" }
+ * Handles three cases in order:
  *
- * The old target format split on ':' giving only the platform name (e.g. "discord")
- * as channelId, which never matched any bridge. This migration uses a sensible default
- * instance key of "main" when one cannot be determined from the string alone.
+ * 1. **New format** — `delivery.platform` already present → pass-through unchanged.
+ *
+ * 2. **Old bridgeName delivery** — `delivery.bridgeName` exists (v1 format):
+ *    Extract `platform` from the first colon-separated segment (e.g. "discord:main" → "discord").
+ *    `platformAccountId` is intentionally omitted so `findBridgeByAccount` falls back to any
+ *    bot on that platform, preserving backward compat.
+ *
+ * 3. **Legacy `target` string** — "discord:channelId" or "last":
+ *    "last" stays as-is (no delivery). "platform:channelId" → `{ platform, channelId }`.
  */
 export function migrateLegacyTarget(job: CronJob): CronJob {
-	if (job.delivery) return job // already migrated
+	// Case 1: already in new stable-ID format
+	if (job.delivery && 'platform' in job.delivery) return job
+
+	// Case 2: old bridgeName-based delivery (v1)
+	if (job.delivery && 'bridgeName' in (job.delivery as any)) {
+		const oldDelivery = job.delivery as any
+		const platform = (oldDelivery.bridgeName as string).split(':')[0]
+		return {
+			...job,
+			delivery: {
+				platform,
+				// platformAccountId intentionally omitted — falls back to any bot on this platform
+				channelId: oldDelivery.channelId ?? '',
+			},
+		}
+	}
+
+	// Case 3: legacy target string
 	if (!job.target || job.target === 'last') return job // 'last' stays as-is
 
 	if (job.target.includes(':')) {
 		const colonIdx = job.target.indexOf(':')
 		const platform = job.target.slice(0, colonIdx)
-		const channelId = job.target.slice(colonIdx + 1) || undefined
+		const channelId = job.target.slice(colonIdx + 1) || ''
 		return {
 			...job,
 			delivery: {
-				bridgeName: `${platform}:main`,
+				platform,
 				channelId,
 			},
 		}

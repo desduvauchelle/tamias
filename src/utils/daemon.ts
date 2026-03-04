@@ -85,7 +85,8 @@ export async function autoStartDaemon(opts: { verbose?: boolean } = {}): Promise
 	// ── Log rotation ──────────────────────────────────────────────────────────
 	// If an existing daemon.log was last written on a previous calendar day,
 	// archive it as daemon-YYYY-MM-DD.log and start a fresh file.
-	// Then prune archived logs older than 3 days.
+	// Rolling 2-day window: today's live daemon.log + yesterday's archive.
+	// Prune any archived logs older than 1 day.
 	try {
 		if (existsSync(logPath)) {
 			const stat = statSync(logPath)
@@ -97,8 +98,8 @@ export async function autoStartDaemon(opts: { verbose?: boolean } = {}): Promise
 			}
 		}
 
-		// Prune archives older than 3 days
-		const cutoff = Date.now() - 3 * 24 * 60 * 60 * 1000
+		// Prune archives older than 1 day (rolling 2-day window)
+		const cutoff = Date.now() - 1 * 24 * 60 * 60 * 1000
 		for (const entry of readdirSync(tamiasDir)) {
 			if (/^daemon-\d{4}-\d{2}-\d{2}\.log$/.test(entry)) {
 				const fullPath = join(tamiasDir, entry)
