@@ -4,12 +4,20 @@ import { useEffect, useMemo, useState } from 'react'
 import { Trash2, Plus, Check, Clock, Play, Loader2, Pencil, Target, Activity } from 'lucide-react'
 import { Modal } from '../_components/Modal'
 
+export type CronDelivery = {
+	platform: string
+	platformAccountId?: string
+	channelId: string
+	channelName?: string
+}
+
 export type CronJob = {
 	id: string
 	name: string
 	schedule: string
 	type: 'ai' | 'message'
 	prompt: string
+	delivery?: CronDelivery
 	target: string
 	enabled: boolean
 	lastRun?: string
@@ -33,7 +41,11 @@ interface CronTargetOption {
 	source?: string
 }
 
-function normalizeTargetLabel(target: string, options: CronTargetOption[]) {
+function normalizeTargetLabel(job: CronJob, options: CronTargetOption[]) {
+	const target = job.target
+	// Prefer delivery.channelName if available
+	if (job.delivery?.channelName) return `${job.delivery.platform} #${job.delivery.channelName}`
+	if (job.delivery) return `${job.delivery.platform} channel ${job.delivery.channelId}`
 	if (target === 'last') return 'Last active session'
 	const match = options.find(option => option.target === target)
 	if (match) return match.label
@@ -192,7 +204,7 @@ function CronEditModal({
 			}
 		}
 		if (!base.find(b => b.target === draft.target)) {
-			base.push({ target: draft.target, label: normalizeTargetLabel(draft.target, targetOptions), platform: 'custom', source: 'existing' })
+			base.push({ target: draft.target, label: normalizeTargetLabel(draft, targetOptions), platform: 'custom', source: 'existing' })
 		}
 		return base
 	}, [targetOptions, draft.target])
@@ -374,7 +386,7 @@ function CronCard({
 					<div className="flex items-center gap-2 text-base-content/70">
 						<Target size={12} />
 						<span className="font-bold uppercase tracking-wide">Target</span>
-						<span className="truncate">{normalizeTargetLabel(job.target, targetOptions)}</span>
+					<span className="truncate">{normalizeTargetLabel(job, targetOptions)}</span>
 					</div>
 					<div className="flex items-start gap-2">
 						<Activity size={12} className="mt-0.5 text-base-content/70" />

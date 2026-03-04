@@ -67,6 +67,60 @@ const getCronPath = () => {
 }
 
 /**
+ * Migrates a raw (unparsed) cron entry's delivery/target fields before Zod validation.
+ *
+ * This runs on the raw JSON object before `CronJobSchema.safeParse()` so that
+ * old-format entries (e.g. `delivery.bridgeName`) are converted to the current
+ * `delivery.platform` format instead of being dropped by Zod.
+ *
+ * Mirrors the same logic as `migrateLegacyTarget` but operates on `unknown` data.
+ */
+export function migrateRawCronEntry(raw: unknown): unknown {
+	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw
+	const entry = raw as Record<string, unknown>
+	const delivery = entry.delivery
+
+	// Case 1: already has delivery.platform → pass through
+	if (delivery && typeof delivery === 'object' && !Array.isArray(delivery)) {
+		const d = delivery as Record<string, unknown>
+		if (typeof d.platform === 'string') return entry
+
+		// Case 2: old bridgeName delivery (v1)
+		if (typeof d.bridgeName === 'string') {
+			const platform = d.bridgeName.split(':')[0]
+			return {
+				...entry,
+				delivery: {
+					platform,
+					// platformAccountId intentionally omitted — falls back to any bot on this platform
+					channelId: typeof d.channelId === 'string' ? d.channelId : '',
+				},
+			}
+		}
+
+		// Case 3: delivery exists but unrecognisable — drop it, fall through to target
+		const { delivery: _drop, ...rest } = entry
+		return rest
+	}
+
+	// Case 4: legacy target string
+	const target = entry.target
+	if (!target || target === 'last') return entry
+
+	if (typeof target === 'string' && target.includes(':')) {
+		const colonIdx = target.indexOf(':')
+		const platform = target.slice(0, colonIdx)
+		const channelId = target.slice(colonIdx + 1) || ''
+		return {
+			...entry,
+			delivery: { platform, channelId },
+		}
+	}
+
+	return entry
+}
+
+/**
  * Migrates a cron job to the current stable-ID delivery format.
  *
  * Handles three cases in order:
@@ -133,9 +187,12 @@ export const loadCronJobs = (): CronJob[] => {
 
 		const validJobs: CronJob[] = []
 		for (const [index, entry] of rawData.entries()) {
-			const parsed = CronJobSchema.safeParse(entry)
+			// Migrate legacy delivery formats BEFORE Zod validation so old entries
+			// (e.g. { delivery: { bridgeName } }) aren't dropped by the new schema.
+			const migrated = migrateRawCronEntry(entry)
+			const parsed = CronJobSchema.safeParse(migrated)
 			if (parsed.success) {
-				validJobs.push(migrateLegacyTarget(parsed.data))
+				validJobs.push(parsed.data)
 			} else {
 				console.warn(`Skipping invalid cron job at index ${index}:`, parsed.error.issues)
 			}

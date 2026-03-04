@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- enhance email account configuration with app password handling and setup guides
 - enhance cron job delivery handling and update related schemas
 - normalize escape sequences in file writing operations and update changelog
 - enhance migration commands with AI-assisted migration functionality
@@ -157,6 +158,14 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.3.3.3] - 2026-03-03
+
+### Features
+- enhance email account configuration with app password handling and setup guides
+- enhance cron job delivery handling and update related schemas
+- normalize escape sequences in file writing operations and update changelog
+- enhance migration commands with AI-assisted migration functionality
 
 ## [v26.2.28.15] - 2026-02-28
 

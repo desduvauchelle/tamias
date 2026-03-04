@@ -8,6 +8,8 @@ const CronJobSchema = z.object({
 	schedule: z.string(),
 	type: z.enum(['ai', 'message']).default('ai'),
 	prompt: z.string(),
+	// Structured delivery target — stable platform IDs, survives config key renames
+	delivery: z.record(z.string(), z.unknown()).optional(),
 	target: z.string().optional().default('last'),
 	enabled: z.boolean().default(true),
 	lastRun: z.string().datetime().optional(),

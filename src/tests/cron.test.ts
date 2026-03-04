@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
-import { CronJobSchema, type CronJob, migrateLegacyTarget } from '../utils/cronStore'
+import { CronJobSchema, type CronJob, migrateLegacyTarget, migrateRawCronEntry } from '../utils/cronStore'
 import { CronManager } from '../bridge/cronManager'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -695,6 +695,75 @@ describe('migrateLegacyTarget', () => {
 		const job = makeJob({ delivery: undefined, target: undefined })
 		const result = migrateLegacyTarget(job)
 		expect(result.delivery).toBeUndefined()
+	})
+})
+
+// ─── migrateRawCronEntry ──────────────────────────────────────────────────────
+// This function migrates raw JSON BEFORE Zod schema validation so that old
+// delivery formats (e.g. bridgeName) get converted rather than dropped.
+
+describe('migrateRawCronEntry', () => {
+	test('pass-through: new-format delivery with platform is unchanged', () => {
+		const raw = { id: '1', delivery: { platform: 'discord', channelId: '123' } }
+		const result = migrateRawCronEntry(raw) as typeof raw
+		expect(result.delivery.platform).toBe('discord')
+		expect(result.delivery.channelId).toBe('123')
+	})
+
+	test('v1 bridgeName delivery: extracts platform from first colon segment', () => {
+		const raw = { id: '1', delivery: { bridgeName: 'discord:main', channelId: '987' } }
+		const result = migrateRawCronEntry(raw) as any
+		expect(result.delivery.platform).toBe('discord')
+		expect(result.delivery.channelId).toBe('987')
+		expect(result.delivery.bridgeName).toBeUndefined()
+	})
+
+	test('v1 bridgeName: telegram bridge extracts platform correctly', () => {
+		const raw = { id: '1', delivery: { bridgeName: 'telegram:bot', channelId: '555' } }
+		const result = migrateRawCronEntry(raw) as any
+		expect(result.delivery.platform).toBe('telegram')
+		expect(result.delivery.channelId).toBe('555')
+	})
+
+	test('v1 bridgeName without channelId → empty channelId', () => {
+		const raw = { id: '1', delivery: { bridgeName: 'discord:main' } }
+		const result = migrateRawCronEntry(raw) as any
+		expect(result.delivery.platform).toBe('discord')
+		expect(result.delivery.channelId).toBe('')
+	})
+
+	test('unrecognised delivery (no platform, no bridgeName) → delivery dropped', () => {
+		const raw = { id: '1', delivery: { someUnknownField: 'value' }, target: 'last' }
+		const result = migrateRawCronEntry(raw) as any
+		expect(result.delivery).toBeUndefined()
+		expect(result.target).toBe('last')
+	})
+
+	test('legacy target string "discord:channelId" → delivery object created', () => {
+		const raw = { id: '1', target: 'discord:123456789' }
+		const result = migrateRawCronEntry(raw) as any
+		expect(result.delivery.platform).toBe('discord')
+		expect(result.delivery.channelId).toBe('123456789')
+	})
+
+	test('legacy target "last" → no delivery created, kept as-is', () => {
+		const raw = { id: '1', target: 'last' }
+		const result = migrateRawCronEntry(raw) as any
+		expect(result.delivery).toBeUndefined()
+		expect(result.target).toBe('last')
+	})
+
+	test('no target, no delivery → unchanged', () => {
+		const raw = { id: '1', name: 'bare' }
+		const result = migrateRawCronEntry(raw) as any
+		expect(result.delivery).toBeUndefined()
+	})
+
+	test('non-object input → returned as-is', () => {
+		expect(migrateRawCronEntry(null)).toBe(null)
+		expect(migrateRawCronEntry('string')).toBe('string')
+		expect(migrateRawCronEntry(42)).toBe(42)
+		expect(migrateRawCronEntry([])).toEqual([])
 	})
 })
 
