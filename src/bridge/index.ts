@@ -96,6 +96,14 @@ export class BridgeManager {
 	}
 
 	/**
+	 * Directly registers a pre-initialized bridge instance.
+	 * Used in tests and for runtime hot-registration without full config reload.
+	 */
+	registerBridge(bridge: IBridge) {
+		this.activeBridges.set(bridge.name, bridge)
+	}
+
+	/**
 	 * Returns the list of active bridge names (e.g., 'discord', 'telegram').
 	 */
 	getActiveChannelIds(): string[] {

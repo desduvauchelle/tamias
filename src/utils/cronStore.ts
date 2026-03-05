@@ -237,7 +237,10 @@ export const updateCronJob = (id: string, updates: Partial<Omit<CronJob, 'id' | 
 export const recordCronJobRun = (
 	id: string,
 	result: { status: 'success' | 'error'; error?: string }
-): CronJob => {
+): CronJob | undefined => {
+	// The job may have been deleted between trigger and completion — skip silently.
+	const jobs = loadCronJobs()
+	if (!jobs.find(j => j.id === id)) return undefined
 	return updateCronJob(id, {
 		lastRun: new Date().toISOString(),
 		lastStatus: result.status,

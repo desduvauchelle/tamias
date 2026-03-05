@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- implement stable platform identifiers for bridge delivery and enhance cron job handling
 - enhance email account configuration with app password handling and setup guides
 - enhance cron job delivery handling and update related schemas
 - normalize escape sequences in file writing operations and update changelog
@@ -158,6 +159,11 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.3.4.1] - 2026-03-04
+
+### Features
+- implement stable platform identifiers for bridge delivery and enhance cron job handling
 
 ## [v26.3.3.3] - 2026-03-03
 

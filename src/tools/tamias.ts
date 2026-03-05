@@ -420,7 +420,7 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 		}),
 
 		set_workspace_path: tool({
-			description: 'Set the workspace directory for file operations. MUST be a path inside ~/.tamias (e.g. ~/.tamias/workspace or ~/.tamias/workspace/<project>). Paths outside ~/.tamias are forbidden.',
+			description: 'Override the workspace directory for THIS session\'s file operations. MUST be a path inside ~/.tamias (e.g. ~/.tamias/workspace/my-project). Paths outside ~/.tamias are forbidden. Only affects this session.',
 			inputSchema: z.object({
 				path: z.string().describe('Absolute path inside ~/.tamias, e.g. ~/.tamias/workspace/my-project'),
 			}),
@@ -433,7 +433,14 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 					}
 				}
 				try {
-					setWorkspacePath(normalised)
+					// Update this session's workspace path (does NOT change the global config)
+					const session = aiService.getSession(sessionId)
+					if (session) {
+						session.workspacePath = normalised
+						// Ensure the directory exists
+						const { mkdirSync } = await import('fs')
+						mkdirSync(normalised, { recursive: true })
+					}
 					return { success: true, workspacePath: normalised }
 				} catch (err) {
 					return { success: false, error: String(err) }
@@ -442,10 +449,11 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 		}),
 
 		get_workspace_path: tool({
-			description: 'Get the current restricted workspace directory path.',
+			description: 'Get the current restricted workspace directory path for this session.',
 			inputSchema: z.object({}),
 			execute: async () => {
-				return { workspacePath: getWorkspacePath() }
+				const session = aiService.getSession(sessionId)
+				return { workspacePath: session?.workspacePath ?? getWorkspacePath() }
 			},
 		}),
 
@@ -632,7 +640,7 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 						userId: session.channelUserId,
 						name: session.channelName,
 						isSubagent: session.isSubagent,
-					}, session.agentDir, { projectContext, modelContextWindow: contextWindow })
+					}, session.agentDir, { projectContext, modelContextWindow: contextWindow, sessionWorkspacePath: session.workspacePath })
 
 					return { success: true, systemPrompt }
 				} catch (err: any) {

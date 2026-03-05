@@ -84,16 +84,41 @@ function parseSkillMetadata(content: string, directoryName: string): { name: str
 			const frontmatter = content.substring(3, endMatch).trim()
 			const lines = frontmatter.split("\n")
 			let inTagsBlock = false
+			// Track whether we're collecting a YAML block-scalar description (>- / > / | / |- etc.)
+			let inBlockDescription = false
+			const blockDescriptionLines: string[] = []
+
 			for (const line of lines) {
+				// If in a block-scalar description, collect indented continuation lines.
+				if (inBlockDescription) {
+					if (line.startsWith(" ") || line.startsWith("\t")) {
+						blockDescriptionLines.push(line.trim())
+						continue
+					} else {
+						// Non-indented line ends the block; join collected lines.
+						description = blockDescriptionLines.join(" ").trim() || "No description provided."
+						inBlockDescription = false
+						blockDescriptionLines.length = 0
+						// Fall through to process this line as a new key.
+					}
+				}
+
 				if (line.trim().startsWith("name:")) {
 					inTagsBlock = false
 					name = line.replace("name:", "").trim()
 					if (name.startsWith('"') && name.endsWith('"')) name = name.slice(1, -1)
 				} else if (line.trim().startsWith("description:")) {
 					inTagsBlock = false
-					// simple handling for single line description, ignoring complex YAML multiline for now
-					description = line.replace("description:", "").trim()
-					if (description.startsWith('"') && description.endsWith('"')) description = description.slice(1, -1)
+					const raw = line.replace("description:", "").trim()
+					const unquoted = raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw
+					// Detect YAML block-scalar indicators (>- > | |- |+ >+)
+					if (/^[>|][+-]?$/.test(unquoted)) {
+						// Start collecting the following indented lines
+						inBlockDescription = true
+						blockDescriptionLines.length = 0
+					} else {
+						description = unquoted
+					}
 				} else if (line.trim().startsWith("model:")) {
 					inTagsBlock = false
 					model = line.replace("model:", "").trim()
@@ -117,6 +142,11 @@ function parseSkillMetadata(content: string, directoryName: string): { name: str
 				} else if (inTagsBlock && line.trim() !== "") {
 					inTagsBlock = false
 				}
+			}
+
+			// Flush any remaining block-scalar lines at end of frontmatter
+			if (inBlockDescription && blockDescriptionLines.length > 0) {
+				description = blockDescriptionLines.join(" ").trim()
 			}
 		}
 	}

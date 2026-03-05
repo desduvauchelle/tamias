@@ -7,7 +7,7 @@ import { createTamiasTools, TAMIAS_TOOL_NAME } from '../tools/tamias.ts'
 import { createCronTools, CRON_TOOL_NAME } from '../tools/cron.ts'
 import { emailTools, EMAIL_TOOL_NAME } from '../tools/email.ts'
 import { githubTools, GITHUB_TOOL_NAME } from '../tools/github.ts'
-import { workspaceTools, WORKSPACE_TOOL_NAME } from '../tools/workspace.ts'
+import { createWorkspaceTools, WORKSPACE_TOOL_NAME } from '../tools/workspace.ts'
 import { geminiTools, GEMINI_TOOL_NAME } from '../tools/gemini.ts'
 import { createSubagentTools, SUBAGENT_TOOL_NAME } from '../tools/subagent.ts'
 import { createImageTools, IMAGE_TOOL_NAME } from '../tools/image.ts'
@@ -81,13 +81,16 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 	const toolNames: string[] = []
 
 	// ── Internal tools ────────────────────────────────────────────────────────
+	const session = aiService.getSession(sessionId)
+	const sessionWorkspacePath = session?.workspacePath
+
 	const internalCatalog: Record<string, ToolSet> = {
 		[TERMINAL_TOOL_NAME]: terminalTools as ToolSet,
 		[TAMIAS_TOOL_NAME]: createTamiasTools(aiService, sessionId) as ToolSet,
 		[CRON_TOOL_NAME]: createCronTools(aiService, sessionId) as ToolSet,
 		[EMAIL_TOOL_NAME]: emailTools as ToolSet,
 		[GITHUB_TOOL_NAME]: githubTools as ToolSet,
-		[WORKSPACE_TOOL_NAME]: workspaceTools as ToolSet,
+		[WORKSPACE_TOOL_NAME]: createWorkspaceTools(sessionWorkspacePath) as ToolSet,
 		[GEMINI_TOOL_NAME]: geminiTools as ToolSet,
 		[SUBAGENT_TOOL_NAME]: createSubagentTools(aiService, sessionId) as ToolSet,
 		[IMAGE_TOOL_NAME]: createImageTools(aiService, sessionId) as ToolSet,

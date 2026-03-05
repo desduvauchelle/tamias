@@ -179,26 +179,32 @@ export function injectDynamicVariables(content: string, vars: Record<string, str
  *   - Project snapshots: first paragraph of PROJECT-README.md or README.md per project
  */
 function buildEnvironmentSection(
-	channel?: { id: string; name?: string },
+	channel?: { id: string; userId?: string; name?: string },
 	cwd?: string,
 	activeProjectDir?: string,
+	sessionWorkspacePath?: string,
 ): string {
 	const now = new Date()
 	const datePart = now.toISOString().slice(0, 10)
 	const timePart = `${now.toTimeString().slice(0, 5)} ${Intl.DateTimeFormat().resolvedOptions().timeZone}`
-	const workingDir = cwd ?? process.cwd()
+	// Show the session workspace (or global workspace) as the working directory.
+	// Never show process.cwd() — the daemon's CWD is irrelevant to the AI.
+	const workingDir = sessionWorkspacePath ?? getWorkspacePath()
 
 	const lines: string[] = ['## ENVIRONMENT']
 	lines.push(`- **Date:** ${datePart}`)
 	lines.push(`- **Time:** ${timePart}`)
 	lines.push(`- **Working Directory:** ${workingDir}`)
-	if (activeProjectDir && activeProjectDir !== workingDir) {
-		lines.push(`- **Active Project:** ${activeProjectDir}`)
-	}
 	if (channel) {
+		// Extract the platform prefix (e.g. "discord" from "discord:GUILD:CHANNEL")
+		const platformPrefix = channel.id.split(':')[0]
 		const platformNames: Record<string, string> = { discord: 'Discord', telegram: 'Telegram', terminal: 'Terminal', whatsapp: 'WhatsApp' }
-		const platformLabel = platformNames[channel.id] ?? channel.id
-		lines.push(`- **Channel:** ${platformLabel}${channel.name ? ` / #${channel.name}` : ''}`)
+		const platformLabel = platformNames[platformPrefix] ?? platformPrefix
+		lines.push(`- **Channel:** ${platformLabel}${channel.name ? ` / ${channel.name}` : ''}`)
+		// Always expose the raw IDs so the AI can reference them in tool calls (e.g. cron targets)
+		let idLine = `- **Channel ID (for tools):** \`${channel.id}\``
+		if (channel.userId) idLine += ` | **User ID:** \`${channel.userId}\``
+		lines.push(idLine)
 	}
 
 	// ── Helper: read immediate children of a directory ────────────────────
@@ -360,7 +366,7 @@ export function buildSystemPrompt(
 	summary?: string,
 	channel?: { id: string, userId?: string, name?: string, authorName?: string, isSubagent?: boolean },
 	agentDir?: string,
-	opts?: { modelContextWindow?: number; projectContext?: string; cwd?: string },
+	opts?: { modelContextWindow?: number; projectContext?: string; cwd?: string; sessionWorkspacePath?: string },
 ): string {
 	// Helper: read from agentDir (if supplied) first, then global MEMORY_DIR
 	const readLayered = (name: string): string | null => {
@@ -412,13 +418,14 @@ export function buildSystemPrompt(
 		}
 	} catch { /* ignore */ }
 
-	const envSection = buildEnvironmentSection(channel, opts?.cwd, activeProjectDir)
+	const envSection = buildEnvironmentSection(channel, opts?.cwd, activeProjectDir, opts?.sessionWorkspacePath)
 
+	const effectiveWorkspace = opts?.sessionWorkspacePath ?? getWorkspacePath()
 	const workspacePolicy =
 		`\n\n## File & Document Storage Policy\n\n` +
 		`**All files you create MUST be stored inside \`${TAMIAS_DIR}\`.**\n\n` +
-		`- Your authorized workspace: \`${getWorkspacePath()}\`\n` +
-		`- Default location for new documents: \`${TAMIAS_DIR}/workspace/\`\n` +
+		`- Your authorized workspace for this session: \`${effectiveWorkspace}\`\n` +
+		`- All new files and documents go HERE unless the user explicitly requests a different location.\n` +
 		`- **Never** write to \`~/Desktop\`, \`~/Documents\`, or anywhere outside \`${TAMIAS_DIR}\`.`
 
 	let envContent = envSection + workspacePolicy
@@ -452,7 +459,12 @@ export function buildSystemPrompt(
 	// 3b: MEMORY.md snippet (trimmable)
 	const memory = readLayered('MEMORY.md')
 	if (memory) {
+		// Strip the leading H1 heading from MEMORY.md before embedding it — the
+		// enclosing ## heading already labels this section, and an H1 inside
+		// creates a broken heading hierarchy in the prompt.
 		const memSnippet = inject(memory)
+			.replace(/^#\s+[^\n]+\n?/, '')
+			.trimStart()
 		if (persistentContent) persistentContent += `\n\n---\n\n`
 		persistentContent += `## RECENT ACTIVITY & LESSONS (MEMORY.md)\n\n${memSnippet}`
 	}
@@ -538,7 +550,7 @@ export function buildSystemPromptWithTiers(
 	summary?: string,
 	channel?: { id: string, userId?: string, name?: string, authorName?: string, isSubagent?: boolean },
 	agentDir?: string,
-	opts?: { modelContextWindow?: number; projectContext?: string; cwd?: string },
+	opts?: { modelContextWindow?: number; projectContext?: string; cwd?: string; sessionWorkspacePath?: string },
 ): { text: string; tiers: SystemPromptTierInfo[] } {
 	// Static tier names — these rarely change and benefit from LLM caching
 	const STATIC_TIERS = new Set(['identity-role', 'user', 'agentic-protocol'])

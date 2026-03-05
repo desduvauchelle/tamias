@@ -23,9 +23,13 @@ export function expandHome(path: string): string {
  * Validates that the target path is within the authorized workspace.
  * If no workspace is configured, it just expands home and resolves.
  * Throws an error if a workspace is configured and the path is outside.
+ *
+ * @param path - The path to validate (relative or absolute)
+ * @param overrideWorkspaceRoot - Optional per-session workspace root. When provided this takes
+ *   precedence over the global config value, enabling per-channel workspace isolation.
  */
-export const validatePath = (path: string): string => {
-	const workspaceRoot = getWorkspacePath()
+export const validatePath = (path: string, overrideWorkspaceRoot?: string): string => {
+	const workspaceRoot = overrideWorkspaceRoot ?? getWorkspacePath()
 	const expandedPath = expandHome(path)
 
 	// 1. Resolve to absolute path
@@ -42,8 +46,19 @@ export const validatePath = (path: string): string => {
 			const realParent = realpathSync(parent)
 			absolutePath = join(realParent, absolutePath.split('/').pop() || '')
 		} catch {
-			// If even parent doesn't exist (deep write), resolve it manually
-			absolutePath = resolve(absolutePath)
+			// Neither the file nor its immediate parent exist (deep write).
+			// Normalise the workspace-root prefix so symlinks like /var → /private/var
+			// don't cause false "outside workspace" errors on macOS.
+			try {
+				const realWs = realpathSync(workspaceRoot)
+				if (absolutePath.startsWith(workspaceRoot + '/') || absolutePath === workspaceRoot) {
+					absolutePath = realWs + absolutePath.slice(workspaceRoot.length)
+				} else {
+					absolutePath = resolve(absolutePath)
+				}
+			} catch {
+				absolutePath = resolve(absolutePath)
+			}
 		}
 	}
 

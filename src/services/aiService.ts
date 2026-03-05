@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events'
 import { join } from 'path'
-import { existsSync, writeFileSync } from 'fs'
+import { existsSync, writeFileSync, mkdirSync } from 'fs'
 import { streamText, generateText, generateObject, stepCountIs } from 'ai'
 
 // Verbose debug logger — enabled by setting TAMIAS_DEBUG=1 or launching with `tamias start --verbose`
@@ -13,7 +13,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
-import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getAllModelOptions, getCompactionModel, getAllConnections } from '../utils/config'
+import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getAllModelOptions, getCompactionModel, getAllConnections, TAMIAS_WORKSPACE_DIR, getWorkspacePath as getWorkspacePathSync } from '../utils/config'
 import { buildActiveTools } from '../utils/toolRegistry'
 import { estimateTokens, estimateMessageTokens, getMessageTokenBudget, trimMessagesToTokenBudget } from '../utils/tokenBudget'
 import { buildProviderOptions } from '../utils/promptCaching'
@@ -68,6 +68,8 @@ export interface Session {
 	agentDir?: string
 	// Active project for this session
 	projectSlug?: string
+	/** Per-session workspace directory (e.g. ~/.tamias/workspace/time-tracker). Overrides global workspacePath. */
+	workspacePath: string
 }
 
 export interface CreateSessionOptions {
@@ -81,6 +83,31 @@ export interface CreateSessionOptions {
 	task?: string
 	agentId?: string
 	projectSlug?: string
+}
+
+/**
+ * Derive a workspace slug from Discord/Telegram channel name or ID.
+ * '#time-tracker (My Server)' → 'time-tracker'
+ * '#general' → 'general'
+ * 'DM' / undefined → falls back to platform + id slug
+ */
+export function deriveChannelWorkspacePath(channelId: string, channelUserId?: string, channelName?: string): string {
+	if (channelName) {
+		// Strip leading '#' and trailing ' (Server Name)' guild suffix
+		const raw = channelName.replace(/^#/, '').replace(/\s*\([^)]*\)\s*$/, '').trim()
+		if (raw && raw.toLowerCase() !== 'dm') {
+			const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+			if (slug) return join(TAMIAS_WORKSPACE_DIR, slug)
+		}
+	}
+	// Fallback: use platform prefix + channel ID
+	if (channelUserId) {
+		// channelId is like 'discord:main' — extract platform prefix
+		const platform = channelId.split(':')[0] ?? 'channel'
+		const idSlug = channelUserId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+		return join(TAMIAS_WORKSPACE_DIR, `${platform}-${idSlug}`)
+	}
+	return TAMIAS_WORKSPACE_DIR
 }
 
 /** Truncate a task description to a readable one-liner for status messages. */
@@ -194,6 +221,13 @@ export class AIService {
 					}
 				}
 				const [nickname, ...rest] = resolvedModel.split('/')
+				const restoredChannelId = full.channelId || 'terminal'
+				const restoredWorkspacePath = (restoredChannelId !== 'terminal' && !restoredChannelId.startsWith('terminal'))
+					? deriveChannelWorkspacePath(restoredChannelId, full.channelUserId, full.channelName)
+					: getWorkspacePathSync()
+				// Ensure directory exists for restored sessions too
+				try { mkdirSync(restoredWorkspacePath, { recursive: true }) } catch { }
+
 				const session: Session = {
 					id: full.id,
 					name: full.name,
@@ -208,11 +242,12 @@ export class AIService {
 					summary: full.summary,
 					emitter: new EventEmitter(),
 					heartbeatTimer: null,
-					channelId: full.channelId || 'terminal',
+					channelId: restoredChannelId,
 					channelUserId: full.channelUserId,
 					channelName: full.channelName,
 					parentSessionId: (full as any).parentSessionId,
 					isSubagent: (full as any).isSubagent || false,
+					workspacePath: restoredWorkspacePath,
 				}
 				this.sessions.set(full.id, session)
 				if (session.channelId && session.channelUserId) {
@@ -289,6 +324,30 @@ export class AIService {
 				.join('-')
 		}
 
+		// Derive per-session workspace directory.
+		// Sub-agents inherit the parent session's workspace so they write to the same place.
+		// Bridge sessions (Discord, Telegram, etc.) get a channel-named subdirectory.
+		// Terminal sessions use the global configured workspace.
+		const resolvedChannelId = options.channelId || 'terminal'
+		let sessionWorkspacePath: string
+		if (options.isSubagent && options.parentSessionId) {
+			// Inherit parent workspace — sub-agents must write to the same dir as their parent
+			const parentSession = this.sessions.get(options.parentSessionId)
+			sessionWorkspacePath = parentSession?.workspacePath ?? deriveChannelWorkspacePath(
+				resolvedChannelId, options.channelUserId, options.channelName
+			)
+		} else if (resolvedChannelId !== 'terminal' && !resolvedChannelId.startsWith('terminal')) {
+			// Bridge session — auto-derive from channel name
+			sessionWorkspacePath = deriveChannelWorkspacePath(
+				resolvedChannelId, options.channelUserId, options.channelName
+			)
+		} else {
+			// Terminal session — use global configured workspace (from config)
+			sessionWorkspacePath = getWorkspacePathSync()
+		}
+		// Ensure the workspace directory exists
+		try { mkdirSync(sessionWorkspacePath, { recursive: true }) } catch { }
+
 		const session: Session = {
 			id: options.id ?? `sess_${Math.random().toString(36).slice(2, 10)}`,
 			model: modelStr,
@@ -314,6 +373,7 @@ export class AIService {
 			agentSlug,
 			agentDir,
 			projectSlug: options.projectSlug,
+			workspacePath: sessionWorkspacePath,
 		}
 
 		// Sub-agents MUST NOT overwrite the parent's entry in bridgeSessionMap.
@@ -648,7 +708,7 @@ export class AIService {
 					name: session.channelName,
 					authorName: job.authorName,
 					isSubagent: session.isSubagent
-				}, session.agentDir, { projectContext, modelContextWindow: connection.contextWindow ?? 128000 })
+				}, session.agentDir, { projectContext, modelContextWindow: connection.contextWindow ?? 128000, sessionWorkspacePath: session.workspacePath })
 
 				// ── Token-budgeted message trimming ──────────────────────────
 				const ctxWindow = connection.contextWindow ?? 128000

@@ -34,6 +34,7 @@ function makeSession(partial: Partial<Session> & { id: string }): Session {
 		agentSlug: partial.agentSlug,
 		agentDir: partial.agentDir,
 		projectSlug: partial.projectSlug,
+		workspacePath: partial.workspacePath ?? process.env.HOME + '/.tamias/workspace',
 	}
 }
 
@@ -67,7 +68,7 @@ function makeMockAI() {
 		enqueueMessage: async (sessionId: string, content: string, authorName?: string) => {
 			const target = sessions.get(sessionId)
 			if (!target) throw new Error('Session not found')
-			;(target.queue as MockJob[]).push({ sessionId, content, authorName })
+				; (target.queue as MockJob[]).push({ sessionId, content, authorName })
 		},
 	}
 }

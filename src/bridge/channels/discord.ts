@@ -362,6 +362,11 @@ export class DiscordBridge implements IBridge {
 					state.currentThread = undefined
 					state.pendingSubagents = 0
 					await this.promoteNextQueuedMessage(state)
+					// Evict stale state so cron sessions targeting this channel
+					// don't accidentally fall into the Discord-message path.
+					if (!state.currentMessage && state.queue.length === 0) {
+						this.channelStates.delete(channelId)
+					}
 				}
 				break
 			}
@@ -390,6 +395,10 @@ export class DiscordBridge implements IBridge {
 					state.pendingSubagents = 0
 					state.buffer = ''
 					await this.promoteNextQueuedMessage(state)
+					// Evict stale state when all queue items are consumed
+					if (!state.currentMessage && state.queue.length === 0) {
+						this.channelStates.delete(channelId)
+					}
 				}
 				break
 			}
