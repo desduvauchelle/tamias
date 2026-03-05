@@ -34,7 +34,6 @@ import { isDaemonRunning, readDaemonInfo, getDaemonUrl } from '../utils/daemon.t
 import { getAllInternalToolNames } from './internalToolNames.ts'
 import { saveSkill, deleteSkill, getLoadedSkills, loadSkills } from '../utils/skills.ts'
 import { buildSystemPrompt } from '../utils/memory.ts'
-import matter from 'gray-matter'
 
 export const TAMIAS_TOOL_NAME = 'tamias'
 export const TAMIAS_TOOL_LABEL = '🤖 Tamias (self-management: models, tools, sessions, daemon)'

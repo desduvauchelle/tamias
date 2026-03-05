@@ -13,7 +13,8 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
-import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getAllModelOptions, getCompactionModel, getAllConnections, TAMIAS_WORKSPACE_DIR, getWorkspacePath as getWorkspacePathSync } from '../utils/config'
+import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getAllModelOptions, getCompactionModel, getAllConnections, getWorkspacePath as getWorkspacePathSync } from '../utils/config'
+import { getProject } from '../utils/projects.ts'
 import { buildActiveTools } from '../utils/toolRegistry'
 import { estimateTokens, estimateMessageTokens, getMessageTokenBudget, trimMessagesToTokenBudget } from '../utils/tokenBudget'
 import { buildProviderOptions } from '../utils/promptCaching'
@@ -86,28 +87,24 @@ export interface CreateSessionOptions {
 }
 
 /**
- * Derive a workspace slug from Discord/Telegram channel name or ID.
- * '#time-tracker (My Server)' → 'time-tracker'
- * '#general' → 'general'
- * 'DM' / undefined → falls back to platform + id slug
+ * Resolve the workspace path for a session.
+ * - Sub-agents inherit their parent's workspace.
+ * - Sessions linked to a project use that project's configured workspacePath.
+ * - All other sessions (bridge or terminal) use the global configured workspace.
  */
-export function deriveChannelWorkspacePath(channelId: string, channelUserId?: string, channelName?: string): string {
-	if (channelName) {
-		// Strip leading '#' and trailing ' (Server Name)' guild suffix
-		const raw = channelName.replace(/^#/, '').replace(/\s*\([^)]*\)\s*$/, '').trim()
-		if (raw && raw.toLowerCase() !== 'dm') {
-			const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-			if (slug) return join(TAMIAS_WORKSPACE_DIR, slug)
-		}
+function resolveSessionWorkspacePath(options: {
+	isSubagent?: boolean
+	parentWorkspacePath?: string
+	projectSlug?: string
+}): string {
+	if (options.isSubagent && options.parentWorkspacePath) {
+		return options.parentWorkspacePath
 	}
-	// Fallback: use platform prefix + channel ID
-	if (channelUserId) {
-		// channelId is like 'discord:main' — extract platform prefix
-		const platform = channelId.split(':')[0] ?? 'channel'
-		const idSlug = channelUserId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-		return join(TAMIAS_WORKSPACE_DIR, `${platform}-${idSlug}`)
+	if (options.projectSlug) {
+		const project = getProject(options.projectSlug)
+		if (project?.workspacePath) return project.workspacePath
 	}
-	return TAMIAS_WORKSPACE_DIR
+	return getWorkspacePathSync()
 }
 
 /** Truncate a task description to a readable one-liner for status messages. */
@@ -222,11 +219,15 @@ export class AIService {
 				}
 				const [nickname, ...rest] = resolvedModel.split('/')
 				const restoredChannelId = full.channelId || 'terminal'
-				const restoredWorkspacePath = (restoredChannelId !== 'terminal' && !restoredChannelId.startsWith('terminal'))
-					? deriveChannelWorkspacePath(restoredChannelId, full.channelUserId, full.channelName)
-					: getWorkspacePathSync()
-				// Ensure directory exists for restored sessions too
-				try { mkdirSync(restoredWorkspacePath, { recursive: true }) } catch { }
+				const restoredWorkspacePath = resolveSessionWorkspacePath({
+					isSubagent: (full as any).isSubagent,
+					parentWorkspacePath: (full as any).parentSessionId
+						? this.sessions.get((full as any).parentSessionId)?.workspacePath
+						: undefined,
+					projectSlug: (full as any).projectSlug,
+				})
+				// Ensure the global workspace exists (no per-channel dirs)
+				try { mkdirSync(getWorkspacePathSync(), { recursive: true }) } catch { }
 
 				const session: Session = {
 					id: full.id,
@@ -324,29 +325,16 @@ export class AIService {
 				.join('-')
 		}
 
-		// Derive per-session workspace directory.
-		// Sub-agents inherit the parent session's workspace so they write to the same place.
-		// Bridge sessions (Discord, Telegram, etc.) get a channel-named subdirectory.
-		// Terminal sessions use the global configured workspace.
-		const resolvedChannelId = options.channelId || 'terminal'
-		let sessionWorkspacePath: string
-		if (options.isSubagent && options.parentSessionId) {
-			// Inherit parent workspace — sub-agents must write to the same dir as their parent
-			const parentSession = this.sessions.get(options.parentSessionId)
-			sessionWorkspacePath = parentSession?.workspacePath ?? deriveChannelWorkspacePath(
-				resolvedChannelId, options.channelUserId, options.channelName
-			)
-		} else if (resolvedChannelId !== 'terminal' && !resolvedChannelId.startsWith('terminal')) {
-			// Bridge session — auto-derive from channel name
-			sessionWorkspacePath = deriveChannelWorkspacePath(
-				resolvedChannelId, options.channelUserId, options.channelName
-			)
-		} else {
-			// Terminal session — use global configured workspace (from config)
-			sessionWorkspacePath = getWorkspacePathSync()
-		}
-		// Ensure the workspace directory exists
-		try { mkdirSync(sessionWorkspacePath, { recursive: true }) } catch { }
+		// Workspace: sub-agents inherit parent; project-linked sessions use that project's path;
+		// everything else (bridge or terminal) uses the global configured workspace.
+		const parentSession = options.parentSessionId ? this.sessions.get(options.parentSessionId) : undefined
+		const sessionWorkspacePath = resolveSessionWorkspacePath({
+			isSubagent: options.isSubagent,
+			parentWorkspacePath: parentSession?.workspacePath,
+			projectSlug: options.projectSlug,
+		})
+		// Ensure the global workspace exists (no per-session/per-channel dirs)
+		try { mkdirSync(getWorkspacePathSync(), { recursive: true }) } catch { }
 
 		const session: Session = {
 			id: options.id ?? `sess_${Math.random().toString(36).slice(2, 10)}`,

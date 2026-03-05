@@ -1,64 +1,16 @@
 /**
- * Tests for per-session, per-channel workspace isolation.
+ * Tests for per-session workspace isolation.
  *
  * Verifies that:
- *  1. deriveChannelWorkspacePath correctly maps Discord channel names to dirs
- *  2. validatePath respects a per-session workspace root override
- *  3. createWorkspaceTools enforces session-specific workspace boundaries
+ *  1. validatePath respects a per-session workspace root override
+ *  2. createWorkspaceTools enforces session-specific workspace boundaries
  */
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { mkdtempSync, writeFileSync, rmSync, existsSync, realpathSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { deriveChannelWorkspacePath } from '../services/aiService.ts'
 import { validatePath } from '../utils/path.ts'
 import { createWorkspaceTools } from '../tools/workspace.ts'
-
-// ── deriveChannelWorkspacePath ────────────────────────────────────────────────
-
-describe('deriveChannelWorkspacePath', () => {
-	const TAMIAS_WORKSPACE = process.env.HOME + '/.tamias/workspace'
-
-	test('extracts slug from "#time-tracker (My Server)" channel name', () => {
-		const path = deriveChannelWorkspacePath('discord:main', '123456', '#time-tracker (My Server)')
-		expect(path).toBe(join(TAMIAS_WORKSPACE, 'time-tracker'))
-	})
-
-	test('extracts slug from "#general" channel name (no guild)', () => {
-		const path = deriveChannelWorkspacePath('discord:main', '789', '#general')
-		expect(path).toBe(join(TAMIAS_WORKSPACE, 'general'))
-	})
-
-	test('strips leading # from channel name', () => {
-		const path = deriveChannelWorkspacePath('discord:main', '1', '#my-project')
-		expect(path).toBe(join(TAMIAS_WORKSPACE, 'my-project'))
-	})
-
-	test('lowercases and slugifies channel name with spaces', () => {
-		const path = deriveChannelWorkspacePath('discord:main', '2', '#Time Tracker 2025')
-		expect(path).toBe(join(TAMIAS_WORKSPACE, 'time-tracker-2025'))
-	})
-
-	test('falls back to platform + channelUserId when name is "DM"', () => {
-		const path = deriveChannelWorkspacePath('discord:main', '555', 'DM')
-		expect(path).toBe(join(TAMIAS_WORKSPACE, 'discord-555'))
-	})
-
-	test('falls back to platform + channelUserId when channelName is undefined', () => {
-		const path = deriveChannelWorkspacePath('discord:main', '888', undefined)
-		expect(path).toBe(join(TAMIAS_WORKSPACE, 'discord-888'))
-	})
-
-	test('falls back to TAMIAS_WORKSPACE_DIR when both channelName and channelUserId are missing', () => {
-		const path = deriveChannelWorkspacePath('discord:main', undefined, undefined)
-		expect(path).toBe(TAMIAS_WORKSPACE)
-	})
-
-	test('handles telegram channel name', () => {
-		const path = deriveChannelWorkspacePath('telegram:bot', '999', 'Dev Team')
-		expect(path).toBe(join(TAMIAS_WORKSPACE, 'dev-team'))
-	})
-})
 
 // ── validatePath with override ────────────────────────────────────────────────
 
