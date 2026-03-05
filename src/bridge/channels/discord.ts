@@ -199,6 +199,12 @@ export class DiscordBridge implements IBridge {
 			return
 		}
 
+		if (!/^\d{17,21}$/.test(channelId)) {
+			this.cronBuffers.delete(channelId)
+			this.channelStates.delete(channelId)
+			return
+		}
+
 		const state = this.channelStates.get(channelId)
 
 		switch (event.type) {

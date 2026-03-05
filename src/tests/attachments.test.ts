@@ -347,7 +347,7 @@ describe('Discord bridge: file event dispatch', () => {
 		const fileBuffer = Buffer.from('report data')
 		await bridge.handleDaemonEvent(
 			{ type: 'file', name: 'report.csv', buffer: fileBuffer, mimeType: 'text/csv' },
-			{ channelUserId: '123456789' }
+			{ channelUserId: '123456789012345678' }
 		)
 
 		expect(sentPayloads).toHaveLength(1)
@@ -367,7 +367,7 @@ describe('Discord bridge: file event dispatch', () => {
 
 		const b = bridge as any
 		b.client = { channels: { fetch: async () => null } }
-		b.channelStates.set('ch1', {
+		b.channelStates.set('11111111111111111', {
 			queue: [],
 			buffer: '',
 			currentMessage: fakeMessage,
@@ -376,7 +376,7 @@ describe('Discord bridge: file event dispatch', () => {
 		const fileBuffer = Buffer.from('image data')
 		await bridge.handleDaemonEvent(
 			{ type: 'file', name: 'image.png', buffer: fileBuffer, mimeType: 'image/png' },
-			{ channelUserId: 'ch1' }
+			{ channelUserId: '11111111111111111' }
 		)
 
 		expect(sentPayloads).toHaveLength(1)

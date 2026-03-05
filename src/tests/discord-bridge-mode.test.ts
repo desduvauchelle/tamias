@@ -67,7 +67,7 @@ function makeMessage({ mentioned }: { mentioned: boolean }) {
 	return {
 		id: `m-${Math.random().toString(36).slice(2)}`,
 		author: { bot: false, id: 'u-1', username: 'alice' },
-		channelId: 'c-1',
+		channelId: '11111111111111111',
 		content: 'hello world',
 		guild: { name: 'Guild' },
 		channel: { name: 'general' },
@@ -94,7 +94,7 @@ function makeVoiceMessage({ contentType = 'audio/ogg', filename = 'voice-message
 	return {
 		id: `m-${Math.random().toString(36).slice(2)}`,
 		author: { bot: false, id: 'u-1', username: 'alice' },
-		channelId: 'c-1',
+		channelId: '11111111111111111',
 		content: '',
 		guild: { name: 'Guild' },
 		channel: { name: 'general' },
@@ -413,7 +413,7 @@ function makeThreadableMessage(content = 'have Cody verify git remotes') {
 	const msg: any = {
 		id: `m-thread-${Math.random().toString(36).slice(2)}`,
 		author: { bot: false, id: 'u-1', username: 'alice' },
-		channelId: 'c-thread',
+		channelId: '22222222222222222',
 		content,
 		guild: { name: 'Guild' },
 		channel: { name: 'general', send: channelSend, sendTyping },
@@ -453,14 +453,14 @@ describe('DiscordBridge one-thread-per-turn model', () => {
 		const msg = makeThreadableMessage()
 
 		await client.emit('messageCreate', msg)
-		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 		await bridge.handleDaemonEvent({
 			type: 'subagent-status',
 			status: 'started',
 			subagentId: 'sub-1',
 			task: 'Verify git remotes',
 			message: 'Verify git remotes',
-		} as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		} as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 
 		// startThread was called on the user's own message
 		expect(msg.startThread).toHaveBeenCalledTimes(1)
@@ -478,18 +478,18 @@ describe('DiscordBridge one-thread-per-turn model', () => {
 		const msg = makeThreadableMessage()
 
 		await client.emit('messageCreate', msg)
-		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 		// Sub-agent starts → pendingSubagents becomes 1, thread is created
 		await bridge.handleDaemonEvent({
 			type: 'subagent-status', status: 'started',
 			subagentId: 'sub-1', task: 'Verify git remotes', message: 'Verify git remotes',
-		} as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		} as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 
 		// Chip's LLM response fires done while pendingSubagents is still 1
 		await bridge.handleDaemonEvent({
 			type: 'chunk', text: "I'm delegating to Cody...",
-		} as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
-		await bridge.handleDaemonEvent({ type: 'done', sessionId: 'sess-1' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		} as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'done', sessionId: 'sess-1' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 
 		// Main channel NOT called for Chip's intermediate prose
 		expect(msg._channelSend).not.toHaveBeenCalled()
@@ -505,21 +505,21 @@ describe('DiscordBridge one-thread-per-turn model', () => {
 		const msg = makeThreadableMessage()
 
 		await client.emit('messageCreate', msg)
-		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 		await bridge.handleDaemonEvent({
 			type: 'subagent-status', status: 'started',
 			subagentId: 'sub-1', task: 'Verify git remotes', message: 'Verify git remotes',
-		} as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		} as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 		// Sub-agent completes → pendingSubagents back to 0
 		await bridge.handleDaemonEvent({
 			type: 'subagent-status', status: 'completed',
 			subagentId: 'sub-1', task: 'Verify git remotes', message: 'done',
-		} as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		} as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 
 		// Second start for parent's continuation turn (currentMessage already set — no queue pop)
-		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
-		await bridge.handleDaemonEvent({ type: 'chunk', text: 'Remotes verified. All good.' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
-		await bridge.handleDaemonEvent({ type: 'done', sessionId: 'sess-1' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'chunk', text: 'Remotes verified. All good.' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'done', sessionId: 'sess-1' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 
 		// Thread receives final answer
 		const allThreadCalls = msg._threadSend.mock.calls.map((c: any) => c[0])
@@ -541,21 +541,21 @@ describe('DiscordBridge one-thread-per-turn model', () => {
 		const msg = makeThreadableMessage()
 
 		await client.emit('messageCreate', msg)
-		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 		// Trigger a sub-agent so currentMessage stays alive after first done
 		await bridge.handleDaemonEvent({
 			type: 'subagent-status', status: 'started',
 			subagentId: 'sub-1', task: 'task', message: 'task',
-		} as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		} as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 		await bridge.handleDaemonEvent({
 			type: 'subagent-status', status: 'completed',
 			subagentId: 'sub-1', task: 'task', message: 'done',
-		} as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		} as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 
 		// Second start should NOT try to pop from queue (queue is empty now)
 		// It should succeed without error because it reuses the existing currentMessage
 		await expect(
-			bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+			bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 		).resolves.toBeUndefined()
 	})
 
@@ -564,12 +564,12 @@ describe('DiscordBridge one-thread-per-turn model', () => {
 		const msg = makeThreadableMessage()
 
 		await client.emit('messageCreate', msg)
-		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 		// Create thread via sub-agent
 		await bridge.handleDaemonEvent({
 			type: 'subagent-status', status: 'started',
 			subagentId: 'sub-1', task: 'task', message: 'task',
-		} as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		} as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 		const callsBeforeProgress = msg._threadSend.mock.calls.length
 
 		await bridge.handleDaemonEvent({
@@ -577,7 +577,7 @@ describe('DiscordBridge one-thread-per-turn model', () => {
 			message: 'Step 1 done',
 			step: 1,
 			totalSteps: 3,
-		} as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		} as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 
 		// New message in thread
 		expect(msg._threadSend.mock.calls.length).toBe(callsBeforeProgress + 1)
@@ -592,11 +592,11 @@ describe('DiscordBridge one-thread-per-turn model', () => {
 		const msg = makeThreadableMessage()
 
 		await client.emit('messageCreate', msg)
-		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 		await bridge.handleDaemonEvent({
 			type: 'subagent-status', status: 'started',
 			subagentId: 'sub-1', task: 'task', message: 'task',
-		} as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		} as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 		const callsBefore = msg._threadSend.mock.calls.length
 
 		await bridge.handleDaemonEvent({
@@ -604,7 +604,7 @@ describe('DiscordBridge one-thread-per-turn model', () => {
 			fromAgent: 'chip',
 			toAgent: 'cody',
 			reason: 'coding task',
-		} as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		} as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 
 		expect(msg._threadSend.mock.calls.length).toBe(callsBefore + 1)
 		const handoffMsg = (msg._threadSend.mock.calls[callsBefore] as any)[0] as string
@@ -618,9 +618,9 @@ describe('DiscordBridge one-thread-per-turn model', () => {
 		const msg = makeThreadableMessage('just a simple question')
 
 		await client.emit('messageCreate', msg)
-		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
-		await bridge.handleDaemonEvent({ type: 'chunk', text: 'Simple answer.' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
-		await bridge.handleDaemonEvent({ type: 'done', sessionId: 'sess-1' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'chunk', text: 'Simple answer.' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'done', sessionId: 'sess-1' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 
 		// No thread created (no sub-agents)
 		expect(msg.startThread).not.toHaveBeenCalled()
@@ -637,7 +637,7 @@ describe('DiscordBridge one-thread-per-turn model', () => {
 		msg.startThread.mockImplementation(async () => { throw new Error('no thread perms') })
 
 		await client.emit('messageCreate', msg)
-		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		await bridge.handleDaemonEvent({ type: 'start' } as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 
 		// Point channels.fetch at the channel so fallback works
 		const fakeClient = createdClients[0] as any
@@ -646,7 +646,7 @@ describe('DiscordBridge one-thread-per-turn model', () => {
 		await bridge.handleDaemonEvent({
 			type: 'subagent-status', status: 'started',
 			subagentId: 'sub-1', task: 'task', message: 'task',
-		} as any, { channelUserId: 'c-thread', sessionId: 'sess-1' })
+		} as any, { channelUserId: '22222222222222222', sessionId: 'sess-1' })
 
 		// Falls back to main channel
 		expect(msg._channelSend).toHaveBeenCalledTimes(1)

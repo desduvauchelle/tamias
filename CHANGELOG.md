@@ -66,6 +66,7 @@
 - update README to reflect latest version and highlight new features
 
 ### Other Changes
+- Add workspace isolation tests and enhance workspace management
 - Refactor skill guide and system instructions; enhance dynamic prompting and sub-agent context
 
 ## [v2026.2.23.5] - 2026-02-23
@@ -160,6 +161,11 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.3.4.3] - 2026-03-04
+
+### Other Changes
+- Add workspace isolation tests and enhance workspace management
 
 ## [v26.3.4.2] - 2026-03-04
 
