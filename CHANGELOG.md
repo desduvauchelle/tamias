@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- update changelog and enhance workspace path resolution in AIService
 - add delivery migration for legacy cron entries and enhance cron job schema
 - implement stable platform identifiers for bridge delivery and enhance cron job handling
 - enhance email account configuration with app password handling and setup guides
@@ -161,6 +162,11 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.3.4.4] - 2026-03-04
+
+### Features
+- update changelog and enhance workspace path resolution in AIService
 
 ## [v26.3.4.3] - 2026-03-04
 
