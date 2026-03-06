@@ -244,7 +244,7 @@ function NavContent({ onNewProject }: NavContentProps) {
 								<span>Workspace</span>
 								<div className="tooltip tooltip-left before:text-[10px] before:px-2 before:py-1" data-tip="Create New Project">
 									<button
-										className="btn btn-xs btn-ghost btn-circle scale-75 opacity-0 group-hover:opacity-100 transition-all hover:bg-base-300"
+										className="btn btn-xs btn-ghost btn-circle scale-75 transition-all hover:bg-base-300"
 										onClick={(e) => { e.preventDefault(); e.stopPropagation(); onNewProject() }}
 									>
 										<Plus className="w-4 h-4" />

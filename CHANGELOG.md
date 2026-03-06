@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Features
+- introduce client-side layout and project creation modal to enhance AI project context, and update changelog.
+- Implement daemon IPC for project events, enhance file content API with directory creation, fix Bun compatibility for transcription, improve dashboard navigation, and update package versions.
 - introduce a new dashboard chat terminal and enhance AI project context with detailed kanban tasks and linked project information.
 
 ## [v26.03.05.4] - 2026-03-05

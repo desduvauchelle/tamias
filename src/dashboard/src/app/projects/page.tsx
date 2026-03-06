@@ -53,12 +53,32 @@ function ProjectsContent() {
 	const searchParams = useSearchParams()
 	const router = useRouter()
 	const projectId = searchParams.get('id')
+	const initialTab = (searchParams.get('tab') as any) || 'overview'
 
 	const [projects, setProjects] = useState<Project[]>([])
 	const [activeProject, setActiveProject] = useState<Project | null>(null)
 	const [loading, setLoading] = useState(true)
-	const [activeTab, setActiveTab] = useState<'overview' | 'chat' | 'kanban' | 'files' | 'settings'>('overview')
+	const [activeTab, setActiveTab] = useState<'overview' | 'chat' | 'kanban' | 'files' | 'settings'>(
+		['overview', 'chat', 'kanban', 'files', 'settings'].includes(initialTab) ? initialTab : 'overview'
+	)
 	const [channels, setChannels] = useState<DiscordChannel[]>([])
+
+	// Sync activeTab to URL and vice-versa
+	useEffect(() => {
+		const tabQuery = searchParams.get('tab')
+		if (tabQuery && ['overview', 'chat', 'kanban', 'files', 'settings'].includes(tabQuery) && tabQuery !== activeTab) {
+			setActiveTab(tabQuery as any)
+		}
+	}, [searchParams])
+
+	useEffect(() => {
+		if (projectId) {
+			const currentTab = searchParams.get('tab')
+			if (currentTab !== activeTab) {
+				router.replace(`?id=${projectId}&tab=${activeTab}`, { scroll: false })
+			}
+		}
+	}, [activeTab, projectId, router, searchParams])
 
 	// Task Modal State
 	const [selectedTask, setSelectedTask] = useState<KanbanTask | null>(null)
@@ -575,6 +595,12 @@ function ProjectsContent() {
 						)}
 
 					</div>
+				</div>
+			)}
+
+			{activeTab === 'chat' && activeProject && (
+				<div className="absolute inset-0 bg-base-100 flex flex-col">
+					<ChatTerminal sessionId={`project-${activeProject.id}`} />
 				</div>
 			)}
 
