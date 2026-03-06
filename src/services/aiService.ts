@@ -404,6 +404,12 @@ export class AIService {
 
 		const buffer: string[] = []
 		session.emitter.on('event', (evt: DaemonEvent) => {
+			if (evt.type === 'start') {
+				// Forward start so the bridge (e.g. Discord) can pop the queued user
+				// message and set up currentMessage before any chunks arrive.
+				this.bridgeManager.dispatchEvent(session.channelId, evt, session).catch(console.error)
+				return
+			}
 			if (evt.type === 'chunk') {
 				buffer.push(evt.text)
 				return

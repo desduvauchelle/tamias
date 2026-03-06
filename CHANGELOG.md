@@ -48,6 +48,7 @@
 - allow bridge `onMessage` to return a boolean to prevent AI processing and enhance Discord typing indicator reliability.
 
 ### Bug Fixes
+- validate Discord channel IDs to prevent processing invalid ones and update changelog.
 - update version display from '3' to 'i4' in the navigation component
 
 ### Refactors

@@ -286,7 +286,10 @@ export class DiscordBridge implements IBridge {
 				}
 				// ── Reply-to-message path (normal Discord conversation) ──────────
 				if (state) {
-					if (!state.currentMessage) break
+					if (!state.currentMessage) {
+						console.warn(`[Discord Bridge] 'done' event received for channel ${channelId} but no currentMessage is set — response dropped. This may indicate 'start' was missed.`)
+						break
+					}
 
 					const fullText = state.buffer
 					const ctxMessage = state.currentMessage
