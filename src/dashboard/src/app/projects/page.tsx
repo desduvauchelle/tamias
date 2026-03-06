@@ -594,68 +594,67 @@ function ProjectsContent() {
 							</div>
 						)}
 
-					</div>
-				</div>
-			)}
+						{activeTab === 'chat' && activeProject && (
+							<div className="absolute inset-0 bg-base-100 flex flex-col">
+								<ChatTerminal sessionId={`project-${activeProject.id}`} />
+							</div>
+						)}
 
-			{activeTab === 'chat' && activeProject && (
-				<div className="absolute inset-0 bg-base-100 flex flex-col">
-					<ChatTerminal sessionId={`project-${activeProject.id}`} />
-				</div>
-			)}
+						{activeTab === 'files' && activeProject?.path && (
+							<div className="absolute inset-0">
+								<FileNavigator basePath={activeProject.path} hideHeader={true} />
+							</div>
+						)}
 
-			{activeTab === 'files' && activeProject?.path && (
-				<div className="absolute inset-0">
-					<FileNavigator basePath={activeProject.path} hideHeader={true} />
-				</div>
-			)}
+						{activeTab === 'settings' && (
+							<div className="h-full overflow-y-auto p-8 max-w-2xl mx-auto flex flex-col gap-6">
+								<div className="form-control">
+									<label className="label pb-1"><span className="label-text font-bold text-base">Project Name</span></label>
+									<input value={formName} onChange={e => setFormName(e.target.value)} type="text" className="input input-bordered w-full" placeholder="e.g. My Awesome Startup" />
+								</div>
 
-			{activeTab === 'settings' && (
-				<div className="h-full overflow-y-auto p-8 max-w-2xl mx-auto flex flex-col gap-6">
-					<div className="form-control">
-						<label className="label pb-1"><span className="label-text font-bold text-base">Project Name</span></label>
-						<input value={formName} onChange={e => setFormName(e.target.value)} type="text" className="input input-bordered w-full" placeholder="e.g. My Awesome Startup" />
-					</div>
+								<div className="form-control bg-base-200/50 p-4 rounded-xl border border-base-300">
+									<label className="label pb-1 pt-0"><span className="label-text font-bold text-base">Relative Path (from ~/.tamias)</span></label>
+									<input value={formPath} onChange={e => setFormPath(e.target.value)} type="text" className="input input-bordered w-full font-mono text-sm" placeholder="workspace/my-project" />
+									<label className="label"><span className="label-text-alt text-base-content/50">The relative directory path to your project inside your workspace.</span></label>
+								</div>
 
-					<div className="form-control bg-base-200/50 p-4 rounded-xl border border-base-300">
-						<label className="label pb-1 pt-0"><span className="label-text font-bold text-base">Relative Path (from ~/.tamias)</span></label>
-						<input value={formPath} onChange={e => setFormPath(e.target.value)} type="text" className="input input-bordered w-full font-mono text-sm" placeholder="workspace/my-project" />
-						<label className="label"><span className="label-text-alt text-base-content/50">The relative directory path to your project inside your workspace.</span></label>
-					</div>
+								<div className="form-control">
+									<label className="label pb-1"><span className="label-text font-bold text-base">Description</span></label>
+									<textarea value={formDesc} onChange={e => setFormDesc(e.target.value)} className="textarea textarea-bordered h-24" placeholder="Brief context about this project" />
+								</div>
 
-					<div className="form-control">
-						<label className="label pb-1"><span className="label-text font-bold text-base">Description</span></label>
-						<textarea value={formDesc} onChange={e => setFormDesc(e.target.value)} className="textarea textarea-bordered h-24" placeholder="Brief context about this project" />
-					</div>
+								<div className="divider opacity-50">Integrations</div>
 
-					<div className="divider opacity-50">Integrations</div>
+								<div className="form-control">
+									<label className="label pb-1"><span className="label-text font-bold text-base flex items-center gap-2">Link Discord Channel</span></label>
+									<select value={formChannel} onChange={e => setFormChannel(e.target.value)} className="select select-bordered w-full">
+										<option value="">-- No Channel Linked --</option>
+										{channels.map(c => (
+											<option key={c.id} value={c.id}>
+												{c.guildName} / #{c.name}
+											</option>
+										))}
+									</select>
+									<label className="label"><span className="label-text-alt text-base-content/50">Select a discord channel where Tamias should automatically use this project's context.</span></label>
+								</div>
 
-					<div className="form-control">
-						<label className="label pb-1"><span className="label-text font-bold text-base flex items-center gap-2">Link Discord Channel</span></label>
-						<select value={formChannel} onChange={e => setFormChannel(e.target.value)} className="select select-bordered w-full">
-							<option value="">-- No Channel Linked --</option>
-							{channels.map(c => (
-								<option key={c.id} value={c.id}>
-									{c.guildName} / #{c.name}
-								</option>
-							))}
-						</select>
-						<label className="label"><span className="label-text-alt text-base-content/50">Select a discord channel where Tamias should automatically use this project's context.</span></label>
-					</div>
+								{formChannel && (
+									<div className="form-control bg-base-200/50 p-4 rounded-xl border border-warning/30">
+										<label className="label pt-0 pb-1"><span className="label-text font-bold text-base text-warning">Context File Path (Relative)</span></label>
+										<input value={formContext} onChange={e => setFormContext(e.target.value)} type="text" className="input input-bordered w-full font-mono" placeholder="readme.md" />
+										<label className="label pb-0"><span className="label-text-alt text-base-content/60">File within the project folder that Tamias will read to get context when you chat in the linked Discord channel (e.g. <code className="bg-base-300 px-1 py-0.5 rounded">readme.md</code>).</span></label>
+									</div>
+								)}
 
-					{formChannel && (
-						<div className="form-control bg-base-200/50 p-4 rounded-xl border border-warning/30">
-							<label className="label pt-0 pb-1"><span className="label-text font-bold text-base text-warning">Context File Path (Relative)</span></label>
-							<input value={formContext} onChange={e => setFormContext(e.target.value)} type="text" className="input input-bordered w-full font-mono" placeholder="readme.md" />
-							<label className="label pb-0"><span className="label-text-alt text-base-content/60">File within the project folder that Tamias will read to get context when you chat in the linked Discord channel (e.g. <code className="bg-base-300 px-1 py-0.5 rounded">readme.md</code>).</span></label>
-						</div>
-					)}
-
-					<div className="flex justify-between items-center pt-8 mt-4 border-t border-base-300">
-						<button onClick={() => handleDelete(activeProject?.id || '')} className="btn btn-outline btn-error btn-sm">Delete Project</button>
-						<button onClick={handleSave} className="btn btn-primary gap-2">
-							<Check className="w-4 h-4" /> Save Configuration
-						</button>
+								<div className="flex justify-between items-center pt-8 mt-4 border-t border-base-300">
+									<button onClick={() => handleDelete(activeProject?.id || '')} className="btn btn-outline btn-error btn-sm">Delete Project</button>
+									<button onClick={handleSave} className="btn btn-primary gap-2">
+										<Check className="w-4 h-4" /> Save Configuration
+									</button>
+								</div>
+							</div>
+						)}
 					</div>
 				</div>
 			)}
