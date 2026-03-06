@@ -93,8 +93,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	const config = loadConfig()
 	const allOptions = getAllModelOptions()
 	if (allOptions.length === 0) {
-		console.error(pc.yellow('No models configured. Run `tamias config` first.'))
-		process.exit(1)
+		console.warn(pc.yellow('No models configured. Run `tamias config` first. Dashboard will still start.'))
 	}
 
 

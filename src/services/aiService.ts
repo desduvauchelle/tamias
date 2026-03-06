@@ -150,9 +150,10 @@ export class AIService {
 	}
 
 	private async handleKanbanChanged({ project, oldKanban, newKanban }: any) {
-		if (!project.discordChannelId) return
-
-		const session = [...this.sessions.values()].find(s => s.channelId === project.discordChannelId)
+		const session = [...this.sessions.values()].find(s =>
+			s.projectSlug === project.id ||
+			(project.discordChannelId && s.channelId === project.discordChannelId)
+		)
 		if (!session) return
 
 		for (const newTask of newKanban) {

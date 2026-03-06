@@ -74,7 +74,7 @@ function Column({
 	columnRef: React.RefObject<HTMLDivElement | null>
 }) {
 	const qc = useQueryClient()
-	const fullQueryPath = basePath ? `${basePath}${path ? `/${path}` : ''}` : path
+	const fullQueryPath = path
 	const queryKey = ['files', fullQueryPath]
 
 	const { data, isLoading, isError } = useQuery<DirData>({
@@ -114,7 +114,7 @@ function Column({
 		} catch { /* ignore */ }
 	}, [qc, queryKey])
 
-	const headerLabel = path === '' ? (basePath || '~/.tamias') : path.split('/').pop() || path
+	const headerLabel = path === basePath ? (basePath || '~/.tamias') : path.split('/').pop() || path
 
 	return (
 		<div
@@ -440,7 +440,7 @@ function FileModal({
 export default function FileNavigator({ basePath = '', hideHeader = false, viewMode = 'columns' }: { basePath?: string, hideHeader?: boolean, viewMode?: 'columns' | 'drilldown' }) {
 	// columns[i] = { path: string, selectedIndex: number }
 	const [columns, setColumns] = useState<{ path: string; selectedIndex: number }[]>([
-		{ path: '', selectedIndex: 0 }
+		{ path: basePath, selectedIndex: 0 }
 	])
 	const [focusedCol, setFocusedCol] = useState(0)
 	const [modal, setModal] = useState<{ path: string; name: string } | null>(null)

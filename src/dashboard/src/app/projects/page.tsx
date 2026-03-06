@@ -82,6 +82,7 @@ function ProjectsContent() {
 
 	// Task Modal State
 	const [selectedTask, setSelectedTask] = useState<KanbanTask | null>(null)
+	const [modalTitle, setModalTitle] = useState("")
 	const [modalDetails, setModalDetails] = useState("")
 	const [modalAssignee, setModalAssignee] = useState("")
 	const [modalStatus, setModalStatus] = useState("")
@@ -320,6 +321,7 @@ function ProjectsContent() {
 
 	const openTaskModal = (task: KanbanTask) => {
 		setSelectedTask(task)
+		setModalTitle(task.title || "")
 		setModalDetails(task.details || "")
 		setModalAssignee(task.assignee || "")
 		setModalStatus(task.status)
@@ -334,6 +336,7 @@ function ProjectsContent() {
 		if (!selectedTask || !activeProject) return
 		const updatedTask = {
 			...selectedTask,
+			title: modalTitle,
 			details: modalDetails,
 			assignee: modalAssignee,
 			status: modalStatus
@@ -602,7 +605,7 @@ function ProjectsContent() {
 
 						{activeTab === 'files' && activeProject?.path && (
 							<div className="absolute inset-0">
-								<FileNavigator basePath={activeProject.path} hideHeader={true} />
+								<FileNavigator key={activeProject.id} basePath={activeProject.path} hideHeader={true} />
 							</div>
 						)}
 
@@ -665,7 +668,7 @@ function ProjectsContent() {
 						{/* Header */}
 						<div className="px-6 py-4 border-b border-base-200 flex justify-between items-center bg-base-200/50">
 							<h3 className="font-bold text-lg flex items-center gap-2">
-								{selectedTask.title}
+								Task Details
 								{selectedTask.reaction && <span>{selectedTask.reaction}</span>}
 							</h3>
 							<button onClick={closeTaskModal} className="btn btn-sm btn-ghost btn-circle">✕</button>
@@ -675,6 +678,16 @@ function ProjectsContent() {
 						<div className="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-6">
 							{/* Left Col: Details & Comments */}
 							<div className="flex-1 flex flex-col gap-6">
+								<div className="form-control">
+									<label className="label pt-0"><span className="label-text font-semibold">Title</span></label>
+									<input
+										type="text"
+										className="input input-bordered w-full font-bold"
+										value={modalTitle}
+										onChange={e => setModalTitle(e.target.value)}
+									/>
+								</div>
+
 								<div className="form-control">
 									<label className="label pt-0"><span className="label-text font-semibold">Details</span></label>
 									<textarea
