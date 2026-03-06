@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- enhance `tamias cron` commands with new options and operations, and fix bridge 'start' event dispatch.
 - overhaul cron job management with new project and target options, add Discord channel listing and direct messaging, and introduce project management to the dashboard.
 - update changelog and enhance workspace path resolution in AIService
 - add delivery migration for legacy cron entries and enhance cron job schema

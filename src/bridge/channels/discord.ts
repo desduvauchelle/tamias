@@ -221,8 +221,12 @@ export class DiscordBridge implements IBridge {
 					if (!state.currentMessage) {
 						const message = state.queue.shift()
 						if (!message) {
-							console.error(`[Discord Bridge] 'start' event received but no message in queue for channel ${channelId}`)
-							return
+							// Queue is empty but state exists — this can happen in edge cases.
+							// Log a warning but do NOT return early: chunks will accumulate in state.buffer
+							// and the 'done' handler will fall back to channels.fetch to deliver the response.
+							console.warn(`[Discord Bridge] 'start' event received but no message in queue for channel ${channelId} — will deliver response via fallback on done event`)
+							state.buffer = ''
+							break
 						}
 						state.currentMessage = message
 						await this.clearStatusReactions(message)
@@ -287,7 +291,20 @@ export class DiscordBridge implements IBridge {
 				// ── Reply-to-message path (normal Discord conversation) ──────────
 				if (state) {
 					if (!state.currentMessage) {
-						console.warn(`[Discord Bridge] 'done' event received for channel ${channelId} but no currentMessage is set — response dropped. This may indicate 'start' was missed.`)
+						const bufferedText = state.buffer
+						state.buffer = ''
+						console.warn(`[Discord Bridge] 'done' for channel ${channelId} — no currentMessage (start missed or queue was empty). Falling back to channels.fetch.`)
+						if (bufferedText.trim()) {
+							try {
+								const channel = await this.client.channels.fetch(channelId)
+								if (channel && 'send' in channel) {
+									const chunks = splitText(bufferedText, 1900)
+									for (const chunk of chunks) await (channel as any).send(chunk)
+								}
+							} catch (err) {
+								console.error(`[Discord Bridge] Fallback send to ${channelId} failed:`, err)
+							}
+						}
 						break
 					}
 
