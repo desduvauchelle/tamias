@@ -48,6 +48,7 @@
 - allow bridge `onMessage` to return a boolean to prevent AI processing and enhance Discord typing indicator reliability.
 
 ### Bug Fixes
+- Dispatch 'start' events to bridges to correctly set up current messages and add a warning for missing current messages in the Discord bridge.
 - validate Discord channel IDs to prevent processing invalid ones and update changelog.
 - update version display from '3' to 'i4' in the navigation component
 
@@ -164,6 +165,14 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.3.5.3] - 2026-03-05
+
+### Bug Fixes
+- Dispatch 'start' events to bridges to correctly set up current messages and add a warning for missing current messages in the Discord bridge.
+
+### Maintenance
+- update changelog for version v26.3.4.4 and enhance workspace path resolution in AIService
 
 ## [v26.3.5.1] - 2026-03-05
 
