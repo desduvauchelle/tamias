@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { join, extname } from 'path'
+import { join, extname, dirname } from 'path'
 import { homedir } from 'os'
-import { readFile, writeFile } from 'fs/promises'
+import { readFile, writeFile, mkdir } from 'fs/promises'
 
 export const dynamic = 'force-dynamic'
 
@@ -85,6 +85,7 @@ export async function PUT(request: NextRequest) {
 		if (typeof content !== 'string') {
 			return NextResponse.json({ error: 'content must be a string' }, { status: 400 })
 		}
+		await mkdir(dirname(targetPath), { recursive: true })
 		await writeFile(targetPath, content, 'utf8')
 		return NextResponse.json({ success: true })
 	} catch (error) {

@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
+import { useEffect, useState, Suspense } from 'react'
 import { useToast } from './ToastProvider'
 
 import {
@@ -26,14 +26,13 @@ import {
 } from 'lucide-react'
 
 const navGroups = {
-	Workspace: [
+	Workspace: [],
+	Capabilities: [
 		{
 			href: '/',
 			label: 'Chat',
 			icon: <MessageSquare className="w-4 h-4" />,
-		}
-	],
-	Capabilities: [
+		},
 		{
 			href: '/agents',
 			label: 'Agents',
@@ -175,9 +174,11 @@ function HealthStatus() {
 	)
 }
 
-export default function Nav() {
+function NavContent() {
 	const pathname = usePathname()
-	const { toast, success, error } = useToast()
+	const searchParams = useSearchParams()
+	const activeProjectId = searchParams.get('id')
+	const { success, error } = useToast()
 
 	const [projects, setProjects] = useState<{ id: string, name: string }[]>([])
 	const [channels, setChannels] = useState<{ id: string, name: string, guildName: string, guildId: string }[]>([])
@@ -254,7 +255,11 @@ export default function Nav() {
 			<li key={item.href}>
 				<Link
 					href={item.href}
-					className={`${isActive ? 'bg-primary/10 text-primary font-medium' : 'text-base-content/70 hover:bg-base-300/50'} py-2 px-3 flex items-center gap-3 rounded-lg`}
+					onClick={() => {
+						const drawer = document.getElementById('nav-drawer') as HTMLInputElement
+						if (drawer) drawer.checked = false
+					}}
+					className={`${isActive ? 'bg-primary/10 text-primary font-medium' : 'text-base-content/70 hover:bg-base-300/50'} py-2 px-3 flex items-center gap-3 rounded-lg transition-colors`}
 				>
 					{item.icon}
 					<span className="text-sm">{item.label}</span>
@@ -283,13 +288,14 @@ export default function Nav() {
 						<details open>
 							<summary className="font-bold text-xs uppercase tracking-widest text-base-content/40 hover:text-base-content/60 py-2 group flex items-center justify-between">
 								<span>Workspace</span>
-								<button
-									className="btn btn-xs btn-ghost btn-circle scale-75 opacity-0 group-hover:opacity-100 transition-all hover:bg-base-300"
-									onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsModalOpen(true) }}
-									title="Create Project"
-								>
-									<Plus className="w-4 h-4" />
-								</button>
+								<div className="tooltip tooltip-left before:text-[10px] before:px-2 before:py-1" data-tip="Create New Project">
+									<button
+										className="btn btn-xs btn-ghost btn-circle scale-75 opacity-0 group-hover:opacity-100 transition-all hover:bg-base-300"
+										onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsModalOpen(true) }}
+									>
+										<Plus className="w-4 h-4" />
+									</button>
+								</div>
 							</summary>
 							<ul className="before:bg-base-300/50 mt-1 flex flex-col gap-1">
 								{navGroups.Workspace.map(renderItem)}
@@ -298,17 +304,24 @@ export default function Nav() {
 									<li className="mt-2">
 										<p className="px-3 text-[10px] font-bold text-base-content/30 uppercase tracking-tighter">Projects</p>
 										<ul className="mt-1 flex flex-col gap-0.5">
-											{projects.map(p => (
-												<li key={p.id}>
-													<Link
-														href={`/projects?id=${p.id}`}
-														className={`${pathname.includes(`/projects`) ? 'text-primary' : 'text-base-content/60'} py-1.5 px-3 text-xs flex items-center gap-2`}
-													>
-														<KanbanSquare className="w-3.5 h-3.5 opacity-50" />
-														<span className="truncate">{p.name}</span>
-													</Link>
-												</li>
-											))}
+											{projects.map(p => {
+												const isActive = activeProjectId === p.id && pathname.startsWith('/projects')
+												return (
+													<li key={p.id}>
+														<Link
+															href={`/projects?id=${p.id}`}
+															onClick={() => {
+																const drawer = document.getElementById('nav-drawer') as HTMLInputElement
+																if (drawer) drawer.checked = false
+															}}
+															className={`${isActive ? 'bg-primary/10 text-primary font-bold shadow-sm' : 'text-base-content/60 hover:text-base-content/80 hover:bg-base-300/30'} py-1.5 px-3 text-xs flex items-center gap-2 rounded-md transition-all`}
+														>
+															<KanbanSquare className={`w-3.5 h-3.5 ${isActive ? 'opacity-100' : 'opacity-40'}`} />
+															<span className="truncate">{p.name}</span>
+														</Link>
+													</li>
+												)
+											})}
 										</ul>
 									</li>
 								)}
@@ -316,7 +329,11 @@ export default function Nav() {
 								<li>
 									<Link
 										href="/projects"
-										className={`${pathname === '/projects' ? 'bg-primary/10 text-primary' : 'text-base-content/70'} py-2 px-3 text-sm flex items-center gap-3 rounded-lg mt-1 border border-base-300/30 border-dashed`}
+										onClick={() => {
+											const drawer = document.getElementById('nav-drawer') as HTMLInputElement
+											if (drawer) drawer.checked = false
+										}}
+										className={`${(pathname === '/projects' && !activeProjectId) ? 'bg-primary/10 text-primary font-bold' : 'text-base-content/70 hover:bg-base-300/50'} py-2 px-3 text-sm flex items-center gap-3 rounded-lg mt-1 border border-base-300/30 border-dashed transition-all`}
 									>
 										<Plus className="w-4 h-4" />
 										<span>All Projects</span>
@@ -420,5 +437,13 @@ export default function Nav() {
 			{/* Live Health Status Footer */}
 			<HealthStatus />
 		</aside>
+	)
+}
+
+export default function Nav() {
+	return (
+		<Suspense fallback={<div className="w-64 bg-base-200 animate-pulse" />}>
+			<NavContent />
+		</Suspense>
 	)
 }

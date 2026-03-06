@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.03.05.2] - 2026-03-05
+
+### Features
+- Enhance cron job management with improved target handling, project integration, and Discord bridge delivery.
+
 ## [v26.3.5.8] - 2026-03-05
 
 ### Bug Fixes

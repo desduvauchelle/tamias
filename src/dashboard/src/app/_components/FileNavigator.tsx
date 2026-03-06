@@ -118,7 +118,7 @@ function Column({
 
 	return (
 		<div
-			className={`flex flex-col w-56 shrink-0 border-r border-base-300 h-full ${isFocused ? 'bg-base-200' : 'bg-base-100'}`}
+			className={`flex flex-col ${columnRef ? 'w-56 shrink-0 border-r' : 'w-full'} border-base-300 h-full ${isFocused ? 'bg-base-200' : 'bg-base-100'}`}
 			onClick={onFocus}
 		>
 			{/* Column header */}
@@ -437,7 +437,7 @@ function FileModal({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function FileNavigator({ basePath = '', hideHeader = false }: { basePath?: string, hideHeader?: boolean }) {
+export default function FileNavigator({ basePath = '', hideHeader = false, viewMode = 'columns' }: { basePath?: string, hideHeader?: boolean, viewMode?: 'columns' | 'drilldown' }) {
 	// columns[i] = { path: string, selectedIndex: number }
 	const [columns, setColumns] = useState<{ path: string; selectedIndex: number }[]>([
 		{ path: '', selectedIndex: 0 }
@@ -469,14 +469,19 @@ export default function FileNavigator({ basePath = '', hideHeader = false }: { b
 
 	const openEntry = useCallback((colIndex: number, itemIndex: number, entry: FileEntry) => {
 		if (entry.isDirectory) {
-			// Add or replace next column
-			setColumns(prev => {
-				const next = prev.slice(0, colIndex + 1)
-				next[colIndex] = { ...next[colIndex], selectedIndex: itemIndex }
-				next.push({ path: entry.path, selectedIndex: 0 })
-				return next
-			})
-			setFocusedCol(colIndex + 1)
+			if (viewMode === 'drilldown') {
+				setColumns([{ path: entry.path, selectedIndex: 0 }])
+				setFocusedCol(0)
+			} else {
+				// Add or replace next column
+				setColumns(prev => {
+					const next = prev.slice(0, colIndex + 1)
+					next[colIndex] = { ...next[colIndex], selectedIndex: itemIndex }
+					next.push({ path: entry.path, selectedIndex: 0 })
+					return next
+				})
+				setFocusedCol(colIndex + 1)
+			}
 		} else {
 			// Open file modal
 			setColumns(prev => {
@@ -601,14 +606,29 @@ export default function FileNavigator({ basePath = '', hideHeader = false }: { b
 				</div>
 			)}
 
+			{viewMode === 'drilldown' && columns[0].path !== '' && (
+				<div className="px-3 py-2 border-b border-base-300 bg-base-200/50 shrink-0 flex items-center gap-2">
+					<button
+						className="btn btn-xs btn-ghost gap-1"
+						onClick={() => {
+							const parts = columns[0].path.split('/')
+							parts.pop()
+							const parentPath = parts.join('/')
+							setColumns([{ path: parentPath, selectedIndex: 0 }])
+							setFocusedCol(0)
+						}}
+					>
+						← Back
+					</button>
+					<span className="text-xs font-mono opacity-50">/{columns[0].path}</span>
+				</div>
+			)}
+
 			{/* Columns */}
 			<div
 				ref={containerRef}
 				className="flex-1 flex flex-row overflow-x-auto overflow-y-hidden"
 				tabIndex={-1}
-				onFocus={() => {
-					// focus capture on container doesn't steal from children
-				}}
 			>
 				{columns.map((col, colIndex) => (
 					<Column
@@ -617,7 +637,7 @@ export default function FileNavigator({ basePath = '', hideHeader = false }: { b
 						basePath={basePath}
 						selectedIndex={col.selectedIndex}
 						isFocused={colIndex === focusedCol}
-						columnRef={columnRefs.current[colIndex]}
+						columnRef={viewMode === 'columns' ? columnRefs.current[colIndex] : null as any}
 						onFocus={() => setFocusedCol(colIndex)}
 						onSelectIndex={(i, entry) => {
 							openEntry(colIndex, i, entry)
@@ -629,7 +649,7 @@ export default function FileNavigator({ basePath = '', hideHeader = false }: { b
 				))}
 
 				{/* Empty space filler */}
-				<div className="flex-1 min-w-[2rem] bg-base-100" />
+				{viewMode === 'columns' && <div className="flex-1 min-w-[2rem] bg-base-100" />}
 			</div>
 
 			{/* File modal */}

@@ -1,4 +1,3 @@
-import { pipeline, env } from '@xenova/transformers'
 import { WaveFile } from 'wavefile'
 import ffmpeg from 'fluent-ffmpeg'
 import ffmpegStatic from 'ffmpeg-static'
@@ -7,6 +6,21 @@ import { Readable } from 'stream'
 // Set ffmpeg path using the statically compiled binary
 if (ffmpegStatic) {
 	ffmpeg.setFfmpegPath(ffmpegStatic)
+}
+
+// Workaround: override process.release.name to prevent `@xenova/transformers` from
+// loading `onnxruntime-node`, which fails to find its dylib when compiled by Bun.
+const originalReleaseName = process.release?.name
+if (process.release) {
+	Object.defineProperty(process.release, 'name', { value: 'bun' })
+}
+
+// Ensure dynamic import happens while the override is active
+const { pipeline, env } = await import('@xenova/transformers')
+
+// Restore original release name
+if (process.release && originalReleaseName) {
+	Object.defineProperty(process.release, 'name', { value: originalReleaseName })
 }
 
 // Allow local models (it will cache them to node_modules/.cache by default)

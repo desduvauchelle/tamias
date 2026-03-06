@@ -511,7 +511,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.3.5.8)
+### Latest Version (v26.03.05.2)
 
-### Bug Fixes
-- enhance Discord bridge message delivery by implementing a fallback for missed 'start' events or empty queues.
+### Features
+- Enhance cron job management with improved target handling, project integration, and Discord bridge delivery.

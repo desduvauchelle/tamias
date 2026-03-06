@@ -432,8 +432,8 @@ function ProjectsContent() {
 											<button onClick={saveContextMarkdown} className="btn btn-primary btn-xs">Save</button>
 										</div>
 									) : (
-										<button onClick={() => { setEditedContext(contextMarkdown); setIsEditingContext(true) }} className="btn btn-ghost btn-xs gap-2">
-											<Edit className="w-3 h-3" /> Edit Context
+										<button onClick={() => { setEditedContext(contextMarkdown.startsWith('> Could not load') ? '' : contextMarkdown); setIsEditingContext(true) }} className="btn btn-ghost btn-xs gap-2">
+											<Edit className="w-3 h-3" /> {contextMarkdown.startsWith('> Could not load') ? 'Create Context' : 'Edit Context'}
 										</button>
 									)}
 								</div>

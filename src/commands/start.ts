@@ -759,6 +759,22 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				return json({ ok: true })
 			}
 
+			if (method === 'POST' && url.pathname === '/project-event') {
+				const body = await req.json() as any
+				if (body.type === 'kanban_changed') {
+					const { getProject, projectEvents } = await import('../core/projects.js')
+					const project = getProject(body.projectId)
+					if (project) {
+						projectEvents.emit('kanban_changed', {
+							project,
+							oldKanban: body.oldKanban,
+							newKanban: body.newKanban
+						})
+					}
+				}
+				return json({ ok: true })
+			}
+
 			if (method === 'DELETE' && url.pathname === '/daemon') {
 				await bridgeManager.destroyAll()
 				await aiService.shutdown()
