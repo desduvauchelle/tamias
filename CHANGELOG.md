@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+- introduce a new dashboard chat terminal and enhance AI project context with detailed kanban tasks and linked project information.
+
 ## [v26.03.05.4] - 2026-03-05
 
 ### Features
