@@ -9,8 +9,8 @@ const packagePaths = [
 
 const now = new Date()
 const yy = String(now.getFullYear()).slice(-2)
-const mm = String(now.getMonth() + 1) // no leading zero
-const dd = String(now.getDate()) // no leading zero
+const mm = String(now.getMonth() + 1).padStart(2, '0')
+const dd = String(now.getDate()).padStart(2, '0')
 const todayPrefix = `${yy}.${mm}.${dd}`
 
 // Read current version from root package.json

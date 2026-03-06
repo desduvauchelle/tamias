@@ -77,6 +77,8 @@ export class BridgeManager {
 		const bridge = this.activeBridges.get(channelId)
 		if (bridge) {
 			await bridge.handleDaemonEvent(event, sessionContext)
+		} else {
+			console.warn(`[Bridge Manager] dispatchEvent: no bridge found for channelId="${channelId}" (event=${event.type}). Active bridges: [${Array.from(this.activeBridges.keys()).join(', ')}]`)
 		}
 	}
 

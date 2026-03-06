@@ -9,7 +9,7 @@ const README_PATH = join(PROJECT_ROOT, 'README.md')
 
 function getTags(): string[] {
 	try {
-		return execSync('git tag -l --sort=-v:refname', { encoding: 'utf8' })
+		return execSync('git tag -l --sort=-creatordate', { encoding: 'utf8' })
 			.split('\n')
 			.filter(Boolean)
 	} catch (e) {

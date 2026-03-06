@@ -640,29 +640,65 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					const jobs = loadCronJobs()
 					const job = jobs.find(j => j.id === cronId)
 					if (!job) return json({ error: `Cron job '${cronId}' not found` }, 404)
-					const testJob = target ? { ...job, target } : job
 
-					// Execute the job inline (same logic the external cron runner uses)
-					const channelId = testJob.delivery
-						? `${testJob.delivery.platform}:${testJob.delivery.channelId}`
-						: (testJob.target && testJob.target !== 'last' ? testJob.target : undefined)
-					const channelUserId = testJob.sessionKey || `cron:${testJob.id}`
+					// Override target for testing
+					const testJob = { ...job }
+					if (target) {
+						testJob.target = target
+						if (target === 'last') {
+							testJob.delivery = undefined
+						} else if (target.includes(':')) {
+							const [platform, ...rest] = target.split(':')
+							testJob.delivery = { platform, channelId: rest.join(':') }
+						}
+					}
 
-					let session = channelId
-						? aiService.getSessionForBridge(channelId, channelUserId)
-						: undefined
+					// Build prompt
+					const promptStr = testJob.context ? `[Context]\n${testJob.context}\n\n${testJob.prompt}` : testJob.prompt
+					const promptBody = testJob.skills?.length ? `[Active Skills: ${testJob.skills.join(', ')}]\n${promptStr}` : promptStr
+
+					let session: Session | undefined
+					if (testJob.delivery) {
+						const { platform, platformAccountId, channelId: targetChannelId } = testJob.delivery
+						const bridge = bridgeManager.findBridgeByAccount(platform, platformAccountId)
+						if (bridge) {
+							const bridgeName = bridge.name
+							session = aiService.getSessionForBridge(bridgeName, targetChannelId)
+							if (!session) {
+								session = aiService.createSession({ channelId: bridgeName, channelUserId: targetChannelId })
+							}
+						}
+					}
+
 					if (!session) {
-						session = aiService.createSession({ channelId, channelUserId })
+						const parts = testJob.target && testJob.target !== 'last' ? testJob.target.split(':') : []
+						let channelId = parts[0] || 'terminal'
+						let channelUserId: string | undefined = parts[1]
+
+						if (!parts.length) {
+							const allSessions = aiService.getAllSessions()
+							const latest = [...allSessions].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]
+							if (latest) {
+								channelId = latest.channelId
+								channelUserId = latest.channelUserId
+							}
+						}
+
+						session = aiService.getSessionForBridge(channelId, channelUserId || '')
+						if (!session) {
+							session = aiService.createSession({ channelId, channelUserId: channelUserId || '' })
+						}
 					}
 
 					if (testJob.type === 'message') {
 						session.emitter.emit('event', { type: 'start', sessionId: session.id })
-						session.emitter.emit('event', { type: 'chunk', text: testJob.prompt })
+						session.emitter.emit('event', { type: 'chunk', text: promptBody })
 						session.emitter.emit('event', { type: 'done', sessionId: session.id })
 					} else {
-						const prompt = testJob.context ? `[Context]\n${testJob.context}\n\n${testJob.prompt}` : testJob.prompt
-						aiService.enqueueMessage(session.id, prompt, undefined, undefined, {
+						aiService.enqueueMessage(session.id, promptBody, undefined, undefined, {
 							source: 'from-cron',
+							skills: testJob.skills,
+							cronJobId: testJob.id
 						} as any).catch(err => console.error('[cron-test] Error:', err))
 					}
 

@@ -4,12 +4,22 @@ import { useState, useEffect } from "react"
 import { useToast } from "../_components/ToastProvider"
 import { KanbanSquare, FolderOpen, Settings, Plus, LayoutDashboard, ExternalLink, Link as LinkIcon, Edit, Check } from "lucide-react"
 
+interface KanbanComment {
+	id: string
+	author: string
+	text: string
+	createdAt: number
+}
+
 interface KanbanTask {
 	id: string
 	title: string
 	description?: string
+	details?: string
+	assignee?: string
 	status: string
 	createdAt: number
+	comments?: KanbanComment[]
 }
 
 interface Project {
@@ -40,6 +50,13 @@ export default function ProjectsPage() {
 	const [projectFiles, setProjectFiles] = useState<any[]>([])
 	const [currentPath, setCurrentPath] = useState<string>('')
 	const [channels, setChannels] = useState<DiscordChannel[]>([])
+
+	// Task Modal State
+	const [selectedTask, setSelectedTask] = useState<KanbanTask | null>(null)
+	const [modalDetails, setModalDetails] = useState("")
+	const [modalAssignee, setModalAssignee] = useState("")
+	const [modalStatus, setModalStatus] = useState("")
+	const [newComment, setNewComment] = useState("")
 
 	const { toast, success, error } = useToast()
 
@@ -223,11 +240,70 @@ export default function ProjectsPage() {
 				const updated = await res.json()
 				setActiveProject(updated)
 				setProjects(projects.map(p => p.id === updated.id ? updated : p))
+				return true
 			} else {
 				error("Failed to update kanban")
+				return false
 			}
 		} catch {
 			error("Error saving kanban")
+			return false
+		}
+	}
+
+	const openTaskModal = (task: KanbanTask) => {
+		setSelectedTask(task)
+		setModalDetails(task.details || "")
+		setModalAssignee(task.assignee || "")
+		setModalStatus(task.status)
+		setNewComment("")
+	}
+
+	const closeTaskModal = () => {
+		setSelectedTask(null)
+	}
+
+	const saveTaskDetails = async () => {
+		if (!selectedTask || !activeProject) return
+		const updatedTask = {
+			...selectedTask,
+			details: modalDetails,
+			assignee: modalAssignee,
+			status: modalStatus
+		}
+		const updatedKanban = (activeProject.kanban || []).map(t =>
+			t.id === selectedTask.id ? updatedTask : t
+		)
+		const ok = await updateKanban(updatedKanban)
+		if (ok) {
+			success("Task updated")
+			setSelectedTask(updatedTask)
+		}
+	}
+
+	const addComment = async (e: React.FormEvent) => {
+		e.preventDefault()
+		if (!selectedTask || !activeProject || !newComment.trim()) return
+
+		const comment: KanbanComment = {
+			id: Math.random().toString(36).substring(2, 9),
+			author: "User", // Hardcoded for dashboard for now
+			text: newComment,
+			createdAt: Date.now()
+		}
+
+		const updatedTask = {
+			...selectedTask,
+			comments: [...(selectedTask.comments || []), comment]
+		}
+
+		const updatedKanban = (activeProject.kanban || []).map(t =>
+			t.id === selectedTask.id ? updatedTask : t
+		)
+		const ok = await updateKanban(updatedKanban)
+		if (ok) {
+			setNewComment("")
+			setSelectedTask(updatedTask)
 		}
 	}
 
@@ -377,21 +453,40 @@ export default function ProjectsPage() {
 												</div>
 												<div className="p-3 flex-1 overflow-y-auto space-y-3">
 													{colTasks.map(task => (
-														<div key={task.id} className="bg-base-100 p-3 rounded-lg border border-base-300 shadow-sm group">
+														<div
+															key={task.id}
+															onClick={() => openTaskModal(task)}
+															className="bg-base-100 p-3 rounded-lg border border-base-300 shadow-sm group cursor-pointer hover:border-primary/50 transition-colors relative"
+														>
 															<div className="text-sm font-medium pr-6">{task.title}</div>
-															<div className="flex justify-between items-end mt-3">
+
+															{/* Badges */}
+															<div className="flex flex-wrap gap-2 mt-2">
+																{task.assignee && (
+																	<span className="text-[10px] px-2 py-0.5 bg-secondary/10 text-secondary rounded-full font-medium">
+																		{task.assignee}
+																	</span>
+																)}
+																{task.comments && task.comments.length > 0 && (
+																	<span className="text-[10px] px-1.5 py-0.5 bg-base-200 text-base-content/70 rounded flex items-center gap-1">
+																		💬 {task.comments.length}
+																	</span>
+																)}
+															</div>
+
+															<div className="flex justify-between items-end mt-3 relative z-10">
 																<div className="flex gap-1">
 																	{KANBAN_COLUMNS.map(targetCol => targetCol !== col && (
 																		<button
 																			key={targetCol}
-																			onClick={() => moveTask(task.id, targetCol)}
+																			onClick={(e) => { e.stopPropagation(); moveTask(task.id, targetCol) }}
 																			className="text-[10px] px-1.5 py-0.5 bg-base-200 hover:bg-primary/20 hover:text-primary rounded text-base-content/50 transition-colors"
 																		>
 																			{targetCol === 'done' ? '→ Done' : targetCol === 'todo' ? '← To Do' : '→ Doing'}
 																		</button>
 																	))}
 																</div>
-																<button onClick={() => removeTask(task.id)} className="text-error/50 hover:text-error opacity-0 group-hover:opacity-100 transition-opacity">
+																<button onClick={(e) => { e.stopPropagation(); removeTask(task.id) }} className="text-error/50 hover:text-error opacity-0 group-hover:opacity-100 transition-opacity">
 																	<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
 																</button>
 															</div>
@@ -485,6 +580,102 @@ export default function ProjectsPage() {
 					</div>
 				)}
 			</div>
+
+			{/* Task Detail Modal */}
+			{selectedTask && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+					<div className="bg-base-100 w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-base-300">
+						{/* Header */}
+						<div className="px-6 py-4 border-b border-base-200 flex justify-between items-center bg-base-200/50">
+							<h3 className="font-bold text-lg">{selectedTask.title}</h3>
+							<button onClick={closeTaskModal} className="btn btn-sm btn-ghost btn-circle">✕</button>
+						</div>
+
+						{/* Body */}
+						<div className="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-6">
+							{/* Left Col: Details & Comments */}
+							<div className="flex-1 flex flex-col gap-6">
+								<div className="form-control">
+									<label className="label pt-0"><span className="label-text font-semibold">Details</span></label>
+									<textarea
+										className="textarea textarea-bordered h-32 w-full resize-y font-mono text-sm leading-relaxed"
+										placeholder="Add markdown details, task description, acceptance criteria..."
+										value={modalDetails}
+										onChange={e => setModalDetails(e.target.value)}
+									></textarea>
+								</div>
+
+								<div className="flex justify-end">
+									<button onClick={saveTaskDetails} className="btn btn-sm btn-primary">Save Details</button>
+								</div>
+
+								<div className="divider my-0">Comments</div>
+
+								<div className="flex flex-col gap-4">
+									{selectedTask.comments?.map(c => (
+										<div key={c.id} className="bg-base-200/50 p-3 rounded-xl border border-base-300">
+											<div className="flex items-center justify-between mb-1">
+												<span className="font-bold text-sm text-primary">{c.author}</span>
+												<span className="text-xs opacity-50">{new Date(c.createdAt).toLocaleString()}</span>
+											</div>
+											<div className="text-sm whitespace-pre-wrap">{c.text}</div>
+										</div>
+									))}
+									{(!selectedTask.comments || selectedTask.comments.length === 0) && (
+										<div className="text-center opacity-50 text-sm py-4">No comments yet.</div>
+									)}
+
+									<form onSubmit={addComment} className="mt-2 flex gap-2">
+										<input
+											type="text"
+											className="input input-bordered input-sm flex-1"
+											placeholder="Write a comment..."
+											value={newComment}
+											onChange={e => setNewComment(e.target.value)}
+										/>
+										<button type="submit" className="btn btn-sm btn-primary">Send</button>
+									</form>
+								</div>
+							</div>
+
+							{/* Right Col: Metadata */}
+							<div className="w-full md:w-64 flex flex-col gap-4 shrink-0">
+								<div className="form-control">
+									<label className="label pt-0"><span className="label-text font-semibold">Status</span></label>
+									<select
+										className="select select-bordered select-sm w-full"
+										value={modalStatus}
+										onChange={e => setModalStatus(e.target.value)}
+									>
+										{KANBAN_COLUMNS.map(col => (
+											<option key={col} value={col}>{col.replace('-', ' ')}</option>
+										))}
+									</select>
+								</div>
+
+								<div className="form-control">
+									<label className="label pt-0"><span className="label-text font-semibold">Assignee</span></label>
+									<input
+										type="text"
+										className="input input-bordered input-sm w-full"
+										placeholder="e.g. AI or User"
+										value={modalAssignee}
+										onChange={e => setModalAssignee(e.target.value)}
+									/>
+									<div className="flex gap-2 mt-2">
+										<button onClick={() => setModalAssignee('AI')} className="badge badge-outline hover:bg-primary hover:text-primary-content cursor-pointer transition-colors">AI</button>
+										<button onClick={() => setModalAssignee('User')} className="badge badge-outline hover:bg-primary hover:text-primary-content cursor-pointer transition-colors">User</button>
+									</div>
+								</div>
+
+								<div className="text-xs opacity-50 mt-auto pt-4 border-t border-base-200">
+									Created: {new Date(selectedTask.createdAt).toLocaleString()}
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	)
 }

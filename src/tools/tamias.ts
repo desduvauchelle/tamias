@@ -307,27 +307,20 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 					bridges.terminal = { ...bridges.terminal, enabled }
 				} else if (platform === 'discord') {
 					if (!bridges.discords) bridges.discords = {}
+					const prevDiscord = bridges.discords.default ?? {}
 					bridges.discords.default = {
+						...prevDiscord,  // preserve envKeyName and all existing settings
 						enabled,
-						allowedChannels: allowedIds ?? bridges.discords.default?.allowedChannels,
+						...(allowedIds !== undefined ? { allowedChannels: allowedIds } : {}),
 					}
-					// Note: botToken was historically set here. But it is passed to setEnv,
-					// configure_channel should perhaps handle generating Env keys if needed.
-					// For now we just omit it, because the prompt logic relies on `envKeyName`
-					// or calling `setupChannel`. If the user passed `botToken`, we don't handle
-					// it transparently here without `envKeyName` generation.
-					// We'll leave `envKeyName` intact if already present.
-					const existing = bridges.discords.default?.envKeyName
-					if (existing) bridges.discords.default.envKeyName = existing
-
 				} else if (platform === 'telegram') {
 					if (!bridges.telegrams) bridges.telegrams = {}
+					const prevTelegram = bridges.telegrams.default ?? {}
 					bridges.telegrams.default = {
+						...prevTelegram,  // preserve envKeyName and all existing settings
 						enabled,
-						allowedChats: allowedIds ?? bridges.telegrams.default?.allowedChats,
+						...(allowedIds !== undefined ? { allowedChats: allowedIds } : {}),
 					}
-					const existing = bridges.telegrams.default?.envKeyName
-					if (existing) bridges.telegrams.default.envKeyName = existing
 				}
 
 				setBridgesConfig(bridges)

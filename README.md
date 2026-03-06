@@ -511,7 +511,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v2026.2.23.5)
+### Latest Version (v26.3.5.8)
 
-### Features
-- enhance email tool with auto-provisioning for Himalaya accounts, improve Discord message handling, and update CLI command structure
+### Bug Fixes
+- enhance Discord bridge message delivery by implementing a fallback for missed 'start' events or empty queues.

@@ -2,12 +2,22 @@ import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { TAMIAS_DIR } from '../utils/config'
 
+export interface KanbanComment {
+	id: string
+	author: string
+	text: string
+	createdAt: number
+}
+
 export interface KanbanTask {
 	id: string
 	title: string
 	description?: string
+	details?: string
+	assignee?: string
 	status: 'todo' | 'in-progress' | 'done' | string
 	createdAt: number
+	comments?: KanbanComment[]
 }
 
 export interface ProjectConfig {

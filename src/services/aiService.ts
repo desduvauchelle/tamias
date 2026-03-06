@@ -405,8 +405,7 @@ export class AIService {
 		const buffer: string[] = []
 		session.emitter.on('event', (evt: DaemonEvent) => {
 			if (evt.type === 'start') {
-				// Forward start so the bridge (e.g. Discord) can pop the queued user
-				// message and set up currentMessage before any chunks arrive.
+				console.log(`[AIService] Dispatching 'start' event → channelId=${session.channelId} channelUserId=${session.channelUserId}`)
 				this.bridgeManager.dispatchEvent(session.channelId, evt, session).catch(console.error)
 				return
 			}
@@ -415,6 +414,7 @@ export class AIService {
 				return
 			}
 			if (evt.type === 'done') {
+				console.log(`[AIService] Dispatching 'done' event → channelId=${session.channelId} suppressed=${(evt as any).suppressed} bufferLen=${buffer.length}`)
 				if (!evt.suppressed) {
 					// Flush buffer
 					for (const chunk of buffer) {
@@ -536,6 +536,7 @@ export class AIService {
 	private async processSession(session: Session) {
 		if (session.processing || session.queue.length === 0) return
 		session.processing = true
+		console.log(`[AIService] processSession: id=${session.id} channelId=${session.channelId} channelUserId=${session.channelUserId} queueLen=${session.queue.length}`)
 
 		const job = session.queue.shift()!
 		let messageContent = job.authorName ? `[${job.authorName}]: ${job.content}` : job.content
@@ -697,14 +698,28 @@ export class AIService {
 					try {
 						const { getProjectByDiscordChannel } = await import('../core/projects')
 						const linkedProject = getProjectByDiscordChannel(session.channelId)
-						if (linkedProject && linkedProject.contextFile) {
-							const { join } = await import('path')
-							const { existsSync, readFileSync } = await import('fs')
-							const ctxPath = join(linkedProject.path, linkedProject.contextFile)
-							if (existsSync(ctxPath)) {
-								const content = readFileSync(ctxPath, 'utf-8')
-								parts.push(`## Linked Project Context (${linkedProject.name})\n${linkedProject.description ? `**Description**: ${linkedProject.description}\n` : ''}\n### Context File: ${linkedProject.contextFile}\n\`\`\`\n${content}\n\`\`\``)
+						if (linkedProject) {
+							let projText = `## Linked Project Context (${linkedProject.name})\n`
+							if (linkedProject.description) projText += `**Description**: ${linkedProject.description}\n`
+
+							if (linkedProject.kanban && linkedProject.kanban.length > 0) {
+								const activeTasks = linkedProject.kanban.filter(t => t.status !== 'done')
+								if (activeTasks.length > 0) {
+									projText += `\n### Active Kanban Tasks:\n${activeTasks.map(t => `- [${t.status}] ${t.title} | Assignee: ${t.assignee || 'None'} | ID: ${t.id}`).join('\n')}\n`
+								}
 							}
+
+							if (linkedProject.contextFile) {
+								const { join } = await import('path')
+								const { existsSync, readFileSync } = await import('fs')
+								const ctxPath = join(linkedProject.path, linkedProject.contextFile)
+								if (existsSync(ctxPath)) {
+									const content = readFileSync(ctxPath, 'utf-8')
+									projText += `\n### Context File: ${linkedProject.contextFile}\n\`\`\`\n${content}\n\`\`\``
+								}
+							}
+
+							parts.push(projText)
 						}
 					} catch (e) {
 						console.error('[AIService] Failed to load discord project context', e)

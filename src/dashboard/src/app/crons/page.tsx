@@ -52,7 +52,7 @@ function normalizeTargetLabel(job: CronJob, options: CronTargetOption[]) {
 	// Prefer delivery.channelName if available
 	if (job.delivery?.channelName) return `${job.delivery.platform} #${job.delivery.channelName}`
 	if (job.delivery) return `${job.delivery.platform} channel ${job.delivery.channelId}`
-	if (target === 'last') return 'Last active session'
+	if (target === 'last') return 'Last used UI session (Fallback)'
 	const match = options.find(option => option.target === target)
 	if (match) return match.label
 	if (target.startsWith('discord:')) {
@@ -203,7 +203,7 @@ function CronEditModal({
 	const [customTarget, setCustomTarget] = useState('')
 
 	const targetChoices = useMemo(() => {
-		const base: CronTargetOption[] = [{ target: 'last', label: 'Last active session', platform: 'system', source: 'builtin' }]
+		const base: CronTargetOption[] = [{ target: 'last', label: 'Last used UI session (Fallback)', platform: 'system', source: 'builtin' }]
 		for (const option of targetOptions) {
 			if (!base.find(b => b.target === option.target)) {
 				base.push(option)
@@ -235,7 +235,24 @@ function CronEditModal({
 				<div className="flex gap-3 justify-end">
 					<button onClick={onClose} className="btn btn-sm btn-ghost">Cancel</button>
 					<button
-						onClick={() => onSave({ ...draft, target: effectiveTarget })}
+						onClick={() => {
+							const payload = { ...draft, target: effectiveTarget }
+							if (effectiveTarget === 'last') {
+								delete payload.delivery
+							} else if (effectiveTarget.includes(':')) {
+								const [platform, ...rest] = effectiveTarget.split(':')
+								payload.delivery = {
+									platform,
+									channelId: rest.join(':')
+								}
+								// try to infer channelName if it exists in targetOptions
+								const opt = targetOptions.find(o => o.target === effectiveTarget)
+								if (opt && opt.label.includes('#')) {
+									payload.delivery.channelName = opt.label.split('#')[1].trim()
+								}
+							}
+							onSave(payload)
+						}}
 						className="btn btn-sm btn-primary"
 					>
 						Save

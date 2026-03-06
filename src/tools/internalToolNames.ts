@@ -25,6 +25,7 @@ export const INTERNAL_TOOL_NAMES = [
 	'swarm',
 	'skills',
 	'websearch',
+	'projects',
 ] as const
 
 export type InternalToolName = (typeof INTERNAL_TOOL_NAMES)[number]
