@@ -511,7 +511,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.03.05.3)
+### Latest Version (v26.03.05.4)
 
 ### Features
-- enhance project kanban with task reactions and an 'awaiting-review' status, and improve navigation with grouped links and dynamic project listing.
+- Implement daemon IPC for project events, enhance file content API with directory creation, fix Bun compatibility for transcription, and improve dashboard navigation.

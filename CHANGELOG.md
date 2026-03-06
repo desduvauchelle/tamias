@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.03.05.4] - 2026-03-05
+
+### Features
+- Implement daemon IPC for project events, enhance file content API with directory creation, fix Bun compatibility for transcription, and improve dashboard navigation.
+
 ## [v26.03.05.3] - 2026-03-05
 
 ### Features
