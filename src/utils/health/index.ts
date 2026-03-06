@@ -437,7 +437,7 @@ async function checkTools(autoFix?: boolean): Promise<HealthResult[]> {
 		const installed = existsSync(PLAYWRIGHT_LOCAL_PATH)
 		if (installed) {
 			results.push({ id: 'tools.browser', status: 'ok', message: 'playwright installed (local)' })
-		} else if (autoFix) {
+		} else if (autoFix && process.env.NODE_ENV !== 'test') {
 			// Auto-install playwright into ~/.tamias/node_modules
 			try {
 				console.log('[Daemon] playwright not found — auto-installing Chromium (~150 MB)...')
