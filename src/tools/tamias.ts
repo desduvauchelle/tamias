@@ -269,15 +269,15 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 				}
 				return {
 					terminal: { enabled: bridges.terminal?.enabled !== false },
-					discord: bridges.discord
-						? { enabled: bridges.discord.enabled, hasToken: !!bridges.discord.botToken, allowedChannels: bridges.discord.allowedChannels }
+					discord: bridges.discords?.default
+						? { enabled: bridges.discords.default.enabled, hasToken: !!bridges.discords.default.envKeyName, allowedChannels: bridges.discords.default.allowedChannels }
 						: {
 							enabled: false,
 							hasToken: false,
 							setupInstructions: "1. Go to https://discord.com/developers/applications\n2. Create or select your application\n3. Go to the 'Bot' tab\n4. Click 'Reset Token' to copy your bot token. Then use configure_channel to save it."
 						},
-					telegram: bridges.telegram
-						? { enabled: bridges.telegram.enabled, hasToken: !!bridges.telegram.botToken, allowedChats: bridges.telegram.allowedChats }
+					telegram: bridges.telegrams?.default
+						? { enabled: bridges.telegrams.default.enabled, hasToken: !!bridges.telegrams.default.envKeyName, allowedChats: bridges.telegrams.default.allowedChats }
 						: {
 							enabled: false,
 							hasToken: false,
@@ -306,17 +306,28 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 				if (platform === 'terminal') {
 					bridges.terminal = { ...bridges.terminal, enabled }
 				} else if (platform === 'discord') {
-					bridges.discord = {
+					if (!bridges.discords) bridges.discords = {}
+					bridges.discords.default = {
 						enabled,
-						botToken: botToken ?? bridges.discord?.botToken,
-						allowedChannels: allowedIds ?? bridges.discord?.allowedChannels,
+						allowedChannels: allowedIds ?? bridges.discords.default?.allowedChannels,
 					}
+					// Note: botToken was historically set here. But it is passed to setEnv,
+					// configure_channel should perhaps handle generating Env keys if needed.
+					// For now we just omit it, because the prompt logic relies on `envKeyName`
+					// or calling `setupChannel`. If the user passed `botToken`, we don't handle
+					// it transparently here without `envKeyName` generation.
+					// We'll leave `envKeyName` intact if already present.
+					const existing = bridges.discords.default?.envKeyName
+					if (existing) bridges.discords.default.envKeyName = existing
+
 				} else if (platform === 'telegram') {
-					bridges.telegram = {
+					if (!bridges.telegrams) bridges.telegrams = {}
+					bridges.telegrams.default = {
 						enabled,
-						botToken: botToken ?? bridges.telegram?.botToken,
-						allowedChats: allowedIds ?? bridges.telegram?.allowedChats,
+						allowedChats: allowedIds ?? bridges.telegrams.default?.allowedChats,
 					}
+					const existing = bridges.telegrams.default?.envKeyName
+					if (existing) bridges.telegrams.default.envKeyName = existing
 				}
 
 				setBridgesConfig(bridges)

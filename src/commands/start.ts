@@ -8,9 +8,7 @@ import { autoUpdateDaemon } from '../utils/update.ts'
 import { VERSION } from '../utils/version.ts'
 import { AIService, type Session } from '../services/aiService.ts'
 import { BridgeManager } from '../bridge/index.ts'
-import { CronManager } from '../bridge/cronManager.ts'
 import { watchSkills } from '../utils/skills.ts'
-import type { CronJob } from '../utils/cronStore.ts'
 import { loadCronJobs, recordCronJobRun } from '../utils/cronStore.ts'
 import { scaffoldFromTemplates } from '../utils/memory.ts'
 import { loadAgents } from '../utils/agentsStore.ts'
@@ -150,7 +148,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	const dashboardDir = candidatePaths.find((p) => fs.existsSync(p)) ?? ''
 
 	const dashboardLogPath = join(homedir(), '.tamias', 'dashboard.log')
-	const dashboardLogFile = Bun.file(dashboardLogPath)
+	const dashboardLogFd = fs.openSync(dashboardLogPath, 'a')
 
 	if (!dashboardDir) {
 		const installPath = join(homedir(), '.tamias', 'src', 'dashboard')
@@ -204,16 +202,16 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 		// Standalone server: bun <path/server.js> — no package.json scripts needed
 		dashboardProc = Bun.spawn([bunPath, standaloneServer], {
 			cwd: join(dashboardDir, '.next', 'standalone', 'src', 'dashboard'),
-			stdout: dashboardLogFile,
-			stderr: dashboardLogFile,
+			stdout: dashboardLogFd,
+			stderr: dashboardLogFd,
 			env: { ...process.env, PORT: dashboardPort.toString(), HOSTNAME: '0.0.0.0', TAMIAS_DASHBOARD_TOKEN: dashboardToken },
 		})
 	} else {
 		const dashboardScript = isDev ? 'dev' : 'start'
 		dashboardProc = Bun.spawn([bunPath, 'run', dashboardScript, '-p', dashboardPort.toString()], {
 			cwd: dashboardDir,
-			stdout: dashboardLogFile,
-			stderr: dashboardLogFile,
+			stdout: dashboardLogFd,
+			stderr: dashboardLogFd,
 			env: { ...process.env, TAMIAS_DASHBOARD_TOKEN: dashboardToken }
 		})
 	}
@@ -291,110 +289,23 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	// Ensure memory files (HEARTBEAT.md, AGENTS.md, etc.) exist before cron starts
 	scaffoldFromTemplates()
 
-	// Cron setup
-	const onCronTrigger = async (job: CronJob) => {
-		const now = new Date().toISOString()
-		console.log(`[Cron] ${now} Triggering job: "${job.name}" (id=${job.id}, type=${job.type ?? 'ai'})`)
-		let session: Session | undefined
-		let runStatus: 'success' | 'error' = 'success'
-		let runError: string | undefined
-
-		try {
-			if (job.delivery) {
-				// ── Stable-ID delivery (preferred) ─────────────────────────────────
-				// Resolves bridge at runtime via platform + platformAccountId so the
-				// job survives config key renames and bot account changes.
-				const { platform, platformAccountId, channelId: targetChannelId, channelName } = job.delivery
-				const bridge = bridgeManager.findBridgeByAccount(platform, platformAccountId)
-				if (!bridge) {
-					const activeNames = bridgeManager.getActiveChannelIds()
-					console.error(
-						`[Cron] ${now} No active bridge for platform="${platform}" accountId="${platformAccountId ?? 'any'}". ` +
-						`Active: [${activeNames.join(', ') || 'NONE'}]. Skipping job "${job.name}".`
-					)
-					throw new Error(`No active bridge for platform "${platform}" — skipping cron job "${job.name}"`)
-				}
-				const bridgeName = bridge.name // resolved at runtime — survives key renames
-				session = aiService.getSessionForBridge(bridgeName, targetChannelId)
-				if (!session) {
-					console.log(`[Cron] ${now} No existing session for bridge "${bridgeName}" — creating new session`)
-					session = aiService.createSession({ channelId: bridgeName, channelUserId: targetChannelId, channelName })
-				} else {
-					console.log(`[Cron] ${now} Found existing session: ${session.id} (channelId=${session.channelId})`)
-				}
-			} else if (job.target === 'last') {
-				// ── Legacy: most-recently-active session ───────────────────────────
-				const allSessions = aiService.getAllSessions()
-				console.log(`[Cron] ${now} target=last — ${allSessions.length} session(s) available`)
-				session = allSessions.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]
-				if (session) {
-					console.log(`[Cron] ${now} Using last session: ${session.id} (channelId=${session.channelId}, updatedAt=${session.updatedAt.toISOString()})`)
-				} else {
-					console.log(`[Cron] ${now} No existing sessions found — will create a new one`)
-				}
-			} else if (job.target?.includes(':')) {
-				// ── Legacy: "platform:channelId" string ────────────────────────────
-				// DEPRECATED — migrateLegacyTarget() converts these to delivery on load.
-				// This branch only runs if migration was somehow bypassed.
-				const colonIdx = job.target.indexOf(':')
-				const platform = job.target.slice(0, colonIdx)
-				const targetChannelId = job.target.slice(colonIdx + 1) || undefined
-				// Attempt to find a registered bridge whose name starts with the platform prefix.
-				const activeNames = bridgeManager.getActiveChannelIds()
-				const matchedBridge = activeNames.find(n => n.startsWith(`${platform}:`)) ?? platform
-				console.warn(
-					`[Cron] ${now} Legacy target format "${job.target}" — resolved bridge name to "${matchedBridge}". ` +
-					`Update this job to use the delivery field instead.`
-				)
-				session = aiService.getSessionForBridge(matchedBridge, targetChannelId ?? '')
-				if (!session) {
-					console.log(`[Cron] ${now} No existing session — creating new session for bridge "${matchedBridge}"`)
-					session = aiService.createSession({ channelId: matchedBridge, channelUserId: targetChannelId })
-				} else {
-					console.log(`[Cron] ${now} Found existing session: ${session.id}`)
-				}
-			} else {
-				console.log(`[Cron] ${now} Unrecognised target format: "${job.target}" — creating bare session`)
-			}
-
-			if (!session) {
-				session = aiService.createSession({})
-				console.log(`[Cron] ${now} Created bare session: ${session.id}`)
-			}
-
-			if (job.type === 'message') {
-				// Send the prompt text directly to the channel — no AI involved
-				console.log(`[Cron] ${now} Sending direct message to session ${session.id}: "${job.prompt.slice(0, 80)}..."`)
-				session.emitter.emit('event', { type: 'start', sessionId: session.id })
-				session.emitter.emit('event', { type: 'chunk', text: job.prompt })
-				session.emitter.emit('event', { type: 'done', sessionId: session.id })
-				console.log(`[Cron] ${now} Direct message emitted for job "${job.name}"`)
-			} else {
-				// AI path — send prompt to AI, deliver generated response to channel
-				console.log(`[Cron] ${now} Enqueuing AI prompt for session ${session.id}: "${job.prompt.slice(0, 80)}..."`)
-				await aiService.enqueueMessage(session.id, job.prompt, undefined, undefined, { source: 'from-cron' })
-				console.log(`[Cron] ${now} AI prompt enqueued successfully for job "${job.name}"`)
-			}
-		} catch (err) {
-			runStatus = 'error'
-			runError = err instanceof Error ? err.message : String(err)
-			console.error(`[Cron] ${now} ERROR executing job "${job.name}" (id=${job.id}):`, err)
-		} finally {
-			try {
-				recordCronJobRun(job.id, { status: runStatus, error: runError })
-			} catch (err) {
-				console.warn(`[Cron] ${now} Could not persist run result for job ${job.id}:`, err)
-			}
-		}
-	}
-	const cronManager = new CronManager(onCronTrigger)
-	cronManager.start()
+	// Cron is now managed externally via system crontab (`tamias cron install`)
+	// The `tamias cron run` command handles scheduling checks and job execution.
+	console.log(`[Daemon] Cron scheduling is managed by system crontab. Run \`tamias cron install\` to enable.`)
 
 	const onBridgeMessage = async (msg: BridgeMessage): Promise<boolean> => {
 		console.log(`[Bridge] Message from ${msg.channelId}:${msg.channelUserId} (${msg.channelName}) - "${msg.content.slice(0, 80)}"`)
 
 		// Built-in diagnostic command — works regardless of AI config
 		const trimmed = msg.content.trim().toLowerCase()
+
+		// !ping — tests the full channel response path without going through AI
+		if (trimmed === '!ping') {
+			console.log(`[Bridge] !ping received from ${msg.channelId}:${msg.channelUserId} — sending pong`)
+			await bridgeManager.broadcastToChannel(msg.channelId, `🏓 pong! v${VERSION} — channel response path is working.`, msg.channelUserId).catch(console.error)
+			return false
+		}
+
 		if (trimmed === '!diag' || trimmed === '!version') {
 			const diagConfig = loadConfig()
 			const connNames = Object.keys(diagConfig.connections)
@@ -405,7 +316,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				`Connections: ${connNames.length > 0 ? connNames.join(', ') : 'NONE'}`,
 				`Default models: ${diagConfig.defaultModels?.join(', ') || 'not set'}`,
 			].join('\n')
-			await bridgeManager.broadcastToChannel(msg.channelId, diagMsg).catch(console.error)
+			await bridgeManager.broadcastToChannel(msg.channelId, diagMsg, msg.channelUserId).catch(console.error)
 			return false // Returning false tells the bridge NOT to queue this message for AI (avoids desync)
 		}
 
@@ -414,7 +325,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			// Only show sessions that are actively running (completed ones are cleaned up automatically)
 			const subagents = allSessions.filter(s => s.isSubagent && s.subagentStatus !== 'completed' && s.subagentStatus !== 'failed')
 			if (subagents.length === 0) {
-				await bridgeManager.broadcastToChannel(msg.channelId, '🧠 No sub-agents currently running.').catch(console.error)
+				await bridgeManager.broadcastToChannel(msg.channelId, '🧠 No sub-agents currently running.', msg.channelUserId).catch(console.error)
 			} else {
 				const lines = ['🧠 **Active Sub-agents**']
 				for (const sub of subagents) {
@@ -429,7 +340,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					const taskDisplay = sub.task ? (sub.task.split('\n')[0].slice(0, 80) + (sub.task.length > 80 ? '…' : '')) : 'unknown'
 					lines.push(`${statusIcon} \`${sub.id}\`${elapsed}\n  Task: ${taskDisplay}${progressLine}`)
 				}
-				await bridgeManager.broadcastToChannel(msg.channelId, lines.join('\n\n')).catch(console.error)
+				await bridgeManager.broadcastToChannel(msg.channelId, lines.join('\n\n'), msg.channelUserId).catch(console.error)
 			}
 			return false
 		}
@@ -730,7 +641,32 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					const job = jobs.find(j => j.id === cronId)
 					if (!job) return json({ error: `Cron job '${cronId}' not found` }, 404)
 					const testJob = target ? { ...job, target } : job
-					onCronTrigger(testJob).catch(err => console.error('[cron-test] Error:', err))
+
+					// Execute the job inline (same logic the external cron runner uses)
+					const channelId = testJob.delivery
+						? `${testJob.delivery.platform}:${testJob.delivery.channelId}`
+						: (testJob.target && testJob.target !== 'last' ? testJob.target : undefined)
+					const channelUserId = testJob.sessionKey || `cron:${testJob.id}`
+
+					let session = channelId
+						? aiService.getSessionForBridge(channelId, channelUserId)
+						: undefined
+					if (!session) {
+						session = aiService.createSession({ channelId, channelUserId })
+					}
+
+					if (testJob.type === 'message') {
+						session.emitter.emit('event', { type: 'start', sessionId: session.id })
+						session.emitter.emit('event', { type: 'chunk', text: testJob.prompt })
+						session.emitter.emit('event', { type: 'done', sessionId: session.id })
+					} else {
+						const prompt = testJob.context ? `[Context]\n${testJob.context}\n\n${testJob.prompt}` : testJob.prompt
+						aiService.enqueueMessage(session.id, prompt, undefined, undefined, {
+							source: 'from-cron',
+						} as any).catch(err => console.error('[cron-test] Error:', err))
+					}
+
+					recordCronJobRun(testJob.id, { status: 'success' })
 					return json({ ok: true, jobName: job.name, target: testJob.target })
 				} catch (err) {
 					return json({ error: String(err) }, 500)
@@ -763,6 +699,15 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				}
 			}
 
+			if (method === 'GET' && url.pathname === '/discord-channels') {
+				try {
+					const channels = await bridgeManager.getAllDiscordChannels()
+					return json({ channels })
+				} catch (err) {
+					return json({ error: String(err), channels: [] }, 500)
+				}
+			}
+
 			if (method === 'POST' && url.pathname === '/message') {
 				const body = await req.json() as any
 				let attachments: BridgeMessage['attachments'] | undefined
@@ -781,7 +726,6 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			if (method === 'DELETE' && url.pathname === '/daemon') {
 				await bridgeManager.destroyAll()
 				await aiService.shutdown()
-				cronManager.stop()
 				if (dashboardProc) {
 					try { dashboardProc.kill() } catch { /* ignore */ }
 				}

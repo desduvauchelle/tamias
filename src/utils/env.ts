@@ -1,7 +1,7 @@
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, chmodSync } from 'fs'
 import { randomBytes } from 'crypto'
-import { TAMIAS_DIR } from './config.ts'
+import { TAMIAS_DIR } from './config'
 
 const getEnvFilePath = () => join(TAMIAS_DIR, '.env')
 

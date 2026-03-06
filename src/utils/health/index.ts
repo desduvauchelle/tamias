@@ -8,9 +8,13 @@
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
+import { homedir } from 'os'
 import { TAMIAS_DIR } from '../config.ts'
 import { loadConfig, getApiKeyForConnection, getDefaultModels, getAllModelOptions } from '../config.ts'
 import { readEnvFile } from '../env.ts'
+
+const PLAYWRIGHT_LOCAL_PATH = join(TAMIAS_DIR, 'node_modules', 'playwright')
+const PLAYWRIGHT_LOCAL_BIN = join(TAMIAS_DIR, 'node_modules', '.bin', 'playwright')
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,7 +46,7 @@ export async function runHealthChecks(opts: { autoFix?: boolean; silent?: boolea
 	results.push(...checkProviders())
 	results.push(...checkDefaultModels())
 	results.push(...checkChannels())
-	results.push(...checkTools())
+	results.push(...await checkTools(opts.autoFix))
 
 	const hasErrors = results.some(r => r.status === 'error')
 	const hasWarnings = results.some(r => r.status === 'warn')
@@ -406,46 +410,83 @@ function checkChannels(): HealthResult[] {
 
 // ─── Tool Dependency Checks ──────────────────────────────────────────────────
 
-function checkTools(): HealthResult[] {
+async function checkTools(autoFix?: boolean): Promise<HealthResult[]> {
 	const results: HealthResult[] = []
 	let config: any
 	try { config = loadConfig() } catch { return results }
 
-	// Check tool-specific dependencies
-	const toolDeps: Array<{ tool: string; binary: string; installCmd: string }> = [
-		{ tool: 'email', binary: 'himalaya', installCmd: 'brew install himalaya' },
-		{ tool: 'browser', binary: 'playwright', installCmd: 'bunx playwright install' },
-		{ tool: 'github', binary: 'git', installCmd: 'xcode-select --install' },
-	]
-
-	for (const dep of toolDeps) {
-		const toolConfig = config.internalTools?.[dep.tool]
-
-		// Only check if tool is enabled
-		if (toolConfig && !toolConfig.enabled) continue
-
+	// ── Email (himalaya) ────────────────────────────────────────────────
+	const emailConfig = config.internalTools?.email
+	if (!emailConfig || emailConfig.enabled !== false) {
 		try {
-			const which = Bun.which(dep.binary)
-			if (which) {
+			const which = Bun.which('himalaya')
+			results.push({
+				id: 'tools.email',
+				status: which ? 'ok' : 'warn',
+				message: which ? `himalaya found at ${which}` : 'himalaya not found',
+				instructions: which ? undefined : 'Install: brew install himalaya\n  → Or disable the email tool: tamias tools disable email',
+			})
+		} catch {
+			results.push({ id: 'tools.email', status: 'warn', message: 'Could not check for himalaya' })
+		}
+	}
+
+	// ── Browser (playwright) — checked locally, auto-installed if needed ─
+	const browserConfig = config.internalTools?.browser
+	if (!browserConfig || browserConfig.enabled !== false) {
+		const installed = existsSync(PLAYWRIGHT_LOCAL_PATH)
+		if (installed) {
+			results.push({ id: 'tools.browser', status: 'ok', message: 'playwright installed (local)' })
+		} else if (autoFix) {
+			// Auto-install playwright into ~/.tamias/node_modules
+			try {
+				console.log('[Daemon] playwright not found — auto-installing Chromium (~150 MB)...')
+				const pkgJson = join(TAMIAS_DIR, 'package.json')
+				if (!existsSync(pkgJson)) {
+					writeFileSync(pkgJson, JSON.stringify({ name: 'tamias-data', version: '1.0.0', private: true }, null, 2))
+				}
+				const bunPath = Bun.which('bun') ?? join(homedir(), '.bun', 'bin', 'bun')
+				const addProc = Bun.spawn([bunPath, 'add', 'playwright', '--cwd', TAMIAS_DIR], { stdout: 'inherit', stderr: 'inherit' })
+				if (await addProc.exited !== 0) throw new Error('bun add playwright failed')
+				const installProc = Bun.spawn([PLAYWRIGHT_LOCAL_BIN, 'install', 'chromium'], { stdout: 'inherit', stderr: 'inherit' })
+				if (await installProc.exited !== 0) throw new Error('playwright install chromium failed')
 				results.push({
-					id: `tools.${dep.tool}`,
-					status: 'ok',
-					message: `${dep.binary} found at ${which}`,
+					id: 'tools.browser',
+					status: 'fixed',
+					message: 'playwright installed automatically',
+					fix: { action: 'bun add playwright + playwright install chromium', result: 'Installed' },
 				})
-			} else {
+			} catch (err: any) {
 				results.push({
-					id: `tools.${dep.tool}`,
+					id: 'tools.browser',
 					status: 'warn',
-					message: `${dep.binary} not found`,
-					instructions: `Install: ${dep.installCmd}\n  → Or disable the ${dep.tool} tool: tamias tools disable ${dep.tool}`,
+					message: `playwright auto-install failed: ${err.message}`,
+					instructions: 'Run manually: bunx playwright install\n  → Or disable: tamias tools disable browser',
 				})
 			}
-		} catch {
+		} else {
 			results.push({
-				id: `tools.${dep.tool}`,
+				id: 'tools.browser',
 				status: 'warn',
-				message: `Could not check for ${dep.binary}`,
+				message: 'playwright not found',
+				instructions: 'Install: bunx playwright install\n  → Or disable the browser tool: tamias tools disable browser',
 			})
+		}
+	}
+
+	// ── GitHub (git) ─────────────────────────────────────────────────────
+	const githubConfig = config.internalTools?.github
+	if (!githubConfig || githubConfig.enabled !== false) {
+		try {
+			const which = Bun.which('git')
+			results.push({
+				id: 'tools.github',
+				status: which ? 'ok' : 'warn',
+				message: which ? `git found at ${which}` : 'git not found',
+				instructions: which ? undefined : 'Install: xcode-select --install\n  → Or disable the github tool: tamias tools disable github',
+			})
+		} catch {
+			results.push({ id: 'tools.github', status: 'warn', message: 'Could not check for git' })
 		}
 	}
 

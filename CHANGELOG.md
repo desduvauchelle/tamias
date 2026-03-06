@@ -55,6 +55,7 @@
 - (breaking) Refactor agents API to use core operation registry
 
 ### Maintenance
+- update changelog for version v26.3.4.4 and enhance workspace path resolution in AIService
 - update version numbers in package.json files to 26.2.28.14 and enhance changelog entries
 - bump version to 26.2.26.6 in package.json and dashboard package.json; update AGENTS.md formatting
 - bump version to 26.2.25.7 in package.json files
@@ -163,6 +164,11 @@
 ## [v2026.2.22.1] - 2026-02-22
 
 
+
+## [v26.3.5.1] - 2026-03-05
+
+### Bug Fixes
+- validate Discord channel IDs to prevent processing invalid ones and update changelog.
 
 ## [v26.3.4.4] - 2026-03-04
 

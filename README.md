@@ -84,9 +84,12 @@ Manage recurring cron jobs and heartbeats
 |---|---|
 | `tamias cron` | Manage recurring cron jobs and heartbeats |
 | `tamias cron list` | List all configured cron jobs |
-| `tamias cron add` | Add a new cron job (`-n, --name <name>`, `-s, --schedule <schedule>`, `-p, --prompt <prompt>`, `-t, --target <target>`, `--heartbeat`) |
+| `tamias cron add` | Add a new cron job (`-n, --name <name>`, `-s, --schedule <schedule>`, `-p, --prompt <prompt>`, `-T, --type <type>`, `--skills <skills>`, `--session-key <key>`, `--context <context>`, `--target-channel <target>`, `--target-email <email>`, `--target-file <path>`, `-t, --target <target>`, `--heartbeat`) |
 | `tamias cron rm <id>` | Remove a cron job by ID |
-| `tamias cron edit <id>` | Edit an existing cron job (`-n, --name <name>`, `-s, --schedule <schedule>`, `-p, --prompt <prompt>`, `-t, --target <target>`, `--disable`, `--enable`) |
+| `tamias cron edit <id>` | Edit an existing cron job (`-n, --name <name>`, `-s, --schedule <schedule>`, `-p, --prompt <prompt>`, `-T, --type <type>`, `--skills <skills>`, `--session-key <key>`, `--context <context>`, `-t, --target <target>`, `--disable`, `--enable`) |
+| `tamias cron run` | Run all due cron jobs (called by system crontab every minute) (`--job <id>`, `--dry-run`) |
+| `tamias cron install` | Install the system crontab entry to run cron jobs every minute |
+| `tamias cron uninstall` | Remove the system crontab entry |
 
 ### `tamias agents`
 

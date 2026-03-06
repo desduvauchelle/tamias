@@ -693,6 +693,23 @@ export class AIService {
 					const shallowCtx = buildProjectContext()
 					if (shallowCtx) parts.push(shallowCtx)
 
+					// NEW: Inject linked Discord Project context
+					try {
+						const { getProjectByDiscordChannel } = await import('../core/projects')
+						const linkedProject = getProjectByDiscordChannel(session.channelId)
+						if (linkedProject && linkedProject.contextFile) {
+							const { join } = await import('path')
+							const { existsSync, readFileSync } = await import('fs')
+							const ctxPath = join(linkedProject.path, linkedProject.contextFile)
+							if (existsSync(ctxPath)) {
+								const content = readFileSync(ctxPath, 'utf-8')
+								parts.push(`## Linked Project Context (${linkedProject.name})\n${linkedProject.description ? `**Description**: ${linkedProject.description}\n` : ''}\n### Context File: ${linkedProject.contextFile}\n\`\`\`\n${content}\n\`\`\``)
+							}
+						}
+					} catch (e) {
+						console.error('[AIService] Failed to load discord project context', e)
+					}
+
 					if (parts.length > 0) projectContext = parts.join('\n\n---\n\n')
 				} catch { /* projects module may not exist yet */ }
 

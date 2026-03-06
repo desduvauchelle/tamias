@@ -1,6 +1,6 @@
 import { join } from 'path'
 import { homedir } from 'os'
-import { existsSync, readFileSync, writeFileSync, unlinkSync, appendFileSync, renameSync, readdirSync, statSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, unlinkSync, renameSync, readdirSync, statSync, openSync } from 'fs'
 import { createServer } from 'net'
 
 const DAEMON_FILE = join(homedir(), '.tamias', 'daemon.json')
@@ -99,24 +99,24 @@ export async function autoStartDaemon(opts: { verbose?: boolean } = {}): Promise
 		}
 
 		// Prune archives older than 1 day (rolling 2-day window)
-		const cutoff = Date.now() - 1 * 24 * 60 * 60 * 1000
-		for (const entry of readdirSync(tamiasDir)) {
-			if (/^daemon-\d{4}-\d{2}-\d{2}\.log$/.test(entry)) {
-				const fullPath = join(tamiasDir, entry)
-				try {
-					const stat = statSync(fullPath)
-					if (stat.mtime.getTime() < cutoff) {
-						unlinkSync(fullPath)
-					}
-				} catch { /* ignore */ }
-			}
+		// Keep only the most recent archive file (yesterday's)
+		const archives = readdirSync(tamiasDir)
+			.filter(entry => /^daemon-\d{4}-\d{2}-\d{2}\.log$/.test(entry))
+			.sort() // chronological
+			.reverse() // newest first
+
+		// Prune all but the newest archive
+		for (let i = 1; i < archives.length; i++) {
+			try {
+				unlinkSync(join(tamiasDir, archives[i]))
+			} catch { /* ignore */ }
 		}
-	} catch {
-		/* Rotation errors are non-fatal — carry on with normal daemon start */
+	} catch (err) {
+		console.warn('[Daemon] Log rotation failed:', err)
 	}
 	// ─────────────────────────────────────────────────────────────────────────
 
-	const logFile = Bun.file(logPath)
+	const logFd = openSync(logPath, 'a')
 	let spawnArgs: string[]
 	if (isCompiled) {
 		spawnArgs = [process.execPath, 'start', '--daemon']
@@ -132,7 +132,7 @@ export async function autoStartDaemon(opts: { verbose?: boolean } = {}): Promise
 		{
 			cwd: projectRoot,
 			detached: true,
-			stdio: ['ignore', logFile, logFile],
+			stdio: ['ignore', logFd, logFd],
 			env: spawnEnv,
 		}
 	)

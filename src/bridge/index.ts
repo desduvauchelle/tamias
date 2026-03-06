@@ -175,12 +175,23 @@ export class BridgeManager {
 	}
 
 	/**
-	 * Broadcasts a generic text message to a specific bridge channel.
+	 * Broadcasts a generic text message to a specific channel on a bridge.
+	 * @param bridgeChannelId The bridge name (e.g. "discord:default-discord") used to look up the bridge.
+	 * @param message The text to send.
+	 * @param channelUserId The platform-level channel ID (e.g. the Discord snowflake) to send to.
+	 *   When provided, bridges that implement sendDirect() will use this to fetch the exact channel.
 	 */
-	async broadcastToChannel(channelId: string, message: string) {
-		const bridge = this.activeBridges.get(channelId)
-		if (bridge && typeof bridge.handleDaemonEvent === 'function') {
-			// Fake a daemon event to send system text
+	async broadcastToChannel(bridgeChannelId: string, message: string, channelUserId?: string) {
+		const bridge = this.activeBridges.get(bridgeChannelId)
+		if (!bridge) return
+		// Prefer sendDirect when available — it bypasses the session/event plumbing
+		// entirely and doesn't require a valid channelUserId in sessionContext.
+		if (channelUserId && typeof (bridge as any).sendDirect === 'function') {
+			await (bridge as any).sendDirect(channelUserId, message).catch(console.error)
+			return
+		}
+		if (typeof bridge.handleDaemonEvent === 'function') {
+			// Fallback: fake a daemon event (only works for bridges that don't need a snowflake)
 			await bridge.handleDaemonEvent({ type: 'chunk', text: message } as DaemonEvent, {})
 		}
 	}
@@ -218,5 +229,27 @@ export class BridgeManager {
 			seen.add(t.target)
 			return true
 		})
+	}
+
+	/**
+	 * Returns all discord channels accessible by the active Discord bots.
+	 */
+	async getAllDiscordChannels(): Promise<Array<{ id: string; name: string; guildId: string; guildName: string; instanceKey: string }>> {
+		const channels: Array<{ id: string; name: string; guildId: string; guildName: string; instanceKey: string }> = []
+
+		for (const bridge of this.activeBridges.values()) {
+			const listAllChannels = (bridge as any).listAllChannels
+			if (typeof listAllChannels !== 'function') continue
+
+			try {
+				const discovered = await listAllChannels.call(bridge)
+				if (!Array.isArray(discovered)) continue
+				channels.push(...discovered)
+			} catch (err) {
+				console.warn(`[Bridge Manager] Failed to discover discord channels from ${bridge.name}:`, err)
+			}
+		}
+
+		return channels
 	}
 }

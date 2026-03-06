@@ -9,24 +9,17 @@ export const CRON_TOOL_LABEL = '⏰ Cron (manage recurring tasks and heartbeats)
 export function createCronTools(aiService: AIService, sessionId: string) {
 	/**
 	 * Derives the delivery target from the current session's bridge context.
-	 *
-	 * Uses stable platform identifiers (`platform` + `platformAccountId`) so the
-	 * resolved job can survive config key renames — it never stores the mutable
-	 * bridge instance key.
-	 *
-	 * Returns undefined for terminal sessions (no channel to deliver to).
 	 */
-	function deliveryFromSession(): { platform: string; platformAccountId?: string; channelId: string; channelName?: string } | undefined {
+	function deliveryFromSession(): z.infer<typeof CronDeliverySchema> | undefined {
 		const session = aiService.getSession(sessionId)
 		if (!session) return undefined
-		// Only auto-fill when the session came from a real bridge (not bare terminal)
 		if (!session.channelId || session.channelId.startsWith('terminal')) return undefined
 		if (!session.channelUserId) return undefined
 		const bridge = aiService.getBridgeManager().getBridgeByName(session.channelId)
 		if (!bridge) return undefined
 		return {
 			platform: bridge.platform,
-			platformAccountId: bridge.platformAccountId, // stable — survives key renames
+			platformAccountId: bridge.platformAccountId,
 			channelId: session.channelUserId,
 			channelName: session.channelName,
 		}
@@ -43,21 +36,28 @@ export function createCronTools(aiService: AIService, sessionId: string) {
 		}),
 
 		cron_add: tool({
-			description: 'Schedule a new recurring task or one-off reminder. Use intervals like "30m", "1h", "1d" or a 5-field cron expression. Delivery is automatically detected from the current conversation channel.',
+			description: 'Schedule a new recurring task. Use 5-field cron expressions for precise timing (e.g. "0 9-17 * * 1-5" for hourly Mon-Fri 9am-5pm). Delivery is auto-detected from the current channel. Set skills to activate specific capabilities.',
 			inputSchema: z.object({
 				name: z.string().describe('Descriptive name for the job'),
-				schedule: z.string().describe('Schedule: e.g., "5m", "1h", or "* * * * *"'),
-				type: z.enum(['ai', 'message']).optional().default('ai').describe('"ai" = send prompt to AI and deliver response to channel; "message" = send text directly to channel without AI'),
-				prompt: z.string().describe('Instructions for the agent (type=ai) or message text to send (type=message)'),
+				schedule: z.string().describe('Schedule: cron expression like "0 9 * * 1-5" or interval like "30m", "1h"'),
+				type: z.enum(['ai', 'message']).optional().default('ai').describe('"ai" = send prompt to AI; "message" = send text directly'),
+				prompt: z.string().describe('Instructions for the agent (type=ai) or message text (type=message)'),
+				skills: z.array(z.string()).optional().describe('Skill slugs to activate (e.g. ["researcher", "writer"])'),
+				sessionKey: z.string().optional().describe('Stable session key for interactive workflows — enables user to reply and continue in same context'),
+				context: z.string().optional().describe('Extra context injected before the prompt (e.g. file paths, project info)'),
+				delivery: CronDeliverySchema.optional().describe('Structured delivery target — auto-filled from current session if omitted'),
 			}),
 			execute: async (input) => {
 				try {
-					const delivery = deliveryFromSession()
+					const delivery = input.delivery ?? deliveryFromSession()
 					const job = addCronJob({
 						name: input.name,
 						schedule: input.schedule,
 						type: input.type ?? 'ai',
 						prompt: input.prompt,
+						skills: input.skills,
+						sessionKey: input.sessionKey,
+						context: input.context,
 						delivery,
 						target: 'last',
 					})
@@ -65,8 +65,9 @@ export function createCronTools(aiService: AIService, sessionId: string) {
 						success: true,
 						job,
 						note: delivery
-							? `Delivery auto-set from current session: platform=${delivery.platform}, channelId=${delivery.channelId}`
-							: 'No bridge context in this session — job will use the last-active session as fallback',
+							? `Delivery set: platform=${delivery.platform}, channelId=${delivery.channelId}${delivery.emailTo ? `, email=${delivery.emailTo}` : ''}`
+							: 'No bridge context — job will use the last-active session as fallback',
+						reminder: 'Run `tamias cron install` to enable the system crontab for automatic execution.',
 					}
 				} catch (err) {
 					return { success: false, error: String(err) }
@@ -97,8 +98,12 @@ export function createCronTools(aiService: AIService, sessionId: string) {
 					name: z.string().optional(),
 					schedule: z.string().optional(),
 					prompt: z.string().optional(),
-					delivery: CronDeliverySchema.optional().describe('Structured delivery target — preferred over target string'),
-					target: z.string().optional().describe('Legacy target string — use delivery instead'),
+					type: z.enum(['ai', 'message']).optional(),
+					skills: z.array(z.string()).optional(),
+					sessionKey: z.string().optional(),
+					context: z.string().optional(),
+					delivery: CronDeliverySchema.optional().describe('Structured delivery target'),
+					target: z.string().optional().describe('Legacy target string'),
 					enabled: z.boolean().optional(),
 				}),
 			}),

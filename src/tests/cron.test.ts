@@ -1,6 +1,5 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
-import { CronJobSchema, type CronJob, migrateLegacyTarget, migrateRawCronEntry } from '../utils/cronStore'
-import { CronManager } from '../bridge/cronManager'
+import { CronJobSchema, type CronJob, migrateLegacyTarget, migrateRawCronEntry, isJobDue, parseInterval, isInterval } from '../utils/cronStore'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -18,48 +17,7 @@ function makeJob(overrides: Partial<CronJob> = {}): CronJob {
 	})
 }
 
-/** Minimal fake timer controller — injectable into CronManager */
-function makeFakeTimers() {
-	type Timer = { id: number; callback: () => void; ms: number; nextFireAt: number }
-	let now = 0
-	let nextId = 1
-	const timers = new Map<number, Timer>()
 
-	const setIntervalFn = (callback: (...args: any[]) => void, ms: number): any => {
-		const id = nextId++
-		timers.set(id, { id, callback, ms, nextFireAt: now + ms })
-		return id
-	}
-
-	const clearIntervalFn = (id: any): void => {
-		timers.delete(id)
-	}
-
-	/** Advance virtual clock by `ms` milliseconds, firing all due timers in order */
-	const advance = (ms: number) => {
-		const target = now + ms
-		// Fire timers as they come due, in time order
-		let safety = 10000
-		while (safety-- > 0) {
-			// Find earliest due timer
-			let earliest: Timer | undefined
-			for (const t of timers.values()) {
-				if (t.nextFireAt <= target && (!earliest || t.nextFireAt < earliest.nextFireAt)) {
-					earliest = t
-				}
-			}
-			if (!earliest) break
-			now = earliest.nextFireAt
-			earliest.nextFireAt = now + earliest.ms
-			earliest.callback()
-		}
-		now = target
-	}
-
-	const count = () => timers.size
-
-	return { setIntervalFn, clearIntervalFn, advance, count }
-}
 
 // ─── CronJobSchema ─────────────────────────────────────────────────────────────
 
@@ -129,170 +87,93 @@ describe('CronJobSchema', () => {
 	})
 })
 
-// ─── CronManager – interval scheduling ────────────────────────────────────────
+// ─── isInterval ─────────────────────────────────────────────────────────────────────
 
-describe('CronManager (interval schedules)', () => {
-	test('fires a 30m interval job after 30 minutes', () => {
-		const triggered: string[] = []
-		const ft = makeFakeTimers()
-		const job = makeJob({ schedule: '30m' })
-		const mgr = new CronManager(async (j) => { triggered.push(j.id) }, () => [job], ft.setIntervalFn, ft.clearIntervalFn)
-		mgr.start()
-
-		expect(triggered.length).toBe(0)
-		ft.advance(30 * 60 * 1000)
-		expect(triggered.length).toBe(1)
-		expect(triggered[0]).toBe(job.id)
+describe('isInterval', () => {
+	test('recognises valid intervals', () => {
+		expect(isInterval('30m')).toBe(true)
+		expect(isInterval('1h')).toBe(true)
+		expect(isInterval('2d')).toBe(true)
+		expect(isInterval('45s')).toBe(true)
 	})
 
-	test('fires a 1h interval job only after 1 hour', () => {
-		const triggered: string[] = []
-		const ft = makeFakeTimers()
-		const job = makeJob({ schedule: '1h' })
-		const mgr = new CronManager(async (j) => { triggered.push(j.id) }, () => [job], ft.setIntervalFn, ft.clearIntervalFn)
-		mgr.start()
-
-		ft.advance(59 * 60 * 1000)
-		expect(triggered.length).toBe(0)
-
-		ft.advance(60 * 1000) // total = 1h
-		expect(triggered.length).toBe(1)
+	test('rejects cron expressions', () => {
+		expect(isInterval('0 9 * * 1-5')).toBe(false)
+		expect(isInterval('* * * * *')).toBe(false)
 	})
 
-	test('fires multiple times over multiple intervals', () => {
-		const triggered: string[] = []
-		const ft = makeFakeTimers()
-		const job = makeJob({ schedule: '30m' })
-		const mgr = new CronManager(async (j) => { triggered.push(j.id) }, () => [job], ft.setIntervalFn, ft.clearIntervalFn)
-		mgr.start()
-
-		ft.advance(90 * 60 * 1000) // 1.5h → fires at 30m and 60m and 90m
-		expect(triggered.length).toBe(3)
-	})
-
-	test('does not fire a disabled job', () => {
-		const triggered: string[] = []
-		const ft = makeFakeTimers()
-		const job = makeJob({ schedule: '30m', enabled: false })
-		const mgr = new CronManager(async (j) => { triggered.push(j.id) }, () => [job], ft.setIntervalFn, ft.clearIntervalFn)
-		mgr.start()
-
-		ft.advance(60 * 60 * 1000)
-		expect(triggered.length).toBe(0)
-	})
-
-	test('fires multiple independent interval jobs at correct rates', () => {
-		const triggered: string[] = []
-		const ft = makeFakeTimers()
-		const job30 = makeJob({ id: 'a', schedule: '30m' })
-		const job60 = makeJob({ id: 'b', schedule: '1h' })
-		const mgr = new CronManager(async (j) => { triggered.push(j.id) }, () => [job30, job60], ft.setIntervalFn, ft.clearIntervalFn)
-		mgr.start()
-
-		ft.advance(60 * 60 * 1000) // 1h
-		expect(triggered.filter(id => id === 'a').length).toBe(2) // 30m and 60m
-		expect(triggered.filter(id => id === 'b').length).toBe(1) // 60m only
-	})
-
-	test('stop() cancels all timers', () => {
-		const triggered: string[] = []
-		const ft = makeFakeTimers()
-		const job = makeJob({ schedule: '30m' })
-		const mgr = new CronManager(async (j) => { triggered.push(j.id) }, () => [job], ft.setIntervalFn, ft.clearIntervalFn)
-		mgr.start()
-		mgr.stop()
-
-		ft.advance(60 * 60 * 1000)
-		expect(triggered.length).toBe(0)
-	})
-
-	test('refresh() adds newly enabled jobs', () => {
-		const triggered: string[] = []
-		const ft = makeFakeTimers()
-		const jobs: CronJob[] = []
-		const mgr = new CronManager(async (j) => { triggered.push(j.id) }, () => jobs, ft.setIntervalFn, ft.clearIntervalFn)
-		mgr.start()
-
-		// Add a job and refresh
-		jobs.push(makeJob({ id: 'new', schedule: '30m' }))
-		mgr.refresh()
-
-		ft.advance(30 * 60 * 1000)
-		expect(triggered).toContain('new')
-	})
-
-	test('refresh() removes jobs no longer in the list', () => {
-		const triggered: string[] = []
-		const ft = makeFakeTimers()
-		const job = makeJob({ id: 'removable', schedule: '30m' })
-		const jobs: CronJob[] = [job]
-		const mgr = new CronManager(async (j) => { triggered.push(j.id) }, () => jobs, ft.setIntervalFn, ft.clearIntervalFn)
-		mgr.start()
-
-		// Remove the job and refresh
-		jobs.splice(0, 1)
-		mgr.refresh()
-
-		ft.advance(60 * 60 * 1000)
-		expect(triggered.length).toBe(0)
-	})
-
-	test('refresh() removes jobs that become disabled', () => {
-		const triggered: string[] = []
-		const ft = makeFakeTimers()
-		const job = makeJob({ id: 'toggle', schedule: '30m', enabled: true })
-		const jobs: CronJob[] = [job]
-		const mgr = new CronManager(async (j) => { triggered.push(j.id) }, () => jobs, ft.setIntervalFn, ft.clearIntervalFn)
-		mgr.start()
-
-		// Disable the job and refresh
-		jobs[0] = { ...jobs[0], enabled: false }
-		mgr.refresh()
-
-		ft.advance(60 * 60 * 1000)
-		expect(triggered.length).toBe(0)
+	test('rejects invalid strings', () => {
+		expect(isInterval('')).toBe(false)
+		expect(isInterval('abc')).toBe(false)
+		expect(isInterval('30')).toBe(false)
 	})
 })
 
-// ─── CronManager – interval parsing ───────────────────────────────────────────
+// ─── parseInterval ──────────────────────────────────────────────────────────────────
 
-describe('CronManager interval parser', () => {
-	const parseCases: Array<[string, number]> = [
-		['30m', 30 * 60 * 1000],
-		['1h', 60 * 60 * 1000],
-		['2h', 2 * 60 * 60 * 1000],
-		['1d', 24 * 60 * 60 * 1000],
-		['45s', 45 * 1000],
+describe('parseInterval', () => {
+	const cases: Array<[string, number]> = [
+		['30m', 30 * 60_000],
+		['1h', 3_600_000],
+		['2h', 2 * 3_600_000],
+		['1d', 86_400_000],
+		['45s', 45_000],
 	]
 
-	for (const [schedule, expectedMs] of parseCases) {
-		test(`"${schedule}" registers timer at ${expectedMs}ms`, () => {
-			const triggered: string[] = []
-			const ft = makeFakeTimers()
-			const job = makeJob({ id: schedule, schedule })
-			const mgr = new CronManager(async (j) => { triggered.push(j.id) }, () => [job], ft.setIntervalFn, ft.clearIntervalFn)
-			mgr.start()
-
-			// Should not fire before the interval
-			ft.advance(expectedMs - 1)
-			expect(triggered.length).toBe(0)
-
-			// Should fire at exactly the interval
-			ft.advance(1)
-			expect(triggered.length).toBe(1)
+	for (const [input, expected] of cases) {
+		test(`"${input}" → ${expected}ms`, () => {
+			expect(parseInterval(input)).toBe(expected)
 		})
 	}
 
-	test('cron expression is not treated as an interval', () => {
-		const triggered: string[] = []
-		const ft = makeFakeTimers()
-		const job = makeJob({ schedule: '0 8 * * *' }) // not a simple interval
-		const mgr = new CronManager(async (j) => { triggered.push(j.id) }, () => [job], ft.setIntervalFn, ft.clearIntervalFn)
-		mgr.start()
+	test('returns 0 for unparseable strings', () => {
+		expect(parseInterval('abc')).toBe(0)
+		expect(parseInterval('')).toBe(0)
+		expect(parseInterval('0 9 * * *')).toBe(0)
+	})
+})
 
-		// Our fake setInterval was not called for this job (croner handles it separately)
-		ft.advance(24 * 60 * 60 * 1000)
-		expect(triggered.length).toBe(0) // fake timers don't fire croner internals
+// ─── isJobDue ──────────────────────────────────────────────────────────────────────
+
+describe('isJobDue', () => {
+	test('interval job with no lastRun is always due', () => {
+		const job = makeJob({ schedule: '30m', lastRun: undefined })
+		expect(isJobDue(job)).toBe(true)
+	})
+
+	test('interval job is due when enough time has passed', () => {
+		const thirtyOneMinutesAgo = new Date(Date.now() - 31 * 60_000).toISOString()
+		const job = makeJob({ schedule: '30m', lastRun: thirtyOneMinutesAgo })
+		expect(isJobDue(job)).toBe(true)
+	})
+
+	test('interval job is NOT due when too little time has passed', () => {
+		const tenMinutesAgo = new Date(Date.now() - 10 * 60_000).toISOString()
+		const job = makeJob({ schedule: '30m', lastRun: tenMinutesAgo })
+		expect(isJobDue(job)).toBe(false)
+	})
+
+	test('cron expression job with no lastRun is always due', () => {
+		const job = makeJob({ schedule: '* * * * *', lastRun: undefined })
+		expect(isJobDue(job)).toBe(true)
+	})
+
+	test('cron expression job is due when a tick was missed', () => {
+		// "* * * * *" fires every minute; if lastRun was 2 minutes ago, it's due
+		const twoMinutesAgo = new Date(Date.now() - 2 * 60_000).toISOString()
+		const job = makeJob({ schedule: '* * * * *', lastRun: twoMinutesAgo })
+		expect(isJobDue(job)).toBe(true)
+	})
+
+	test('invalid cron expression returns false', () => {
+		const job = makeJob({ schedule: 'invalid expression', lastRun: undefined })
+		// isInterval returns false, so it falls to cron parser which should fail
+		expect(isJobDue(job)).toBe(false)
+	})
+
+	test('invalid interval returns false', () => {
+		const job = makeJob({ schedule: '0x', lastRun: undefined })
+		expect(isJobDue(job)).toBe(false)
 	})
 })
 
@@ -936,23 +817,4 @@ describe('onCronTrigger delivery routing — fixed dispatch', () => {
 		expect(directEmits.some(e => e.type === 'chunk' && e.text === 'Hello from cron!')).toBe(true)
 		expect(directEmits.some(e => e.type === 'done')).toBe(true)
 	})
-})
-
-// ─── CronManager end-to-end — real timer, fires once ─────────────────────────
-
-describe('CronManager real timer — fires exactly once', () => {
-	test('10s schedule fires exactly once after 10 seconds', async () => {
-		const triggered: CronJob[] = []
-		const job = makeJob({ id: 'real-timer-test', schedule: '10s', delivery: { platform: 'terminal', channelId: 'terminal' } })
-
-		const mgr = new CronManager(async (j) => { triggered.push(j) }, () => [job])
-		mgr.start()
-
-		// Wait 12s — enough for exactly one fire but not two
-		await new Promise<void>(resolve => setTimeout(resolve, 12_000))
-		mgr.stop()
-
-		expect(triggered.length).toBe(1)
-		expect(triggered[0].id).toBe('real-timer-test')
-	}, { timeout: 15_000 })
 })

@@ -18,7 +18,8 @@ import {
 	Cpu,
 	FolderOpen,
 	Bot,
-	Activity
+	Activity,
+	KanbanSquare
 } from 'lucide-react'
 
 const navItems = [
@@ -52,6 +53,11 @@ const navItems = [
 		href: '/channels',
 		label: 'Channels',
 		icon: <Smartphone className="w-5 h-5" />,
+	},
+	{
+		href: '/projects',
+		label: 'Projects',
+		icon: <KanbanSquare className="w-5 h-5" />,
 	},
 	{
 		href: '/crons',

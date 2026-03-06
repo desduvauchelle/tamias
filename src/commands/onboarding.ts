@@ -68,9 +68,11 @@ async function setupChannel(
 	setEnv(envKey, (token as string).trim())
 
 	if (platform === 'discord') {
-		config.discord = { enabled: true, envKeyName: envKey }
+		if (!config.discords) config.discords = {}
+		config.discords.default = { enabled: true, envKeyName: envKey }
 	} else {
-		config.telegram = { enabled: true, envKeyName: envKey }
+		if (!config.telegrams) config.telegrams = {}
+		config.telegrams.default = { enabled: true, envKeyName: envKey }
 	}
 	setBridgesConfig(config)
 
@@ -464,8 +466,8 @@ export const runOnboarding = async (): Promise<void> => {
 
 	const bridgesCfg = getBridgesConfig()
 	const channelList: string[] = []
-	if (bridgesCfg.discord?.enabled && bridgesCfg.discord?.envKeyName) channelList.push('Discord')
-	if (bridgesCfg.telegram?.enabled && bridgesCfg.telegram?.envKeyName) channelList.push('Telegram')
+	if (bridgesCfg.discords?.default?.enabled && bridgesCfg.discords?.default?.envKeyName) channelList.push('Discord')
+	if (bridgesCfg.telegrams?.default?.enabled && bridgesCfg.telegrams?.default?.envKeyName) channelList.push('Telegram')
 	const channelLabel = channelList.length > 0 ? channelList.join(', ') : 'None — run `tamias channels add`'
 
 	const displayWorkspace = TAMIAS_DIR.replace(homedir(), '~')

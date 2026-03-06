@@ -1,10 +1,12 @@
 import { tool, generateImage } from 'ai'
+import { writeFileSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { z } from 'zod'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import type { AIService } from '../services/aiService'
-import { loadConfig, getApiKeyForConnection, getDefaultImageModels, type ConnectionConfig } from '../utils/config'
+import { loadConfig, getApiKeyForConnection, getDefaultImageModels, type ConnectionConfig, TAMIAS_DIR } from '../utils/config'
 import type { DaemonEvent } from '../bridge/types'
 import { logAiRequest } from '../utils/logger'
 import { getImageCost } from '../utils/pricing'
@@ -26,7 +28,7 @@ const getErrorMessage = (error: unknown): string => {
 	return String(error)
 }
 
-export function createImageTools(aiService: AIService, sessionId: string) {
+export function createImageTools(aiService: AIService, sessionId: string, workspacePath?: string) {
 	return {
 		generate: tool({
 			description: 'Generate a new AI image or edit an existing image from a text prompt.',
@@ -93,6 +95,13 @@ export function createImageTools(aiService: AIService, sessionId: string) {
 
 						const image = result.image
 						const fileName = `generated_${Date.now()}.png`
+						const targetDir = workspacePath || join(TAMIAS_DIR, 'generated-images')
+						mkdirSync(targetDir, { recursive: true })
+						const filePath = join(targetDir, fileName)
+
+						// Write image to disk so the AI can reference it
+						const buffer = Buffer.from(image.uint8Array)
+						writeFileSync(filePath, buffer)
 
 						// Log image generation cost
 						const imageCost = getImageCost(modelId, size)
@@ -104,7 +113,7 @@ export function createImageTools(aiService: AIService, sessionId: string) {
 							action: 'image',
 							durationMs: Date.now() - startTime,
 							messages: [{ role: 'user', content: typeof imagePrompt === 'string' ? imagePrompt : imagePrompt.text }],
-							response: `Generated image: ${fileName}`,
+							response: `Generated image: ${filePath}`,
 							providerCostUsd: imageCost,
 						})
 
@@ -112,7 +121,7 @@ export function createImageTools(aiService: AIService, sessionId: string) {
 						session.emitter.emit('event', {
 							type: 'file',
 							name: fileName,
-							buffer: Buffer.from(image.uint8Array),
+							buffer,
 							mimeType: 'image/png'
 						} as DaemonEvent)
 
@@ -120,6 +129,7 @@ export function createImageTools(aiService: AIService, sessionId: string) {
 							success: true,
 							message: `Successfully generated image using ${modelStr}.`,
 							fileName,
+							filePath,
 							modelUsed: modelStr
 						}
 					} catch (err: any) {

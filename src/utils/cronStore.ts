@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { Cron } from 'croner'
 // crypto is available in global scope in Bun / Node 19+
 
 /**
@@ -24,6 +25,9 @@ export const CronDeliverySchema = z.object({
 	platformAccountId: z.string().optional().describe("Bot's own user ID from the platform — stable identifier, never changes"),
 	channelId: z.string().describe('Platform channel/chat/group ID'),
 	channelName: z.string().optional().describe('Human-readable channel name — informational only, not used for routing'),
+	emailTo: z.string().optional().describe('Email address to deliver response to'),
+	emailSubject: z.string().optional().describe('Subject line for email delivery'),
+	filePath: z.string().optional().describe('File path to append/write the response to'),
 })
 
 export type CronDelivery = z.infer<typeof CronDeliverySchema>
@@ -38,6 +42,22 @@ export const CronJobSchema = z.object({
 	 */
 	type: z.enum(['ai', 'message']).default('ai'),
 	prompt: z.string(),
+	/**
+	 * Skill slugs to activate for this job.
+	 * e.g. ["researcher", "writer"] — the AI prompt runs with these skills pre-loaded.
+	 */
+	skills: z.array(z.string()).optional(),
+	/**
+	 * Stable session key for interactive/stateful workflows.
+	 * If set, the cron runner reuses/creates a session with this key so the user
+	 * can reply and continue the conversation in the same context.
+	 */
+	sessionKey: z.string().optional(),
+	/**
+	 * Extra context injected before the prompt to keep token usage low.
+	 * e.g. "Project path: ~/projects/livecase/time-tracker.log"
+	 */
+	context: z.string().optional(),
 	/**
 	 * Structured delivery target using stable platform identifiers.
 	 * BridgeManager.findBridgeByAccount() resolves the live bridge at trigger time.
@@ -265,4 +285,59 @@ export const DEFAULT_HEARTBEAT_CONFIG = {
 	schedule: '30m',
 	prompt: 'Check your periodic tasks and instructions in ~/.tamias/memory/HEARTBEAT.md. If there are pending items or checks requested there, perform them now. If nothing needs your attention, reply with HEARTBEAT_OK.',
 	target: 'last'
+}
+
+// ─── Schedule helpers ──────────────────────────────────────────────────────────
+
+/** Check if a schedule string is a simple interval (e.g. "30m", "1h", "2d"). */
+export function isInterval(schedule: string): boolean {
+	return /^\d+[smhd]$/.test(schedule)
+}
+
+/** Parse a simple interval string into milliseconds. Returns 0 if unparseable. */
+export function parseInterval(schedule: string): number {
+	const match = schedule.match(/^(\d+)([smhd])$/)
+	if (!match) return 0
+	const value = parseInt(match[1])
+	switch (match[2]) {
+		case 's': return value * 1000
+		case 'm': return value * 60_000
+		case 'h': return value * 3_600_000
+		case 'd': return value * 86_400_000
+		default: return 0
+	}
+}
+
+/**
+ * Check if a cron job is due to run right now.
+ *
+ * For interval schedules ("30m"): checks if now >= lastRun + interval.
+ * For cron expressions ("0 9 * * 1-5"): checks if the expression would have
+ * fired between lastRun and now.
+ *
+ * Jobs that have never run (no lastRun) are always considered due.
+ */
+export function isJobDue(job: CronJob): boolean {
+	const now = Date.now()
+
+	if (isInterval(job.schedule)) {
+		const ms = parseInterval(job.schedule)
+		if (ms <= 0) return false
+		if (!job.lastRun) return true
+		return now >= new Date(job.lastRun).getTime() + ms
+	}
+
+	// Cron expression
+	try {
+		const cron = new Cron(job.schedule)
+		if (!job.lastRun) return true
+		const lastRunDate = new Date(job.lastRun)
+		// Find the next run after the last run — if it's <= now, the job is due
+		const nextAfterLast = cron.nextRun(lastRunDate)
+		if (!nextAfterLast) return false
+		return nextAfterLast.getTime() <= now
+	} catch {
+		console.error(`[CronStore] Invalid cron expression: "${job.schedule}" for job "${job.name}"`)
+		return false
+	}
 }

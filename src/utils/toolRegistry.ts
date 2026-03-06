@@ -93,7 +93,7 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 		[WORKSPACE_TOOL_NAME]: createWorkspaceTools(sessionWorkspacePath) as ToolSet,
 		[GEMINI_TOOL_NAME]: geminiTools as ToolSet,
 		[SUBAGENT_TOOL_NAME]: createSubagentTools(aiService, sessionId) as ToolSet,
-		[IMAGE_TOOL_NAME]: createImageTools(aiService, sessionId) as ToolSet,
+		[IMAGE_TOOL_NAME]: createImageTools(aiService, sessionId, sessionWorkspacePath) as ToolSet,
 		[BROWSER_TOOL_NAME]: createBrowserTools(aiService, sessionId) as ToolSet,
 		[PDF_TOOL_NAME]: createPdfTools(aiService, sessionId) as ToolSet,
 		[MEMORY_TOOL_NAME]: memoryTools as ToolSet,

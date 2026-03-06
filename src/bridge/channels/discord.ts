@@ -555,6 +555,30 @@ export class DiscordBridge implements IBridge {
 		}
 	}
 
+	/**
+	 * Sends a message directly to a Discord channel by snowflake ID.
+	 * Used by broadcastToChannel for system messages like !ping, !diag, errors.
+	 */
+	async sendDirect(channelId: string, text: string): Promise<void> {
+		if (!this.client) {
+			console.error(`[Discord Bridge] sendDirect called but client is NOT ready`)
+			return
+		}
+		try {
+			const channel = await this.client.channels.fetch(channelId)
+			if (channel && 'send' in channel) {
+				const chunks = splitText(text, 1900)
+				for (const chunk of chunks) {
+					await (channel as any).send(chunk)
+				}
+			} else {
+				console.error(`[Discord Bridge] sendDirect: channel ${channelId} not found or not sendable`)
+			}
+		} catch (err) {
+			console.error(`[Discord Bridge] sendDirect failed for channel ${channelId}:`, err)
+		}
+	}
+
 	async listCronTargets(): Promise<Array<{ target: string; label: string; platform: 'discord'; source: string }>> {
 		if (!this.client || !this.client.isReady()) return []
 
@@ -589,6 +613,37 @@ export class DiscordBridge implements IBridge {
 			seen.add(item.target)
 			return true
 		})
+	}
+
+	async listAllChannels(): Promise<Array<{ id: string; name: string; guildId: string; guildName: string; instanceKey: string }>> {
+		if (!this.client || !this.client.isReady()) return []
+
+		const discovered: Array<{ id: string; name: string; guildId: string; guildName: string; instanceKey: string }> = []
+
+		for (const guild of this.client.guilds.cache.values()) {
+			try {
+				const channels = await guild.channels.fetch()
+				for (const channel of channels.values()) {
+					if (!channel) continue
+					if (typeof (channel as any).isTextBased !== 'function') continue
+					if (!(channel as any).isTextBased()) continue
+
+					const channelId = String(channel.id)
+					const channelName = 'name' in channel ? String((channel as any).name ?? channelId) : channelId
+					discovered.push({
+						id: channelId,
+						name: channelName,
+						guildId: guild.id,
+						guildName: guild.name,
+						instanceKey: this.instanceKey
+					})
+				}
+			} catch (err) {
+				console.warn(`[Discord Bridge] Failed to fetch channels for guild ${guild.id}:`, err)
+			}
+		}
+
+		return discovered
 	}
 
 	async destroy(): Promise<void> {

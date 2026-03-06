@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'fs'
-import { getEnv, setEnv, removeEnv, generateSecureEnvKey } from './env.ts'
+import { getEnv, setEnv, removeEnv, generateSecureEnvKey } from './env'
 
 export const TAMIAS_DIR = join(homedir(), '.tamias')
 export const getConfigFilePath = () => process.env.TAMIAS_CONFIG_PATH || join(TAMIAS_DIR, 'config.json')
@@ -24,9 +24,7 @@ export const ConnectionConfigSchema = z.object({
 	provider: ProviderEnum,
 	/** The name of the environment variable (in .env) that holds the API key or Access Token */
 	envKeyName: z.string().optional(),
-	// Legacy fields (kept optional for migration)
-	apiKey: z.string().optional(),
-	accessToken: z.string().optional(),
+
 	baseUrl: z.string().url().optional().or(z.literal('')),
 	// User-selected models for this connection
 	selectedModels: z.array(z.string()).optional(),
@@ -74,7 +72,7 @@ export type McpServerConfig = z.infer<typeof McpServerConfigSchema>
 export const DiscordBotConfigSchema = z.object({
 	enabled: z.boolean().default(false),
 	envKeyName: z.string().optional(),
-	botToken: z.string().optional(), // legacy plaintext (migrated on load)
+
 	allowedChannels: z.array(z.string()).optional(),
 	/** Channel mode: full = all messages, mention-only = only @mentions, listen-only = read but never respond */
 	mode: z.enum(['full', 'mention-only', 'listen-only']).default('full').optional(),
@@ -83,7 +81,7 @@ export const DiscordBotConfigSchema = z.object({
 export const TelegramBotConfigSchema = z.object({
 	enabled: z.boolean().default(false),
 	envKeyName: z.string().optional(),
-	botToken: z.string().optional(), // legacy plaintext (migrated on load)
+
 	allowedChats: z.array(z.string()).optional(),
 	/** Channel mode: full = all messages, mention-only = only @mentions, listen-only = read but never respond */
 	mode: z.enum(['full', 'mention-only', 'listen-only']).default('full').optional(),
@@ -134,10 +132,7 @@ export const BridgesConfigSchema = z.object({
 	whatsapps: z.record(z.string(), WhatsAppBotConfigSchema).optional(),
 	/** Multi-instance unofficial WhatsApp (Baileys/WhatsApp Web) bridges, keyed by a user-chosen nickname */
 	whatsappUnofficials: z.record(z.string(), WhatsAppUnofficialConfigSchema).optional(),
-	/** @deprecated Use `discords` instead. Kept only for seamless migration. */
-	discord: DiscordBotConfigSchema.optional(),
-	/** @deprecated Use `telegrams` instead. Kept only for seamless migration. */
-	telegram: TelegramBotConfigSchema.optional(),
+
 })
 
 export type BridgesConfig = z.infer<typeof BridgesConfigSchema>
@@ -165,7 +160,7 @@ export const TamiasConfigSchema = z.object({
 		service: z.enum(['gmail', 'outlook', 'icloud', 'other']).default('gmail'),
 		email: z.string().optional(),
 		envKeyName: z.string().optional(),
-		appPassword: z.string().optional(), // legacy/temp
+
 		accountName: z.string().default('personal'),
 		isDefault: z.boolean().default(false),
 		permissions: z.object({
@@ -260,133 +255,6 @@ export const loadConfig = (): TamiasConfig => {
 	try {
 		const rawData = JSON.parse(readFileSync(path, 'utf-8'))
 		const data = TamiasConfigSchema.parse(rawData)
-
-		let needsMigration = false
-
-		// Migrate Connections
-		for (const [key, conn] of Object.entries(data.connections)) {
-			if (conn.apiKey || conn.accessToken) {
-				const secretStr = conn.apiKey || conn.accessToken
-				const envKey = generateSecureEnvKey(`${conn.nickname}_${conn.provider}`)
-				setEnv(envKey, secretStr!)
-				conn.envKeyName = envKey
-				delete conn.apiKey
-				delete conn.accessToken
-				needsMigration = true
-			}
-		}
-
-		// Migrate Bridges — step 1: plaintext botToken → env var (legacy single-instance)
-		if (data.bridges.discord?.botToken) {
-			const envKey = generateSecureEnvKey('DISCORD')
-			setEnv(envKey, data.bridges.discord.botToken)
-			data.bridges.discord.envKeyName = envKey
-			delete data.bridges.discord.botToken
-			needsMigration = true
-		}
-		if (data.bridges.telegram?.botToken) {
-			const envKey = generateSecureEnvKey('TELEGRAM')
-			setEnv(envKey, data.bridges.telegram.botToken)
-			data.bridges.telegram.envKeyName = envKey
-			delete data.bridges.telegram.botToken
-			needsMigration = true
-		}
-
-		// Migrate Bridges — step 2: single-instance → multi-instance record
-		// Also handles botToken inside discords/telegrams entries
-		if (data.bridges.discord) {
-			if (!data.bridges.discords) data.bridges.discords = {}
-			if (!data.bridges.discords.default) {
-				data.bridges.discords.default = data.bridges.discord
-			}
-			delete (data.bridges as any).discord
-			needsMigration = true
-		}
-		if (data.bridges.telegram) {
-			if (!data.bridges.telegrams) data.bridges.telegrams = {}
-			if (!data.bridges.telegrams.default) {
-				data.bridges.telegrams.default = data.bridges.telegram
-			}
-			delete (data.bridges as any).telegram
-			needsMigration = true
-		}
-
-		// Migrate Bridges — step 3: plaintext botToken inside multi-instance entries
-		for (const [key, cfg] of Object.entries(data.bridges.discords ?? {})) {
-			if (cfg.botToken) {
-				const envKey = generateSecureEnvKey(`DISCORD_${key.toUpperCase()}`)
-				setEnv(envKey, cfg.botToken)
-				cfg.envKeyName = envKey
-				delete cfg.botToken
-				needsMigration = true
-			}
-		}
-		for (const [key, cfg] of Object.entries(data.bridges.telegrams ?? {})) {
-			if (cfg.botToken) {
-				const envKey = generateSecureEnvKey(`TELEGRAM_${key.toUpperCase()}`)
-				setEnv(envKey, cfg.botToken)
-				cfg.envKeyName = envKey
-				delete cfg.botToken
-				needsMigration = true
-			}
-		}
-
-		// Migrate legacy single email tool config
-		// Must read from rawData since Zod strips unknown top-level keys like 'email'
-		if (rawData.email) {
-			const old = rawData.email
-			const nickname = 'default'
-			data.emails = { [nickname]: { ...old, nickname, isDefault: true } }
-			needsMigration = true
-		}
-
-		if (data.emails) {
-			for (const [key, emailCfg] of Object.entries(data.emails)) {
-				if (emailCfg.appPassword) {
-					const envKey = generateSecureEnvKey(`EMAIL_${key.toUpperCase()}`)
-					setEnv(envKey, emailCfg.appPassword)
-					const anyCfg = emailCfg as any
-					anyCfg.envKeyName = envKey
-					delete anyCfg.appPassword
-					needsMigration = true
-				}
-			}
-		}
-
-		// Migrate workspacePath
-		if (!data.workspacePath) {
-			data.workspacePath = getDefaultWorkspacePath()
-			if (!existsSync(data.workspacePath)) {
-				mkdirSync(data.workspacePath, { recursive: true })
-			}
-			needsMigration = true
-		}
-
-		// Migrate defaultModel to defaultModels
-		const legacyConfig = rawData as any
-		if (legacyConfig.defaultModel && !data.defaultModels) {
-			data.defaultModels = [legacyConfig.defaultModel]
-			needsMigration = true
-		}
-
-		// Proactive cleanup of defaultModels entries for connections that no longer exist.
-		// Only applies when there are configured connections — if connections is empty we can't
-		// distinguish "just set up" from "all deleted", so we leave defaultModels alone.
-		const validNicknames = new Set(Object.keys(data.connections))
-		if (validNicknames.size > 0 && data.defaultModels?.length) {
-			const pruned = data.defaultModels.filter(m => {
-				const [nick] = m.split('/')
-				return validNicknames.has(nick)
-			})
-			if (pruned.length !== data.defaultModels.length) {
-				data.defaultModels = pruned
-				needsMigration = true
-			}
-		}
-
-		if (needsMigration) {
-			saveConfig(data) // Remove plaintext secrets from the config file immediately
-		}
 
 		// Cache the loaded config
 		try {

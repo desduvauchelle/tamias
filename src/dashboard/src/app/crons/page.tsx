@@ -9,6 +9,9 @@ export type CronDelivery = {
 	platformAccountId?: string
 	channelId: string
 	channelName?: string
+	emailTo?: string
+	emailSubject?: string
+	filePath?: string
 }
 
 export type CronJob = {
@@ -17,6 +20,9 @@ export type CronJob = {
 	schedule: string
 	type: 'ai' | 'message'
 	prompt: string
+	skills?: string[]
+	sessionKey?: string
+	context?: string
 	delivery?: CronDelivery
 	target: string
 	enabled: boolean
@@ -302,6 +308,40 @@ function CronEditModal({
 					/>
 				</div>
 
+				{(draft.type ?? 'ai') === 'ai' && (
+					<>
+						<div className="space-y-1">
+							<label className="text-xs font-bold uppercase tracking-wider text-base-content/60">Skills</label>
+							<input
+								type="text"
+								className="input input-sm input-bordered w-full"
+								placeholder="e.g. researcher, writer (comma-separated)"
+								value={draft.skills?.join(', ') || ''}
+								onChange={e => setDraft({ ...draft, skills: e.target.value ? e.target.value.split(',').map(s => s.trim()).filter(Boolean) : undefined })}
+							/>
+						</div>
+						<div className="space-y-1">
+							<label className="text-xs font-bold uppercase tracking-wider text-base-content/60">Context</label>
+							<textarea
+								className="textarea textarea-bordered textarea-sm w-full min-h-16"
+								placeholder="Extra context (file paths, project info, etc.)"
+								value={draft.context || ''}
+								onChange={e => setDraft({ ...draft, context: e.target.value || undefined })}
+							/>
+						</div>
+						<div className="space-y-1">
+							<label className="text-xs font-bold uppercase tracking-wider text-base-content/60">Session Key</label>
+							<input
+								type="text"
+								className="input input-sm input-bordered w-full"
+								placeholder="e.g. time-tracker (enables interactive replies)"
+								value={draft.sessionKey || ''}
+								onChange={e => setDraft({ ...draft, sessionKey: e.target.value || undefined })}
+							/>
+						</div>
+					</>
+				)}
+
 				<div className="space-y-1">
 					<label className="text-xs font-bold uppercase tracking-wider text-base-content/60">Target</label>
 					<select
@@ -386,8 +426,20 @@ function CronCard({
 					<div className="flex items-center gap-2 text-base-content/70">
 						<Target size={12} />
 						<span className="font-bold uppercase tracking-wide">Target</span>
-					<span className="truncate">{normalizeTargetLabel(job, targetOptions)}</span>
+						<span className="truncate">{normalizeTargetLabel(job, targetOptions)}</span>
 					</div>
+					{job.skills && job.skills.length > 0 && (
+						<div className="flex items-center gap-2 text-base-content/70">
+							<span className="font-bold uppercase tracking-wide ml-4">Skills</span>
+							<span className="font-mono">{job.skills.join(', ')}</span>
+						</div>
+					)}
+					{job.sessionKey && (
+						<div className="flex items-center gap-2 text-base-content/70">
+							<span className="font-bold uppercase tracking-wide ml-4">Session</span>
+							<span className="font-mono">{job.sessionKey}</span>
+						</div>
+					)}
 					<div className="flex items-start gap-2">
 						<Activity size={12} className="mt-0.5 text-base-content/70" />
 						<div className="min-w-0">
