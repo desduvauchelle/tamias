@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.03.05.3] - 2026-03-05
+
+### Features
+- enhance project kanban with task reactions and an 'awaiting-review' status, and improve navigation with grouped links and dynamic project listing.
+
 ## [v26.03.05.2] - 2026-03-05
 
 ### Features

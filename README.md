@@ -511,7 +511,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.03.05.2)
+### Latest Version (v26.03.05.3)
 
 ### Features
-- Enhance cron job management with improved target handling, project integration, and Discord bridge delivery.
+- enhance project kanban with task reactions and an 'awaiting-review' status, and improve navigation with grouped links and dynamic project listing.

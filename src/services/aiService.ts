@@ -306,6 +306,10 @@ export class AIService {
 	}
 
 	public createSession(options: CreateSessionOptions): Session {
+		let projectSlug = options.projectSlug
+		if (!projectSlug && options.id?.startsWith('project-')) {
+			projectSlug = options.id.replace('project-', '')
+		}
 		const config = loadConfig()
 		debug(`createSession(): options.model=${options.model}, getDefaultModel()=${getDefaultModel()}`)
 		debug(`createSession(): connections in config: [${Object.keys(config.connections).join(', ') || 'NONE'}]`)
@@ -360,7 +364,7 @@ export class AIService {
 		const sessionWorkspacePath = resolveSessionWorkspacePath({
 			isSubagent: options.isSubagent,
 			parentWorkspacePath: parentSession?.workspacePath,
-			projectSlug: options.projectSlug,
+			projectSlug: projectSlug,
 		})
 		// Ensure the global workspace exists (no per-session/per-channel dirs)
 		try { mkdirSync(getWorkspacePathSync(), { recursive: true }) } catch { }
@@ -389,7 +393,7 @@ export class AIService {
 			agentId: options.agentId,
 			agentSlug,
 			agentDir,
-			projectSlug: options.projectSlug,
+			projectSlug: projectSlug,
 			workspacePath: sessionWorkspacePath,
 		}
 
@@ -710,24 +714,46 @@ export class AIService {
 				// Build project context for system prompt
 				let projectContext: string | undefined
 				try {
-					const { buildProjectContext, buildActiveProjectContext, listProjects } = await import('../utils/projects')
+					const { buildProjectContext } = await import('../utils/projects')
 					const parts: string[] = []
 
-					// If session has an active project, include detailed context
+					// Priority A: Session has an explicit project slug (Dashboard Project Chat)
 					if (session.projectSlug) {
-						const activeCtx = buildActiveProjectContext(session.projectSlug)
-						if (activeCtx) parts.push(activeCtx)
+						try {
+							const { getProject } = await import('../core/projects')
+							const project = getProject(session.projectSlug)
+							if (project) {
+								let projText = `## Active Project Context: ${project.name}\n`
+								if (project.description) projText += `**Description**: ${project.description}\n`
+
+								if (project.kanban && project.kanban.length > 0) {
+									const activeTasks = project.kanban.filter(t => t.status !== 'done')
+									if (activeTasks.length > 0) {
+										projText += `\n### Active Kanban Tasks:\n${activeTasks.map(t => `- [${t.status}] ${t.title} | Assignee: ${t.assignee || 'None'} | ID: ${t.id}`).join('\n')}\n`
+									}
+								}
+
+								if (project.contextFile && project.path) {
+									const { join } = await import('path')
+									const { existsSync, readFileSync } = await import('fs')
+									const ctxPath = join(project.path, project.contextFile)
+									if (existsSync(ctxPath)) {
+										const content = readFileSync(ctxPath, 'utf-8')
+										projText += `\n### Context File (${project.contextFile}):\n\`\`\`\n${content}\n\`\`\``
+									}
+								}
+								parts.push(projText)
+							}
+						} catch (e) {
+							console.error(`[AIService] Failed to load explicit project context for ${session.projectSlug}`, e)
+						}
 					}
 
-					// Always include the shallow list of all projects
-					const shallowCtx = buildProjectContext()
-					if (shallowCtx) parts.push(shallowCtx)
-
-					// NEW: Inject linked Discord Project context
+					// Priority B: Session comes from a linked Discord channel (and isn't already the active project)
 					try {
 						const { getProjectByDiscordChannel } = await import('../core/projects')
 						const linkedProject = getProjectByDiscordChannel(session.channelId)
-						if (linkedProject) {
+						if (linkedProject && linkedProject.id !== session.projectSlug) {
 							let projText = `## Linked Project Context (${linkedProject.name})\n`
 							if (linkedProject.description) projText += `**Description**: ${linkedProject.description}\n`
 
@@ -747,15 +773,22 @@ export class AIService {
 									projText += `\n### Context File: ${linkedProject.contextFile}\n\`\`\`\n${content}\n\`\`\``
 								}
 							}
-
 							parts.push(projText)
 						}
 					} catch (e) {
 						console.error('[AIService] Failed to load discord project context', e)
 					}
 
+					// Always include the shallow list of all projects for cross-reference
+					try {
+						const shallowCtx = buildProjectContext()
+						if (shallowCtx) parts.push(shallowCtx)
+					} catch { }
+
 					if (parts.length > 0) projectContext = parts.join('\n\n---\n\n')
-				} catch { /* projects module may not exist yet */ }
+				} catch (err) {
+					console.error('[AIService] Critical error building project context', err)
+				}
 
 				const systemPrompt = buildSystemPrompt(session.summary, {
 					id: session.channelId,
@@ -785,6 +818,7 @@ export class AIService {
 					'X-Title': `Tamias (${source})`,
 					'X-Tamias-Source': source,
 				}
+
 
 				const collectedToolCalls: Array<{ toolName: string; input: unknown }> = []
 				const collectedToolResults: Array<{ toolName: string; result: unknown }> = []

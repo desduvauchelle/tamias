@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from "react"
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useToast } from "../_components/ToastProvider"
-import { KanbanSquare, FolderOpen, Settings, Plus, LayoutDashboard, ExternalLink, Link as LinkIcon, Edit, Check, FileText } from "lucide-react"
+import { KanbanSquare, FolderOpen, Settings, Plus, LayoutDashboard, ExternalLink, Link as LinkIcon, Edit, Check, FileText, MessageSquare } from "lucide-react"
 import FileNavigator from '../_components/FileNavigator'
+import ChatTerminal from '../_components/ChatTerminal'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
@@ -56,7 +57,7 @@ function ProjectsContent() {
 	const [projects, setProjects] = useState<Project[]>([])
 	const [activeProject, setActiveProject] = useState<Project | null>(null)
 	const [loading, setLoading] = useState(true)
-	const [activeTab, setActiveTab] = useState<'overview' | 'kanban' | 'files' | 'settings'>('overview')
+	const [activeTab, setActiveTab] = useState<'overview' | 'chat' | 'kanban' | 'files' | 'settings'>('overview')
 	const [channels, setChannels] = useState<DiscordChannel[]>([])
 
 	// Task Modal State
@@ -397,6 +398,12 @@ function ProjectsContent() {
 								onClick={() => setActiveTab('overview')}
 							>
 								<FileText className="w-4 h-4" /> Overview
+							</button>
+							<button
+								className={`tab tab-lg gap-2 transition-all ${activeTab === 'chat' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
+								onClick={() => setActiveTab('chat')}
+							>
+								<MessageSquare className="w-4 h-4" /> Chat
 							</button>
 							<button
 								className={`tab tab-lg gap-2 transition-all ${activeTab === 'kanban' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
