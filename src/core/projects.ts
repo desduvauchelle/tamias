@@ -1,6 +1,9 @@
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { EventEmitter } from 'events'
 import { TAMIAS_DIR } from '../utils/config'
+
+export const projectEvents = new EventEmitter()
 
 export interface KanbanComment {
 	id: string
@@ -15,7 +18,8 @@ export interface KanbanTask {
 	description?: string
 	details?: string
 	assignee?: string
-	status: 'todo' | 'in-progress' | 'done' | string
+	reaction?: string
+	status: 'todo' | 'in-progress' | 'awaiting-review' | 'done' | string
 	createdAt: number
 	comments?: KanbanComment[]
 }
@@ -71,8 +75,18 @@ export function updateProject(id: string, updates: Partial<Omit<ProjectConfig, '
 	if (!projects[id]) {
 		throw new Error(`Project ${id} not found`)
 	}
+	const oldKanban = projects[id].kanban
 	projects[id] = { ...projects[id], ...updates }
 	saveProjects(projects)
+
+	if (updates.kanban) {
+		projectEvents.emit('kanban_changed', {
+			project: projects[id],
+			oldKanban,
+			newKanban: updates.kanban
+		})
+	}
+
 	return projects[id]
 }
 

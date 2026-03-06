@@ -140,7 +140,36 @@ export class AIService {
 		debug(`initialize(): default models: [${getDefaultModels().join(', ') || 'NONE'}]`)
 		this.healStaleSessionModels()
 		this.loadAllSessions()
-		// We can't refresh tools globally anymore since it depends on sessionId
+
+		try {
+			const { projectEvents } = await import('../core/projects.ts')
+			projectEvents.on('kanban_changed', (payload) => this.handleKanbanChanged(payload))
+		} catch (e) {
+			console.error('[AIService] Failed to bind kanban events', e)
+		}
+	}
+
+	private async handleKanbanChanged({ project, oldKanban, newKanban }: any) {
+		if (!project.discordChannelId) return
+
+		const session = [...this.sessions.values()].find(s => s.channelId === project.discordChannelId)
+		if (!session) return
+
+		for (const newTask of newKanban) {
+			const oldTask = oldKanban.find((t: any) => t.id === newTask.id)
+			const isNewlyAssignedToAI = newTask.assignee?.toLowerCase() === 'ai' && oldTask?.assignee?.toLowerCase() !== 'ai'
+
+			const isAITask = newTask.assignee?.toLowerCase() === 'ai'
+			const hasNewUserComment = isAITask && (newTask.comments?.length || 0) > (oldTask?.comments?.length || 0) && newTask.comments[newTask.comments.length - 1].author !== 'AI Assistant'
+
+			if (isNewlyAssignedToAI || hasNewUserComment) {
+				const prompt = isNewlyAssignedToAI
+					? `[SYSTEM BACKGROUND EVENT]: Task "${newTask.title}" (ID: ${newTask.id}) was just assigned to you in the Kanban board. Please use the projects tools to set the reaction to 👀 to acknowledge, then move it to 'in-progress' and set the reaction to 🧠 while you execute its constraints. Once done, move it to 'awaiting-review', leave a comment with your result, and change the reaction to ✅.`
+					: `[SYSTEM BACKGROUND EVENT]: A user just added a new comment to your assigned task "${newTask.title}" (ID: ${newTask.id}). Please review their comment, use the project tools to reply or take action if needed.`
+
+				this.enqueueMessage(session.id, prompt, 'SYSTEM', undefined, { source: 'from-cron' })
+			}
+		}
 	}
 
 	public setDashboardPort(port: number) {

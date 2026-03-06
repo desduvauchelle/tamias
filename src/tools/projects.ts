@@ -1,6 +1,26 @@
 import { z } from 'zod'
-import { getProject, getProjectByDiscordChannel, updateProject } from '../core/projects'
-import type { KanbanTask, KanbanComment } from '../core/projects'
+import { getProject, getProjectByDiscordChannel, updateProject, addProject } from '../core/projects'
+import type { KanbanTask, KanbanComment, ProjectConfig } from '../core/projects'
+
+export const project_create = {
+	description: 'Create a new project and initialize its Kanban board.',
+	parameters: z.object({
+		name: z.string().describe('The name of the project.'),
+		description: z.string().optional().describe('A short description of the project.'),
+		path: z.string().describe('The local directory path for the project workspace.'),
+		discordServerId: z.string().optional().describe('The Discord Server ID to link this project to. (Optional)'),
+		discordChannelId: z.string().optional().describe('The Discord Channel ID to link this project to. (Optional)'),
+		contextFile: z.string().optional().describe('The filename of the context file (e.g. "readme.md"). (Optional)')
+	}),
+	execute: async (args: Omit<ProjectConfig, 'id' | 'kanban'>, context: any) => {
+		try {
+			const newProject = addProject(args)
+			return { success: true, project: newProject }
+		} catch (error) {
+			return { success: false, error: String(error) }
+		}
+	}
+}
 
 export const project_get_tasks = {
 	description: 'Get all active or completed tasks for the current context project Kanban board.',
@@ -75,14 +95,15 @@ export const project_add_task = {
 }
 
 export const project_update_task = {
-	description: 'Update the properties of an existing task on the Kanban board (e.g. status, assignee, or details).',
+	description: 'Update the properties of an existing task on the Kanban board (e.g. status, assignee, details, or reaction).',
 	parameters: z.object({
 		taskId: z.string().describe('The ID of the task to update.'),
-		status: z.enum(['todo', 'in-progress', 'done']).optional(),
+		status: z.enum(['todo', 'in-progress', 'awaiting-review', 'done']).optional(),
 		assignee: z.string().optional(),
-		details: z.string().optional()
+		details: z.string().optional(),
+		reaction: z.string().optional().describe('An emoji reaction to set for the task.')
 	}),
-	execute: async (args: { taskId: string, status?: string, assignee?: string, details?: string }, context: any) => {
+	execute: async (args: { taskId: string, status?: string, assignee?: string, details?: string, reaction?: string }, context: any) => {
 		const bridgeId = context.id
 		const project = bridgeId ? getProjectByDiscordChannel(bridgeId) : null
 		if (!project) return { error: 'No active project linked to this conversation context.' }
@@ -96,6 +117,7 @@ export const project_update_task = {
 					...(args.status !== undefined && { status: args.status }),
 					...(args.assignee !== undefined && { assignee: args.assignee }),
 					...(args.details !== undefined && { details: args.details }),
+					...(args.reaction !== undefined && { reaction: args.reaction }),
 				}
 			}
 			return t
