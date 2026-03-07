@@ -22,11 +22,25 @@ export async function POST(req: Request) {
 		const body = await req.json()
 		console.log('Chat API Request Body:', JSON.stringify({ ...body, data: body.data ? '[present]' : undefined }, null, 2))
 
-		// Extract last message text
+
+		// Extract last message text — @ai-sdk/react sends messages as:
+		// { messages: [{ role: 'user', content: [{type:'text', text:'...'}, ...] }] }
+		// or older: { messages: [{ role: 'user', content: '...' }] }
+		// or plain: { text: '...' } / { content: '...' }
 		let lastMessage = ''
-		if (Array.isArray(body.messages)) {
+		if (Array.isArray(body.messages) && body.messages.length > 0) {
 			const last = body.messages[body.messages.length - 1]
-			lastMessage = last?.content ?? last?.text ?? ''
+			if (typeof last?.content === 'string') {
+				lastMessage = last.content
+			} else if (Array.isArray(last?.content)) {
+				// Nested parts: [{type:'text', text:'...'}, ...]
+				lastMessage = last.content
+					.filter((p: any) => p.type === 'text' && p.text)
+					.map((p: any) => p.text)
+					.join('\n')
+			} else if (last?.text) {
+				lastMessage = last.text
+			}
 		} else if (body.text) {
 			lastMessage = body.text
 		} else if (body.content) {
@@ -98,8 +112,8 @@ export async function POST(req: Request) {
 
 						for (const line of lines) {
 							if (line.startsWith('data: ')) {
-let data: DaemonSSEEvent
-						try { data = JSON.parse(line.slice(6)) as DaemonSSEEvent } catch { continue }
+								let data: DaemonSSEEvent
+								try { data = JSON.parse(line.slice(6)) as DaemonSSEEvent } catch { continue }
 
 								if (data.type === 'chunk') {
 									// Text delta: 0:"text"\n

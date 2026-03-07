@@ -130,47 +130,37 @@ function HealthStatus() {
 		return () => clearInterval(id)
 	}, [])
 
-	if (!status) {
-		return (
-			<div className="p-4 border-t border-base-300">
-				<div className="flex items-center gap-2 text-xs text-base-content/40">
-					<span className="w-2 h-2 rounded-full bg-base-content/20" />
-					<span>Checking daemon...</span>
-				</div>
-			</div>
-		)
-	}
+	if (!status) return null
 
 	return (
-		<div className="p-4 border-t border-base-300">
-			<div className="flex items-center gap-2 mb-1">
-				<span className={`w-2 h-2 rounded-full shrink-0 ${status.running ? 'bg-success animate-pulse' : 'bg-error'}`} />
-				<span className={`text-xs font-medium ${status.running ? 'text-success' : 'text-error'}`}>
-					{status.running ? 'Tamias ON' : 'Tamias OFF'}
+		<li className="mt-4 pt-4 border-t border-base-300/50">
+			<div className="px-3 flex items-center justify-between mb-2">
+				<div className="flex items-center gap-2">
+					<span className={`w-1.5 h-1.5 rounded-full ${status.running ? 'bg-success animate-pulse' : 'bg-error'}`} />
+					<span className="text-[10px] font-bold uppercase tracking-wider opacity-40">System Status</span>
+				</div>
+				<span className={`text-[10px] font-mono ${status.running ? 'text-success' : 'text-error'}`}>
+					{status.running ? 'ONLINE' : 'OFFLINE'}
 				</span>
 			</div>
-			{status.running && status.pid && (
-				<div className="pl-4 space-y-0.5">
-					<p className="text-xs text-base-content/40 font-mono">PID: {status.pid}</p>
-					{status.uptimeSec !== null && (
-						<p className="text-xs text-base-content/40 font-mono">Up: {formatUptime(status.uptimeSec)}</p>
-					)}
-				</div>
-			)}
-			{!status.running && (
-				<p className="pl-4 text-xs text-base-content/40 mt-0.5">Run <code className="text-base-content/60">tamias start</code></p>
-			)}
-			<div className="mt-4 pt-4 border-t border-base-300/50 space-y-1">
-				<div className="flex justify-between items-center text-[10px] uppercase tracking-wider text-base-content/30 font-bold">
+
+			<div className="px-3 space-y-1 opacity-50">
+				{status.running && (
+					<div className="flex justify-between text-[9px] font-mono uppercase">
+						<span>PID {status.pid}</span>
+						<span>UP {status.uptimeSec !== null ? formatUptime(status.uptimeSec) : '...'}</span>
+					</div>
+				)}
+				<div className="flex justify-between text-[9px] font-mono uppercase">
 					<span>Tamias</span>
-					<span className="font-mono">{status.tamiasVersion || '...'}</span>
+					<span>{status.tamiasVersion || '...'}</span>
 				</div>
-				<div className="flex justify-between items-center text-[10px] uppercase tracking-wider text-base-content/30 font-bold">
+				<div className="flex justify-between text-[9px] font-mono uppercase">
 					<span>Dashboard</span>
-					<span className="font-mono">{status.dashboardVersion || '...'}</span>
+					<span>{status.dashboardVersion || '...'}</span>
 				</div>
 			</div>
-		</div>
+		</li>
 	)
 }
 
@@ -306,12 +296,10 @@ function NavContent({ onNewProject }: NavContentProps) {
 							</ul>
 						</details>
 					</li>
-				</ul>
-			</div>
 
-			{/* Health Status Footer */}
-			<div className="shrink-0 bg-base-200/50 backdrop-blur-md">
-				<HealthStatus />
+					{/* Inline Health Status */}
+					<HealthStatus />
+				</ul>
 			</div>
 		</aside>
 	)

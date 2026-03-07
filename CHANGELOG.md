@@ -1,8 +1,9 @@
 # Changelog
 
-## [Unreleased]
+## [v26.03.06.7] - 2026-03-06
 
 ### Features
+- update changelog to version 26.03.06.4, enhance README with latest features, and increment package versions to 26.03.06.6
 - update changelog, bump version to 26.03.06.4, and enhance project tab navigation with URL sync
 
 ## [v26.03.06.3] - 2026-03-06

@@ -511,9 +511,8 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.03.06.3)
+### Latest Version (v26.03.06.7)
 
 ### Features
-- introduce client-side layout and project creation modal to enhance AI project context, and update changelog.
-- Implement daemon IPC for project events, enhance file content API with directory creation, fix Bun compatibility for transcription, improve dashboard navigation, and update package versions.
-- introduce a new dashboard chat terminal and enhance AI project context with detailed kanban tasks and linked project information.
+- update changelog to version 26.03.06.4, enhance README with latest features, and increment package versions to 26.03.06.6
+- update changelog, bump version to 26.03.06.4, and enhance project tab navigation with URL sync

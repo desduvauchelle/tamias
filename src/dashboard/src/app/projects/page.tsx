@@ -159,7 +159,9 @@ function ProjectsContent() {
 
 	const fetchContextMarkdown = async (proj: Project) => {
 		try {
-			const rawPath = proj.path ? `${proj.path}/${proj.contextFile}` : (proj.contextFile || "")
+			// Build the API path — project.path is relative to ~/.tamias/workspace
+			const projectApiPath = proj.path ? `workspace/${proj.path}` : ''
+			const rawPath = projectApiPath ? `${projectApiPath}/${proj.contextFile}` : (proj.contextFile || '')
 			const res = await fetch(`/api/files/content?path=${encodeURIComponent(rawPath)}`)
 			if (res.ok) {
 				const fileData = await res.json()
@@ -175,7 +177,9 @@ function ProjectsContent() {
 	const saveContextMarkdown = async () => {
 		if (!activeProject) return
 		try {
-			const rawPath = activeProject.path ? `${activeProject.path}/${activeProject.contextFile}` : (activeProject.contextFile || "")
+			// Build the API path — project.path is relative to ~/.tamias/workspace
+			const projectApiPath = activeProject.path ? `workspace/${activeProject.path}` : ''
+			const rawPath = projectApiPath ? `${projectApiPath}/${activeProject.contextFile}` : (activeProject.contextFile || '')
 			const res = await fetch(`/api/files/content?path=${encodeURIComponent(rawPath)}`, {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
@@ -211,19 +215,22 @@ function ProjectsContent() {
 			return
 		}
 
-		const method = activeProject ? "PUT" : "POST"
+		const method = activeProject ? 'PUT' : 'POST'
 		const url = activeProject ? `/api/projects/${activeProject.id}` : `/api/projects`
 
 		const selectedChannel = channels.find(c => c.id === formChannel)
 
+		// Normalize: strip any leading 'workspace/' the user might have typed
+		const normalizedPath = formPath.trim().replace(/^workspace\/+/i, '').replace(/^\/+/, '').replace(/\/+$/, '')
+
 		try {
 			const res = await fetch(url, {
 				method,
-				headers: { "Content-Type": "application/json" },
+				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					name: formName,
 					description: formDesc,
-					path: formPath,
+					path: normalizedPath,
 					discordChannelId: selectedChannel?.id || undefined,
 					discordServerId: selectedChannel?.guildId || undefined,
 					contextFile: formContext
@@ -277,10 +284,15 @@ function ProjectsContent() {
 			createdAt: Date.now()
 		}
 
-		const updatedKanban = [...(activeProject.kanban || []), newTask]
-		await updateKanban(updatedKanban)
-		setNewTaskTitle("")
-		setNewTaskCol("")
+		const oldKanban = activeProject.kanban || []
+		const updatedKanban = [...oldKanban, newTask]
+		const ok = await updateKanban(updatedKanban)
+		if (ok) {
+			setNewTaskTitle('')
+			setNewTaskCol('')
+			// Notify AI of the new task being created
+			await notifyAIKanbanEvent(oldKanban, updatedKanban)
+		}
 	}
 
 	const moveTask = async (taskId: string, newStatus: string) => {
@@ -291,8 +303,27 @@ function ProjectsContent() {
 		await updateKanban(updatedKanban)
 	}
 
+	// Notify daemon so AI can react to kanban changes
+	const notifyAIKanbanEvent = async (oldKanban: KanbanTask[], newKanban: KanbanTask[]) => {
+		if (!activeProject) return
+		try {
+			await fetch('/api/project-event', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					type: 'kanban_changed',
+					projectId: activeProject.id,
+					oldKanban,
+					newKanban
+				})
+			})
+		} catch (e) {
+			console.error('Failed to notify AI of kanban event', e)
+		}
+	}
+
 	const removeTask = async (taskId: string) => {
-		if (!activeProject || !confirm("Delete task?")) return
+		if (!activeProject || !confirm('Delete task?')) return
 		const updatedKanban = (activeProject.kanban || []).filter(t => t.id !== taskId)
 		await updateKanban(updatedKanban)
 	}
@@ -341,14 +372,41 @@ function ProjectsContent() {
 			assignee: modalAssignee,
 			status: modalStatus
 		}
-		const updatedKanban = (activeProject.kanban || []).map(t =>
+		const oldKanban = activeProject.kanban || []
+		const updatedKanban = oldKanban.map(t =>
 			t.id === selectedTask.id ? updatedTask : t
 		)
 		const ok = await updateKanban(updatedKanban)
 		if (ok) {
-			success("Task updated")
+			success('Task updated')
 			setSelectedTask(updatedTask)
+			// Notify AI that the task was edited
+			await notifyAIKanbanEvent(oldKanban, updatedKanban)
 		}
+	}
+
+	const deleteTaskFromModal = async () => {
+		if (!selectedTask || !activeProject || !confirm('Delete this task?')) return
+		const oldKanban = activeProject.kanban || []
+		const updatedKanban = oldKanban.filter(t => t.id !== selectedTask.id)
+		const ok = await updateKanban(updatedKanban)
+		if (ok) {
+			closeTaskModal()
+			await notifyAIKanbanEvent(oldKanban, updatedKanban)
+		}
+	}
+
+	const deleteComment = async (commentId: string) => {
+		if (!selectedTask || !activeProject) return
+		const updatedTask = {
+			...selectedTask,
+			comments: (selectedTask.comments || []).filter(c => c.id !== commentId)
+		}
+		const updatedKanban = (activeProject.kanban || []).map(t =>
+			t.id === selectedTask.id ? updatedTask : t
+		)
+		const ok = await updateKanban(updatedKanban)
+		if (ok) setSelectedTask(updatedTask)
 	}
 
 	const addComment = async (e: React.FormEvent) => {
@@ -357,7 +415,7 @@ function ProjectsContent() {
 
 		const comment: KanbanComment = {
 			id: Math.random().toString(36).substring(2, 9),
-			author: "User", // Hardcoded for dashboard for now
+			author: 'User',
 			text: newComment,
 			createdAt: Date.now()
 		}
@@ -367,13 +425,16 @@ function ProjectsContent() {
 			comments: [...(selectedTask.comments || []), comment]
 		}
 
-		const updatedKanban = (activeProject.kanban || []).map(t =>
+		const oldKanban = activeProject.kanban || []
+		const updatedKanban = oldKanban.map(t =>
 			t.id === selectedTask.id ? updatedTask : t
 		)
 		const ok = await updateKanban(updatedKanban)
 		if (ok) {
-			setNewComment("")
+			setNewComment('')
 			setSelectedTask(updatedTask)
+			// Notify AI of the new comment so it can respond
+			await notifyAIKanbanEvent(oldKanban, updatedKanban)
 		}
 	}
 
@@ -404,7 +465,7 @@ function ProjectsContent() {
 								</h2>
 								<div className="flex flex-wrap items-center gap-4 text-xs font-medium text-base-content/60">
 									<span className="flex items-center gap-1 font-mono bg-base-200 px-2 py-1 rounded-md border border-base-300">
-										<FolderOpen className="w-4 h-4 text-warning" /> ~/.tamias/{activeProject.path}
+										<FolderOpen className="w-4 h-4 text-warning" /> ~/.tamias/workspace/{activeProject.path}
 									</span>
 									{activeProject.discordChannelId && (
 										<span className="flex items-center gap-1 text-info bg-info/10 px-2 py-1 rounded-md border border-info/20">
@@ -605,7 +666,8 @@ function ProjectsContent() {
 
 						{activeTab === 'files' && activeProject?.path && (
 							<div className="absolute inset-0">
-								<FileNavigator key={activeProject.id} basePath={activeProject.path} hideHeader={true} />
+								{/* basePath is 'workspace/<project.path>' since project.path is relative to ~/.tamias/workspace */}
+								<FileNavigator key={activeProject.id} basePath={`workspace/${activeProject.path}`} hideHeader={true} />
 							</div>
 						)}
 
@@ -617,9 +679,12 @@ function ProjectsContent() {
 								</div>
 
 								<div className="form-control bg-base-200/50 p-4 rounded-xl border border-base-300">
-									<label className="label pb-1 pt-0"><span className="label-text font-bold text-base">Relative Path (from ~/.tamias)</span></label>
-									<input value={formPath} onChange={e => setFormPath(e.target.value)} type="text" className="input input-bordered w-full font-mono text-sm" placeholder="workspace/my-project" />
-									<label className="label"><span className="label-text-alt text-base-content/50">The relative directory path to your project inside your workspace.</span></label>
+									<label className="label pb-1 pt-0"><span className="label-text font-bold text-base">Project Folder Name</span></label>
+									<div className="flex items-center gap-0 input input-bordered w-full font-mono text-sm overflow-hidden p-0">
+										<span className="px-3 py-2 bg-base-300 border-r border-base-300 text-base-content/50 text-xs shrink-0">~/.tamias/workspace/</span>
+										<input value={formPath} onChange={e => setFormPath(e.target.value)} type="text" className="flex-1 bg-transparent px-3 py-2 outline-none text-sm" placeholder="livecase" />
+									</div>
+									<label className="label"><span className="label-text-alt text-base-content/50">Folder name inside your workspace (e.g. <code className="bg-base-300 px-1 rounded">livecase</code>)</span></label>
 								</div>
 
 								<div className="form-control">
@@ -671,7 +736,13 @@ function ProjectsContent() {
 								Task Details
 								{selectedTask.reaction && <span>{selectedTask.reaction}</span>}
 							</h3>
-							<button onClick={closeTaskModal} className="btn btn-sm btn-ghost btn-circle">✕</button>
+							<div className="flex items-center gap-2">
+								<button onClick={deleteTaskFromModal} className="btn btn-sm btn-ghost text-error hover:bg-error/10" title="Delete task">
+									<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+									Delete
+								</button>
+								<button onClick={closeTaskModal} className="btn btn-sm btn-ghost btn-circle">✕</button>
+							</div>
 						</div>
 
 						{/* Body */}
@@ -680,9 +751,9 @@ function ProjectsContent() {
 							<div className="flex-1 flex flex-col gap-6">
 								<div className="form-control">
 									<label className="label pt-0"><span className="label-text font-semibold">Title</span></label>
-									<input
-										type="text"
-										className="input input-bordered w-full font-bold"
+									<textarea
+										className="textarea textarea-bordered w-full font-bold text-base resize-none"
+										rows={2}
 										value={modalTitle}
 										onChange={e => setModalTitle(e.target.value)}
 									/>
@@ -699,17 +770,27 @@ function ProjectsContent() {
 								</div>
 
 								<div className="flex justify-end">
-									<button onClick={saveTaskDetails} className="btn btn-sm btn-primary">Save Details</button>
+									<button onClick={saveTaskDetails} className="btn btn-sm btn-primary gap-1">
+										<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+										Save & Notify AI
+									</button>
 								</div>
 
 								<div className="divider my-0">Comments</div>
 
-								<div className="flex flex-col gap-4">
+								<div className="flex flex-col gap-3">
 									{selectedTask.comments?.map(c => (
-										<div key={c.id} className="bg-base-200/50 p-3 rounded-xl border border-base-300">
+										<div key={c.id} className="group bg-base-200/50 p-3 rounded-xl border border-base-300">
 											<div className="flex items-center justify-between mb-1">
 												<span className="font-bold text-sm text-primary">{c.author}</span>
-												<span className="text-xs opacity-50">{new Date(c.createdAt).toLocaleString()}</span>
+												<div className="flex items-center gap-2">
+													<span className="text-xs opacity-50">{new Date(c.createdAt).toLocaleString()}</span>
+													<button
+														onClick={() => deleteComment(c.id)}
+														className="opacity-0 group-hover:opacity-100 transition-opacity text-error hover:text-error text-xs btn btn-xs btn-ghost btn-circle"
+														title="Delete comment"
+													>✕</button>
+												</div>
 											</div>
 											<div className="text-sm whitespace-pre-wrap">{c.text}</div>
 										</div>
