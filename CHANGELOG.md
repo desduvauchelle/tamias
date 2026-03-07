@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.03.06.10] - 2026-03-06
+
+### Features
+- Enhance AI assistant with project-specific instructions, refined Kanban event handling, and stream timeout management.
+
 ## [v26.03.06.9] - 2026-03-06
 
 ### Features

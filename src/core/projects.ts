@@ -71,7 +71,7 @@ export function addProject(project: Omit<ProjectConfig, 'id' | 'kanban'>): Proje
 	return newProject
 }
 
-export function updateProject(id: string, updates: Partial<Omit<ProjectConfig, 'id'>>): ProjectConfig {
+export function updateProject(id: string, updates: Partial<Omit<ProjectConfig, 'id'>>, opts?: { source?: string }): ProjectConfig {
 	const projects = getProjects()
 	if (!projects[id]) {
 		throw new Error(`Project ${id} not found`)
@@ -84,7 +84,8 @@ export function updateProject(id: string, updates: Partial<Omit<ProjectConfig, '
 		projectEvents.emit('kanban_changed', {
 			project: projects[id],
 			oldKanban,
-			newKanban: updates.kanban
+			newKanban: updates.kanban,
+			source: opts?.source
 		})
 	}
 

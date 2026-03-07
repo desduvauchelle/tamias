@@ -511,7 +511,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.03.06.9)
+### Latest Version (v26.03.06.10)
 
 ### Features
-- update changelog to version 26.03.06.7, enhance README with latest features, and improve project API integration for kanban events
+- Enhance AI assistant with project-specific instructions, refined Kanban event handling, and stream timeout management.

@@ -88,7 +88,7 @@ export const project_add_task = {
 		}
 
 		const updatedKanban = [...(project.kanban || []), newTask]
-		updateProject(project.id, { kanban: updatedKanban })
+		updateProject(project.id, { kanban: updatedKanban }, { source: 'ai' })
 
 		return { success: true, task: newTask }
 	}
@@ -125,7 +125,7 @@ export const project_update_task = {
 
 		if (!found) return { error: `Task ID ${args.taskId} not found.` }
 
-		updateProject(project.id, { kanban: updatedKanban })
+		updateProject(project.id, { kanban: updatedKanban }, { source: 'ai' })
 		return { success: true, message: `Task ${args.taskId} updated.` }
 	}
 }
@@ -159,7 +159,7 @@ export const project_add_comment = {
 
 		if (!found) return { error: `Task ID ${args.taskId} not found.` }
 
-		updateProject(project.id, { kanban: updatedKanban })
+		updateProject(project.id, { kanban: updatedKanban }, { source: 'ai' })
 		return { success: true, message: `Comment added to task ${args.taskId}.` }
 	}
 }
@@ -201,7 +201,7 @@ export const project_update_comment = {
 		if (!taskFound) return { error: `Task ID ${args.taskId} not found.` }
 		if (!commentFound) return { error: `Comment ID ${args.commentId} not found in task ${args.taskId}.` }
 
-		updateProject(project.id, { kanban: updatedKanban })
+		updateProject(project.id, { kanban: updatedKanban }, { source: 'ai' })
 		return { success: true, message: `Comment ${args.commentId} updated in task ${args.taskId}.` }
 	}
 }
