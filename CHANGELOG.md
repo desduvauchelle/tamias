@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.03.06.9] - 2026-03-06
+
+### Features
+- update changelog to version 26.03.06.7, enhance README with latest features, and improve project API integration for kanban events
+
 ## [v26.03.06.8] - 2026-03-06
 
 ### Features

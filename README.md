@@ -511,7 +511,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.03.06.8)
+### Latest Version (v26.03.06.9)
 
 ### Features
-- enhance error handling in runStartCommand, improve file navigator path logic, and add task modal title state in ProjectsContent
+- update changelog to version 26.03.06.7, enhance README with latest features, and improve project API integration for kanban events

@@ -3,7 +3,8 @@ import pc from 'picocolors'
 import { addConnection, ProviderEnum, loadConfig, getAllModelOptions, getDefaultModel, CONFIG_PATH } from '../utils/config.ts'
 import { fetchModels } from '../utils/models.ts'
 import { setEnv, generateSecureEnvKey } from '../utils/env.ts'
-
+import { createServer } from 'http'
+import open from 'open'
 export const runConfigCommand = async () => {
 	p.intro(pc.bgCyan(pc.black(' Tamias — Add Model Config ')))
 
@@ -32,10 +33,48 @@ export const runConfigCommand = async () => {
 			},
 			credentials: ({ results }) => {
 				if (results.provider === 'antigravity') {
-					return p.text({
-						message: 'Enter your Antigravity Access Token:',
-						placeholder: 'ag_...',
-						validate: (v) => { if (!v) return 'Access token is required' },
+					return new Promise<string>((resolve, reject) => {
+						const server = createServer((req, res) => {
+							try {
+								const url = new URL(req.url || '/', `http://localhost:${(server.address() as any).port}`)
+								const token = url.searchParams.get('token')
+								if (token) {
+									res.writeHead(200, { 'Content-Type': 'text/html' })
+									res.end('<h1>Authentication successful!</h1><p>You can close this tab and return to the terminal.</p>')
+									server.close(() => resolve(token))
+								} else {
+									res.writeHead(400, { 'Content-Type': 'text/html' })
+									res.end('<h1>Authentication failed!</h1><p>No token was provided.</p>')
+									server.close(() => resolve('')) // Return empty -> will fail validation
+								}
+							} catch (e) {
+								res.writeHead(500)
+								res.end('Internal Server Error')
+								server.close(() => reject(e))
+							}
+						})
+
+						server.listen(0, '127.0.0.1', async () => {
+							const port = (server.address() as any).port
+							const redirectUri = encodeURIComponent(`http://localhost:${port}`)
+							const authUrl = `https://antigravity.gg/oauth/authorize?redirect_uri=${redirectUri}` // Assuming standard OAuth URL format or similar
+							const s = p.spinner()
+							s.start('Opening browser for Antigravity authentication. Waiting for token...')
+							try {
+								await open(authUrl)
+							} catch (err) {
+								s.stop('Failed to open browser automatically.')
+								console.log(`Please open this URL in your browser: ${authUrl}`)
+							}
+						})
+					}).then(token => {
+						if (!token) {
+							p.cancel('Authentication failed or cancelled.')
+							process.exit(1)
+						}
+						// Small hack to get rid of the spinner that we started
+						console.log(pc.green('  ✔ Authentication successful!'))
+						return token
 					})
 				}
 				if (results.provider === 'ollama') {

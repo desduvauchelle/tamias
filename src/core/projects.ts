@@ -10,6 +10,7 @@ export interface KanbanComment {
 	author: string
 	text: string
 	createdAt: number
+	reaction?: string
 }
 
 export interface KanbanTask {

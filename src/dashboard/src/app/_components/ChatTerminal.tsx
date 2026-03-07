@@ -44,9 +44,15 @@ export default function ChatTerminal({ sessionId, initialHistory = [] }: { sessi
 	const { messages, setMessages, sendMessage, status } = chatHook
 
 	// Load history on mount
+	const hasLoadedSessionId = useRef<string | null>(null)
+
 	useEffect(() => {
 		if (initialHistory.length > 0) return // Already loaded via props
+		if (hasLoadedSessionId.current === sessionId) return // Already loaded this session
+
 		let mounted = true
+		hasLoadedSessionId.current = sessionId
+
 		fetch(`/api/sessions/${sessionId}`)
 			.then(res => res.json())
 			.then(data => {
@@ -61,8 +67,9 @@ export default function ChatTerminal({ sessionId, initialHistory = [] }: { sessi
 				setMessages(uiMessages)
 			})
 			.catch(err => console.error('Failed to load chat history:', err))
+
 		return () => { mounted = false }
-	}, [sessionId, initialHistory, setMessages])
+	}, [sessionId]) // removed initialHistory and setMessages as they cause infinite loops
 
 	// Files received from the AI (via 2: data parts in the stream)
 	const chatHookWithData = chatHook as typeof chatHook & { data?: ReceivedFile[] }

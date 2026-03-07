@@ -14,6 +14,7 @@ interface KanbanComment {
 	author: string
 	text: string
 	createdAt: number
+	reaction?: string
 }
 
 interface KanbanTask {
@@ -48,20 +49,39 @@ interface DiscordChannel {
 }
 
 import { Suspense } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 function ProjectsContent() {
 	const searchParams = useSearchParams()
 	const router = useRouter()
+	const queryClient = useQueryClient()
 	const projectId = searchParams.get('id')
 	const initialTab = (searchParams.get('tab') as any) || 'overview'
 
-	const [projects, setProjects] = useState<Project[]>([])
+	const { data: projects = [], isLoading: loading } = useQuery<Project[]>({
+		queryKey: ['projects'],
+		queryFn: async () => {
+			const res = await fetch("/api/projects")
+			if (!res.ok) throw new Error("Failed to fetch")
+			return res.json()
+		},
+		refetchInterval: 3000 // Silently poll for updates so kanban reactions appear live
+	})
+
+	const { data: channels = [] } = useQuery<DiscordChannel[]>({
+		queryKey: ['channels'],
+		queryFn: async () => {
+			const res = await fetch("/api/discord/channels")
+			if (!res.ok) throw new Error("Failed to fetch")
+			const data = await res.json()
+			return data.channels || []
+		}
+	})
+
 	const [activeProject, setActiveProject] = useState<Project | null>(null)
-	const [loading, setLoading] = useState(true)
 	const [activeTab, setActiveTab] = useState<'overview' | 'chat' | 'kanban' | 'files' | 'settings'>(
 		['overview', 'chat', 'kanban', 'files', 'settings'].includes(initialTab) ? initialTab : 'overview'
 	)
-	const [channels, setChannels] = useState<DiscordChannel[]>([])
 
 	// Sync activeTab to URL and vice-versa
 	useEffect(() => {
@@ -110,24 +130,7 @@ function ProjectsContent() {
 
 	const KANBAN_COLUMNS = ['todo', 'in-progress', 'awaiting-review', 'done']
 
-	useEffect(() => {
-		fetchProjects()
-		fetchChannels()
-	}, [])
-
-	const fetchProjects = async () => {
-		try {
-			const res = await fetch("/api/projects")
-			if (res.ok) {
-				const data: Project[] = await res.json()
-				setProjects(data)
-			}
-		} catch (e) {
-			console.error("Failed to list projects", e)
-		} finally {
-			setLoading(false)
-		}
-	}
+	// Query hooks replace the manual useEffect polling
 
 	// Update active project when ID param changes or projects load
 	useEffect(() => {
@@ -208,17 +211,7 @@ function ProjectsContent() {
 		}
 	}
 
-	const fetchChannels = async () => {
-		try {
-			const res = await fetch("/api/discord/channels")
-			if (res.ok) {
-				const data = await res.json()
-				setChannels(data.channels || [])
-			}
-		} catch (e) {
-			console.error("Failed to list channels", e)
-		}
-	}
+	// queryClient automatically handles channels now
 
 	const handleSave = async () => {
 		if (!formName || !formPath) {
@@ -251,7 +244,7 @@ function ProjectsContent() {
 			if (res.ok) {
 				const updated = await res.json()
 				success("Project config saved!")
-				fetchProjects()
+				queryClient.invalidateQueries({ queryKey: ['projects'] })
 
 				// If creating new, navigate to it
 				if (!activeProject) {
@@ -274,7 +267,7 @@ function ProjectsContent() {
 			if (res.ok) {
 				success("Project deleted")
 				router.push('/projects')
-				fetchProjects()
+				queryClient.invalidateQueries({ queryKey: ['projects'] })
 			} else {
 				error("Failed to delete project")
 			}
@@ -349,7 +342,7 @@ function ProjectsContent() {
 			if (res.ok) {
 				const updated = await res.json()
 				setActiveProject(updated)
-				setProjects(projects.map(p => p.id === updated.id ? updated : p))
+				queryClient.invalidateQueries({ queryKey: ['projects'] })
 				return true
 			} else {
 				error("Failed to update kanban")
@@ -793,7 +786,10 @@ function ProjectsContent() {
 									{selectedTask.comments?.map(c => (
 										<div key={c.id} className="group bg-base-200/50 p-3 rounded-xl border border-base-300">
 											<div className="flex items-center justify-between mb-1">
-												<span className="font-bold text-sm text-primary">{c.author}</span>
+												<span className="font-bold text-sm text-primary flex items-center gap-2">
+													{c.author}
+													{c.reaction && <span className="text-base font-normal">{c.reaction}</span>}
+												</span>
 												<div className="flex items-center gap-2">
 													<span className="text-xs opacity-50">{new Date(c.createdAt).toLocaleString()}</span>
 													<button

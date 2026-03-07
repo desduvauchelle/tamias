@@ -160,9 +160,13 @@ export class AIService {
 		)
 		if (!session) return
 
+		// We will accumulate updates here if we need to auto-apply 👀 reactions
+		let needsSave = false
+		const updatedKanban = JSON.parse(JSON.stringify(newKanban))
+
 		// Determine what changed
-		const addedTasks = newKanban.filter((t: any) => !oldKanban.find((o: any) => o.id === t.id))
-		const changedTasks = newKanban.filter((t: any) => {
+		const addedTasks = updatedKanban.filter((t: any) => !oldKanban.find((o: any) => o.id === t.id))
+		const changedTasks = updatedKanban.filter((t: any) => {
 			const old = oldKanban.find((o: any) => o.id === t.id)
 			if (!old) return false
 			return (
@@ -176,6 +180,8 @@ export class AIService {
 		const prompts: string[] = []
 
 		for (const task of addedTasks) {
+			task.reaction = '👀'
+			needsSave = true
 			prompts.push(`[KANBAN EVENT] A new task was just created in the project kanban board:\n- Title: "${task.title}"\n- Status: ${task.status}\n- ID: ${task.id}\n\nPlease acknowledge this task and ask clarifying questions if anything is unclear, or offer to help plan or execute it.`)
 		}
 
@@ -189,14 +195,27 @@ export class AIService {
 
 			if (isNewlyAssignedToAI) {
 				// High-priority auto-execution path
+				task.reaction = '👀'
+				needsSave = true
 				prompts.push(`[KANBAN EVENT] Task "${task.title}" (ID: ${task.id}) was just assigned to you. Please use the projects tools to set the reaction to 👀 to acknowledge, then move it to 'in-progress' with reaction 🧠 while you execute it. Once done, move it to 'awaiting-review', leave a comment with your result, and change the reaction to ✅.`)
 			} else if (hasNewComment && newComment) {
 				// Comment on any task — AI should engage
-				prompts.push(`[KANBAN EVENT] A new comment was added to the task "${task.title}" (ID: ${task.id}):\n\n> ${newComment.author}: ${newComment.text}\n\nPlease respond to this comment, ask clarifying questions, or take action if you can help.`)
+				newComment.reaction = '👀'
+				needsSave = true
+				prompts.push(`[KANBAN EVENT] A new comment was added to the task "${task.title}" (ID: ${task.id}):\n\n> ${newComment.author}: ${newComment.text}\n\nPlease respond to this comment or take action. When finished, use the project_update_comment tool to set the reaction of this comment (Comment ID: ${newComment.id}) to ✅.`)
 			} else if (statusChanged) {
 				prompts.push(`[KANBAN EVENT] Task "${task.title}" (ID: ${task.id}) moved from "${old.status}" to "${task.status}". Acknowledge and offer any relevant help if needed.`)
 			} else if (titleChanged) {
 				prompts.push(`[KANBAN EVENT] Task title was updated from "${old.title}" to "${task.title}" (ID: ${task.id}). Acknowledge and let the user know if you need any clarification.`)
+			}
+		}
+
+		if (needsSave) {
+			try {
+				const { updateProject } = await import('../core/projects.ts')
+				updateProject(project.id, { kanban: updatedKanban })
+			} catch (e) {
+				console.error('[AIService] Failed to save eye reaction state to project', e)
 			}
 		}
 

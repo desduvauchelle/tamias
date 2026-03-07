@@ -163,3 +163,45 @@ export const project_add_comment = {
 		return { success: true, message: `Comment added to task ${args.taskId}.` }
 	}
 }
+
+export const project_update_comment = {
+	description: 'Update the text or reaction of an existing comment on the Kanban board.',
+	parameters: z.object({
+		taskId: z.string(),
+		commentId: z.string(),
+		text: z.string().optional().describe('The new content of the comment in Markdown.'),
+		reaction: z.string().optional().describe('An emoji reaction to set for the comment.')
+	}),
+	execute: async (args: { taskId: string, commentId: string, text?: string, reaction?: string }, context: any) => {
+		const bridgeId = context.id
+		const project = bridgeId ? getProjectByDiscordChannel(bridgeId) : null
+		if (!project) return { error: 'No active project linked to this conversation context.' }
+
+		let taskFound = false
+		let commentFound = false
+		const updatedKanban = (project.kanban || []).map(t => {
+			if (t.id === args.taskId) {
+				taskFound = true
+				const updatedComments = (t.comments || []).map(c => {
+					if (c.id === args.commentId) {
+						commentFound = true
+						return {
+							...c,
+							...(args.text !== undefined && { text: args.text }),
+							...(args.reaction !== undefined && { reaction: args.reaction })
+						}
+					}
+					return c
+				})
+				return { ...t, comments: updatedComments }
+			}
+			return t
+		})
+
+		if (!taskFound) return { error: `Task ID ${args.taskId} not found.` }
+		if (!commentFound) return { error: `Comment ID ${args.commentId} not found in task ${args.taskId}.` }
+
+		updateProject(project.id, { kanban: updatedKanban })
+		return { success: true, message: `Comment ${args.commentId} updated in task ${args.taskId}.` }
+	}
+}
