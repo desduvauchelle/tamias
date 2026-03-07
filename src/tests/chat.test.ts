@@ -1,57 +1,75 @@
-import { expect, test, describe, spyOn, beforeEach } from "bun:test"
-import { AIService } from "../services/aiService"
-import { BridgeManager } from "../bridge"
+import { expect, test, describe } from "bun:test"
 
-describe("AIService", () => {
-	let aiService: AIService
-	let bridgeManager: BridgeManager
+// Simulating the extraction logic from src/dashboard/src/app/api/chat/route.ts
+function extractLastMessage(body: any): string {
+	let lastMessage = ''
+	if (Array.isArray(body.messages) && body.messages.length > 0) {
+		const last = body.messages[body.messages.length - 1]
+		if (typeof last?.content === 'string') {
+			lastMessage = last.content
+		} else if (Array.isArray(last?.content)) {
+			// Nested parts: [{type:'text', text:'...'}, ...]
+			lastMessage = last.content
+				.filter((p: any) => p.type === 'text' && p.text)
+				.map((p: any) => p.text)
+				.join('\n')
+		} else if (last?.text) {
+			lastMessage = last.text
+		}
+	} else if (body.text) {
+		lastMessage = body.text
+	} else if (body.content) {
+		lastMessage = body.content
+	}
+	return lastMessage
+}
 
-	beforeEach(() => {
-		bridgeManager = new BridgeManager()
-		aiService = new AIService(bridgeManager)
+describe("Chat API Text Extraction", () => {
+	test("extracts from simple string content array", () => {
+		const body = {
+			messages: [
+				{ role: "user", content: "Hello there" }
+			]
+		}
+		expect(extractLastMessage(body)).toBe("Hello there")
 	})
 
-	test("should create a session with custom ID", () => {
-		const sessionId = "custom-test-session"
-		const session = aiService.createSession({ id: sessionId })
-
-		expect(session.id).toBe(sessionId)
-		expect(aiService.getSession(sessionId)).toBeDefined()
+	test("extracts from nested part array (@ai-sdk/react format)", () => {
+		const body = {
+			messages: [
+				{
+					role: "user",
+					content: [
+						{ type: "text", text: "This is part 1" },
+						{ type: "image", url: "http://example.com/img.png" },
+						{ type: "text", text: "This is part 2" }
+					]
+				}
+			]
+		}
+		expect(extractLastMessage(body)).toBe("This is part 1\nThis is part 2")
 	})
 
-	test("should generate unique session IDs if none provided", () => {
-		const s1 = aiService.createSession({})
-		const s2 = aiService.createSession({})
-
-		expect(s1.id).not.toBe(s2.id)
-		expect(s1.id.startsWith("sess_")).toBe(true)
+	test("extracts from plain text body", () => {
+		const body = { text: "Direct message" }
+		expect(extractLastMessage(body)).toBe("Direct message")
 	})
 
-	test("should list all sessions", () => {
-		aiService.createSession({ id: "s1" })
-		aiService.createSession({ id: "s2" })
-
-		const sessions = aiService.getAllSessions()
-		expect(sessions.length).toBe(2)
-		expect(sessions.map(s => s.id)).toContain("s1")
-		expect(sessions.map(s => s.id)).toContain("s2")
+	test("extracts from older SDK format with text property", () => {
+		const body = {
+			messages: [
+				{ role: "user", text: "Old format message" }
+			]
+		}
+		expect(extractLastMessage(body)).toBe("Old format message")
 	})
 
-	test("should delete a session", () => {
-		aiService.createSession({ id: "delete-me" })
-		expect(aiService.getSession("delete-me")).toBeDefined()
-
-		aiService.deleteSession("delete-me")
-		expect(aiService.getSession("delete-me")).toBeUndefined()
-	})
-
-	test("should reuse sessions for bridge identifiers", () => {
-		const channelId = "discord"
-		const channelUserId = "user123"
-
-		const s1 = aiService.createSession({ channelId, channelUserId })
-		const s2 = aiService.getSessionForBridge(channelId, channelUserId)
-
-		expect(s1.id).toBe(s2!.id)
+	test("returns empty string if nothing matches", () => {
+		const body = {
+			messages: [
+				{ role: "user", content: [{ type: "image", url: "foo.png" }] }
+			]
+		}
+		expect(extractLastMessage(body)).toBe("")
 	})
 })

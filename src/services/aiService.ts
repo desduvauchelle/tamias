@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import { join } from 'path'
+import { join, isAbsolute } from 'path'
 import { existsSync, writeFileSync, mkdirSync } from 'fs'
 import { streamText, generateText, generateObject, stepCountIs } from 'ai'
 
@@ -14,7 +14,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getAllModelOptions, getCompactionModel, getAllConnections, getWorkspacePath as getWorkspacePathSync } from '../utils/config'
-import { getProject } from '../utils/projects.ts'
+import { getProject } from '../core/projects.ts'
 import { buildActiveTools } from '../utils/toolRegistry'
 import { estimateTokens, estimateMessageTokens, getMessageTokenBudget, trimMessagesToTokenBudget } from '../utils/tokenBudget'
 import { buildProviderOptions } from '../utils/promptCaching'
@@ -102,7 +102,11 @@ function resolveSessionWorkspacePath(options: {
 	}
 	if (options.projectSlug) {
 		const project = getProject(options.projectSlug)
-		if (project?.workspacePath) return project.workspacePath
+		if (project?.path) {
+			if (isAbsolute(project.path)) return project.path
+			// All dashboard projects are relative to ~/.tamias/workspace
+			return join(getWorkspacePathSync(), project.path)
+		}
 	}
 	return getWorkspacePathSync()
 }
@@ -156,22 +160,51 @@ export class AIService {
 		)
 		if (!session) return
 
-		for (const newTask of newKanban) {
-			const oldTask = oldKanban.find((t: any) => t.id === newTask.id)
-			const isNewlyAssignedToAI = newTask.assignee?.toLowerCase() === 'ai' && oldTask?.assignee?.toLowerCase() !== 'ai'
+		// Determine what changed
+		const addedTasks = newKanban.filter((t: any) => !oldKanban.find((o: any) => o.id === t.id))
+		const changedTasks = newKanban.filter((t: any) => {
+			const old = oldKanban.find((o: any) => o.id === t.id)
+			if (!old) return false
+			return (
+				old.status !== t.status ||
+				old.title !== t.title ||
+				old.assignee !== t.assignee ||
+				(t.comments?.length || 0) > (old.comments?.length || 0)
+			)
+		})
 
-			const isAITask = newTask.assignee?.toLowerCase() === 'ai'
-			const hasNewUserComment = isAITask && (newTask.comments?.length || 0) > (oldTask?.comments?.length || 0) && newTask.comments[newTask.comments.length - 1].author !== 'AI Assistant'
+		const prompts: string[] = []
 
-			if (isNewlyAssignedToAI || hasNewUserComment) {
-				const prompt = isNewlyAssignedToAI
-					? `[SYSTEM BACKGROUND EVENT]: Task "${newTask.title}" (ID: ${newTask.id}) was just assigned to you in the Kanban board. Please use the projects tools to set the reaction to 👀 to acknowledge, then move it to 'in-progress' and set the reaction to 🧠 while you execute its constraints. Once done, move it to 'awaiting-review', leave a comment with your result, and change the reaction to ✅.`
-					: `[SYSTEM BACKGROUND EVENT]: A user just added a new comment to your assigned task "${newTask.title}" (ID: ${newTask.id}). Please review their comment, use the project tools to reply or take action if needed.`
+		for (const task of addedTasks) {
+			prompts.push(`[KANBAN EVENT] A new task was just created in the project kanban board:\n- Title: "${task.title}"\n- Status: ${task.status}\n- ID: ${task.id}\n\nPlease acknowledge this task and ask clarifying questions if anything is unclear, or offer to help plan or execute it.`)
+		}
 
-				this.enqueueMessage(session.id, prompt, 'SYSTEM', undefined, { source: 'from-cron' })
+		for (const task of changedTasks) {
+			const old = oldKanban.find((o: any) => o.id === task.id)
+			const isNewlyAssignedToAI = task.assignee?.toLowerCase() === 'ai' && old?.assignee?.toLowerCase() !== 'ai'
+			const hasNewComment = (task.comments?.length || 0) > (old?.comments?.length || 0)
+			const newComment = hasNewComment ? task.comments?.[task.comments.length - 1] : null
+			const statusChanged = old.status !== task.status
+			const titleChanged = old.title !== task.title
+
+			if (isNewlyAssignedToAI) {
+				// High-priority auto-execution path
+				prompts.push(`[KANBAN EVENT] Task "${task.title}" (ID: ${task.id}) was just assigned to you. Please use the projects tools to set the reaction to 👀 to acknowledge, then move it to 'in-progress' with reaction 🧠 while you execute it. Once done, move it to 'awaiting-review', leave a comment with your result, and change the reaction to ✅.`)
+			} else if (hasNewComment && newComment) {
+				// Comment on any task — AI should engage
+				prompts.push(`[KANBAN EVENT] A new comment was added to the task "${task.title}" (ID: ${task.id}):\n\n> ${newComment.author}: ${newComment.text}\n\nPlease respond to this comment, ask clarifying questions, or take action if you can help.`)
+			} else if (statusChanged) {
+				prompts.push(`[KANBAN EVENT] Task "${task.title}" (ID: ${task.id}) moved from "${old.status}" to "${task.status}". Acknowledge and offer any relevant help if needed.`)
+			} else if (titleChanged) {
+				prompts.push(`[KANBAN EVENT] Task title was updated from "${old.title}" to "${task.title}" (ID: ${task.id}). Acknowledge and let the user know if you need any clarification.`)
 			}
 		}
+
+		for (const prompt of prompts) {
+			this.enqueueMessage(session.id, prompt, 'SYSTEM', undefined, { source: 'from-cron' })
+		}
 	}
+
 
 	public setDashboardPort(port: number) {
 		this.dashboardPort = port
@@ -679,6 +712,7 @@ export class AIService {
 			console.error(`[AIService] No valid models to try for session ${session.id}. Config connections: [${configuredConns.join(', ')}]`)
 			session.messages.pop() // remove the user message we pushed since we can't respond
 			session.emitter.emit('event', { type: 'error', message: diagMsg } as DaemonEvent)
+			session.emitter.emit('event', { type: 'done', sessionId: session.id }) // Added this line
 			session.processing = false
 			if (session.queue.length > 0) setImmediate(() => this.processSession(session))
 			return
@@ -715,7 +749,7 @@ export class AIService {
 				// Build project context for system prompt
 				let projectContext: string | undefined
 				try {
-					const { buildProjectContext } = await import('../utils/projects')
+					const { buildProjectContext, findProjectInstructionFile } = await import('../utils/projects')
 					const parts: string[] = []
 
 					// Priority A: Session has an explicit project slug (Dashboard Project Chat)
@@ -726,6 +760,14 @@ export class AIService {
 							if (project) {
 								let projText = `## Active Project Context: ${project.name}\n`
 								if (project.description) projText += `**Description**: ${project.description}\n`
+
+								// Inject project-specific AI instructions (e.g. .tamias-instructions.md)
+								if (project.path) {
+									const instruction = findProjectInstructionFile(project.path)
+									if (instruction) {
+										projText += `\n### Project Instructions (${instruction.filename}):\n\n${instruction.content}\n`
+									}
+								}
 
 								if (project.kanban && project.kanban.length > 0) {
 									const activeTasks = project.kanban.filter(t => t.status !== 'done')
@@ -757,6 +799,14 @@ export class AIService {
 						if (linkedProject && linkedProject.id !== session.projectSlug) {
 							let projText = `## Linked Project Context (${linkedProject.name})\n`
 							if (linkedProject.description) projText += `**Description**: ${linkedProject.description}\n`
+
+							// Inject project-specific AI instructions (e.g. .tamias-instructions.md)
+							if (linkedProject.path) {
+								const instruction = findProjectInstructionFile(linkedProject.path)
+								if (instruction) {
+									projText += `\n### Project Instructions (${instruction.filename}):\n\n${instruction.content}\n`
+								}
+							}
 
 							if (linkedProject.kanban && linkedProject.kanban.length > 0) {
 								const activeTasks = linkedProject.kanban.filter(t => t.status !== 'done')

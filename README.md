@@ -511,8 +511,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.03.06.7)
+### Latest Version (v26.03.06.8)
 
 ### Features
-- update changelog to version 26.03.06.4, enhance README with latest features, and increment package versions to 26.03.06.6
-- update changelog, bump version to 26.03.06.4, and enhance project tab navigation with URL sync
+- enhance error handling in runStartCommand, improve file navigator path logic, and add task modal title state in ProjectsContent

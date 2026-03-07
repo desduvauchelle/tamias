@@ -41,7 +41,28 @@ export default function ChatTerminal({ sessionId, initialHistory = [] }: { sessi
 		transport: new DefaultChatTransport({ api: `/api/chat?sessionId=${sessionId}` }),
 		messages: initialHistory,
 	})
-	const { messages, sendMessage, status } = chatHook
+	const { messages, setMessages, sendMessage, status } = chatHook
+
+	// Load history on mount
+	useEffect(() => {
+		if (initialHistory.length > 0) return // Already loaded via props
+		let mounted = true
+		fetch(`/api/sessions/${sessionId}`)
+			.then(res => res.json())
+			.then(data => {
+				if (!mounted || !data.messages || data.messages.length === 0) return
+
+				// Transform db messages to UIMessages
+				const uiMessages: UIMessage[] = data.messages.map((m: any) => ({
+					id: m.id || Math.random().toString(36).slice(2),
+					role: m.role || 'user',
+					parts: [{ type: 'text', text: m.content || m.text || '' }]
+				}))
+				setMessages(uiMessages)
+			})
+			.catch(err => console.error('Failed to load chat history:', err))
+		return () => { mounted = false }
+	}, [sessionId, initialHistory, setMessages])
 
 	// Files received from the AI (via 2: data parts in the stream)
 	const chatHookWithData = chatHook as typeof chatHook & { data?: ReceivedFile[] }

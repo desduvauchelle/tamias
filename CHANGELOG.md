@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.03.06.8] - 2026-03-06
+
+### Features
+- enhance error handling in runStartCommand, improve file navigator path logic, and add task modal title state in ProjectsContent
+
 ## [v26.03.06.7] - 2026-03-06
 
 ### Features

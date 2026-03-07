@@ -150,10 +150,21 @@ function ProjectsContent() {
 		}
 	}, [projectId, projects])
 
-	// Fetch Markdown for Overview
+	// Load context markdown when switching to overview
 	useEffect(() => {
 		if (activeTab === 'overview' && activeProject && activeProject.contextFile) {
 			fetchContextMarkdown(activeProject)
+		}
+	}, [activeTab, activeProject])
+
+	// Pre-create chat session when switching to chat tab
+	useEffect(() => {
+		if (activeTab === 'chat' && activeProject) {
+			fetch('/api/project-event', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ type: 'ping', projectId: activeProject.id })
+			}).catch(console.error)
 		}
 	}, [activeTab, activeProject])
 

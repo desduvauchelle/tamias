@@ -16,12 +16,27 @@ import { TAMIAS_DIR } from './config.ts'
 const FILE_TREE_MAX_DEPTH = 3
 /** Max lines for injected README */
 const README_MAX_LINES = 200
+/** Max lines for injected instruction file */
+const INSTRUCTION_MAX_LINES = 300
 /** Directories to skip when listing file trees */
 const FILE_TREE_IGNORE = new Set([
 	'node_modules', '.git', 'dist', 'build', '.next', '.nuxt',
 	'__pycache__', '.venv', 'venv', '.tox', 'target', 'vendor',
 	'.turbo', '.cache', 'coverage', '.output', '.svelte-kit',
 ])
+
+/**
+ * Candidate filenames for project-specific AI instructions,
+ * checked in order of priority.
+ */
+export const PROJECT_INSTRUCTION_FILES = [
+	'.tamias-instructions.md',
+	'tamias.md',
+	'.github/copilot-instructions.md',
+	'copilot-instructions.md',
+	'AI.md',
+	'AGENTS.md',
+]
 
 export interface Project {
 	slug: string
@@ -250,6 +265,28 @@ export function getProjectFileTree(dirPath: string, maxDepth = FILE_TREE_MAX_DEP
 }
 
 /**
+ * Find the first project instruction file that exists in the given directory.
+ * Returns `{ path, filename, content }` or null if none found.
+ */
+export function findProjectInstructionFile(dirPath: string): { path: string; filename: string; content: string } | null {
+	if (!existsSync(dirPath)) return null
+	for (const filename of PROJECT_INSTRUCTION_FILES) {
+		const fullPath = join(dirPath, filename)
+		if (existsSync(fullPath)) {
+			try {
+				const raw = readFileSync(fullPath, 'utf-8')
+				const lines = raw.split('\n')
+				const content = lines.length > INSTRUCTION_MAX_LINES
+					? lines.slice(0, INSTRUCTION_MAX_LINES).join('\n') + `\n\n… (${lines.length - INSTRUCTION_MAX_LINES} more lines truncated)`
+					: raw
+				return { path: fullPath, filename, content }
+			} catch { return null }
+		}
+	}
+	return null
+}
+
+/**
  * Read the project README.md (if it exists at the workspace path),
  * truncated to README_MAX_LINES lines.
  */
@@ -283,7 +320,17 @@ export function buildActiveProjectContext(slug: string, tenantId?: string): stri
 	if (project.techStack) sections.push(`**Tech Stack:** ${project.techStack}`)
 	if (project.workspacePath) sections.push(`**Workspace:** \`${project.workspacePath}\``)
 
-	// Include project file tree (if workspace path exists)
+	// ── Priority 1: Project-specific AI instructions ──────────────────────────
+	// Look for a custom instructions file in the workspace root.
+	// This is the primary context baseline — like copilot-instructions.md.
+	if (project.workspacePath) {
+		const instructionFile = findProjectInstructionFile(project.workspacePath)
+		if (instructionFile) {
+			sections.push(`\n### Project Instructions (${instructionFile.filename})\n\n${instructionFile.content}`)
+		}
+	}
+
+	// ── Priority 2: File tree ─────────────────────────────────────────────────
 	if (project.workspacePath && existsSync(project.workspacePath)) {
 		const tree = getProjectFileTree(project.workspacePath)
 		if (tree) {
@@ -291,7 +338,7 @@ export function buildActiveProjectContext(slug: string, tenantId?: string): stri
 		}
 	}
 
-	// Include project README
+	// ── Priority 3: README ────────────────────────────────────────────────────
 	if (project.workspacePath) {
 		// Check for tamias-maintained project README first
 		const projectReadmePath = join(getProjectDir(slug, tenantId), 'PROJECT-README.md')
@@ -311,13 +358,13 @@ export function buildActiveProjectContext(slug: string, tenantId?: string): stri
 		}
 	}
 
-	// Include recent activity
+	// ── Priority 4: Recent activity ───────────────────────────────────────────
 	const activity = getProjectActivity(slug, 50, tenantId)
 	if (activity) {
 		sections.push(`\n### Recent Activity\n\n${activity}`)
 	}
 
-	// Include notes if they exist and are non-empty
+	// ── Priority 5: Notes ─────────────────────────────────────────────────────
 	const notesPath = join(getProjectDir(slug, tenantId), 'NOTES.md')
 	if (existsSync(notesPath)) {
 		const notes = readFileSync(notesPath, 'utf-8').trim()

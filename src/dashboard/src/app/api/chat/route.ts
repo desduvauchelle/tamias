@@ -101,10 +101,25 @@ export async function POST(req: Request) {
 		const stream = new ReadableStream({
 			async start(controller) {
 				let buffer = ''
+				let timeoutId: ReturnType<typeof setTimeout> | undefined
+				const resetTimeout = () => {
+					if (timeoutId) clearTimeout(timeoutId)
+					// Automatically close if no chunk received for 60 seconds
+					timeoutId = setTimeout(() => {
+						console.error('SSE Proxy stream timed out after 60s idle')
+						controller.error(new Error('Stream timeout'))
+						streamRes.body?.cancel()
+					}, 60000)
+				}
+
+				resetTimeout()
+
 				try {
 					while (true) {
 						const { done, value } = await reader.read()
 						if (done) break
+
+						resetTimeout()
 
 						buffer += decoder.decode(value, { stream: true })
 						const lines = buffer.split('\n')
@@ -130,8 +145,6 @@ export async function POST(req: Request) {
 									controller.enqueue(encoder.encode(`b:${JSON.stringify(toolPart)}\n`))
 								} else if (data.type === 'file') {
 									// File from AI — send as data part (2:) with __tamias_file__ marker.
-									// Buffer serialised over SSE JSON becomes { type:'Buffer', data:[...] }
-									// in Node/Bun – extract the byte array from either format.
 									const raw = data.buffer ?? {}
 									const byteArray: number[] =
 										Array.isArray(raw) ? raw :
@@ -146,6 +159,7 @@ export async function POST(req: Request) {
 									}
 									controller.enqueue(encoder.encode(`2:${JSON.stringify([filePart])}\n`))
 								} else if (data.type === 'done') {
+									clearTimeout(timeoutId)
 									controller.close()
 									return
 								} else if (data.type === 'error') {
@@ -158,6 +172,7 @@ export async function POST(req: Request) {
 					console.error('Proxy stream error:', err)
 					controller.error(err)
 				} finally {
+					clearTimeout(timeoutId)
 					controller.close()
 				}
 			}
