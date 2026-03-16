@@ -793,6 +793,65 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				return json({ ok: true })
 			}
 
+			// ── Update Endpoints ────────────────────────────────────────
+			// GET  /update → check for updates (cached 24h in ~/.tamias/update-check.json)
+			// POST /update → perform update and restart
+			if (url.pathname === '/update') {
+				const { checkForUpdate, performUpdate } = await import('../utils/update.ts')
+				const UPDATE_CACHE_FILE = join(homedir(), '.tamias', 'update-check.json')
+
+				if (method === 'GET') {
+					// Read cache
+					try {
+						const cached = JSON.parse(Bun.file(UPDATE_CACHE_FILE).toString())
+						const age = Date.now() - (cached.checkedAt || 0)
+						if (age < 24 * 60 * 60 * 1000) {
+							return json(cached)
+						}
+					} catch { /* no cache yet */ }
+
+					try {
+						const result = await checkForUpdate()
+						const updateAvailable = result !== null && result.currentVersion !== result.latestVersion
+						const payload = {
+							updateAvailable,
+							currentVersion: result?.currentVersion ?? VERSION,
+							latestVersion: result?.latestVersion ?? VERSION,
+							checkedAt: Date.now(),
+						}
+						Bun.write(UPDATE_CACHE_FILE, JSON.stringify(payload, null, 2)).catch(() => { })
+						return json(payload)
+					} catch (err) {
+						return json({ updateAvailable: false, currentVersion: VERSION, error: String(err) })
+					}
+				}
+
+				if (method === 'POST') {
+					// Respond immediately, then perform update in background
+					const progressLines: string[] = []
+					const onProgress = (p: { message: string; type: string }) => {
+						progressLines.push(`[${p.type}] ${p.message}`)
+						console.log(`[Update] ${p.message}`)
+					}
+
+					// Notify channels before restart
+					const msg = `🐿️ **Tamias Update Starting**\nUpdate requested via dashboard. Downloading and restarting…`
+					for (const channelId of bridgeManager.getActiveChannelIds()) {
+						await bridgeManager.broadcastToChannel(channelId, msg).catch(() => { })
+					}
+
+					performUpdate(onProgress).then(result => {
+						if (result.success) {
+							console.log(`[Update] Updated to v${result.latestVersion}. Restarting...`)
+							clearDaemonInfo()
+							setTimeout(() => process.exit(0), 1500)
+						}
+					}).catch(console.error)
+
+					return json({ ok: true, message: 'Update started. Daemon will restart.' })
+				}
+			}
+
 			// ── WhatsApp Webhook Routes ─────────────────────────────────
 			// GET  /webhook/whatsapp/<key> → verification challenge
 			// POST /webhook/whatsapp/<key> → incoming messages

@@ -1,0 +1,21 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"types": [
+			"@playwright/test",
+			"node"
+		],
+		"moduleResolution": "node",
+		"allowImportingTsExtensions": false,
+		"verbatimModuleSyntax": false
+	},
+	"include": [
+		"./**/*.ts",
+		"../../playwright.config.ts"
+	],
+	"exclude": [
+		"../../openclaw-main",
+		"../../node_modules",
+		"../../src/dashboard"
+	]
+}

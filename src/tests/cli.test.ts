@@ -27,6 +27,7 @@ describe('CLI Structure', () => {
 			'stop',
 			'status',
 			'doctor',
+			'update',
 		]
 
 		for (const cmd of commands) {

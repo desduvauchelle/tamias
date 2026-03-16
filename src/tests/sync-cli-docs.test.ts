@@ -50,6 +50,7 @@ describe('collectCommands', () => {
 		expect(names).toContain('tamias stop')
 		expect(names).toContain('tamias status')
 		expect(names).toContain('tamias doctor')
+		expect(names).toContain('tamias update')
 	})
 
 	test('removed commands are no longer present', () => {
@@ -57,7 +58,6 @@ describe('collectCommands', () => {
 		expect(names).not.toContain('tamias chat')
 		expect(names).not.toContain('tamias config')
 		expect(names).not.toContain('tamias setup')
-		expect(names).not.toContain('tamias update')
 	})
 
 	test('captures options for commands that have them', () => {

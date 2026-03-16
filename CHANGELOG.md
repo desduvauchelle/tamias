@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.03.06.12] - 2026-03-06
+
+### Features
+- Refine Kanban event handling by introducing a source parameter to prevent AI self-triggering and improve AI engagement logic.
+
 ## [v26.03.06.11] - 2026-03-06
 
 ### Features

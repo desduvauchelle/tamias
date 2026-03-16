@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { Menu, FolderOpen, Check } from "lucide-react"
 import Nav from "./Nav"
 import { useToast } from "./ToastProvider"
+import UpdateBanner from "./UpdateBanner"
 
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
 	const pathname = usePathname()
@@ -20,6 +21,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 	// Form State
 	const [formName, setFormName] = useState("")
 	const [formPath, setFormPath] = useState("")
+	const [pathManuallyEdited, setPathManuallyEdited] = useState(false)
 	const [formDesc, setFormDesc] = useState("")
 	const [formChannel, setFormChannel] = useState("")
 	const [formContext, setFormContext] = useState("readme.md")
@@ -32,6 +34,14 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 				.catch(console.error)
 		}
 	}, [isModalOpen])
+
+	const handleNameChange = (value: string) => {
+		setFormName(value)
+		if (!pathManuallyEdited) {
+			const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+			setFormPath(slug ? `~/.tamias/workspace/${slug}` : '')
+		}
+	}
 
 	const handleSaveProject = async () => {
 		if (!formName || !formPath) {
@@ -60,6 +70,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 				setIsModalOpen(false)
 				setFormName("")
 				setFormPath("")
+				setPathManuallyEdited(false)
 				setFormDesc("")
 				setFormChannel("")
 				setFormContext("readme.md")
@@ -78,6 +89,9 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 		<div className="drawer lg:drawer-open h-screen w-full overflow-hidden bg-base-100">
 			<input id="nav-drawer" type="checkbox" className="drawer-toggle" />
 			<div className="drawer-content flex flex-col h-full overflow-hidden relative">
+				{/* Update Banner */}
+				<UpdateBanner />
+
 				{/* Mobile Header */}
 				<header className="lg:hidden flex items-center justify-between p-4 bg-base-200 border-b border-base-300">
 					<div className="flex items-center gap-2">
@@ -110,12 +124,22 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 						<div className="space-y-5">
 							<div className="form-control">
 								<label className="label"><span className="label-text font-medium">Project Name *</span></label>
-								<input value={formName} onChange={e => setFormName(e.target.value)} type="text" className="input input-bordered w-full focus:input-primary" placeholder="e.g. My Awesome Startup" />
+								<input value={formName} onChange={e => handleNameChange(e.target.value)} type="text" className="input input-bordered w-full focus:input-primary" placeholder="e.g. My Awesome Startup" />
 							</div>
 							<div className="form-control">
-								<label className="label"><span className="label-text font-medium">Absolute Path *</span></label>
-								<input value={formPath} onChange={e => setFormPath(e.target.value)} type="text" className="input input-bordered w-full font-mono text-sm focus:input-primary" placeholder="/Users/me/Projects/start" />
-								<label className="label"><span className="label-text-alt text-base-content/50 italic">The absolute directory path to your project.</span></label>
+								<label className="label"><span className="label-text font-medium">Path *</span></label>
+								<input
+									value={formPath}
+									onChange={e => { setPathManuallyEdited(true); setFormPath(e.target.value) }}
+									type="text"
+									className="input input-bordered w-full font-mono text-sm focus:input-primary"
+									placeholder="~/.tamias/workspace/my-project"
+								/>
+								<label className="label">
+									<span className="label-text-alt text-base-content/50 italic">
+										{pathManuallyEdited ? "Custom path" : "Auto-generated from project name — edit to override"}
+									</span>
+								</label>
 							</div>
 							<div className="form-control">
 								<label className="label"><span className="label-text font-medium">Description</span></label>
@@ -145,13 +169,13 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 						</div>
 
 						<div className="modal-action gap-3 mt-8 border-t border-base-300/50 pt-5">
-							<button onClick={() => setIsModalOpen(false)} className="btn btn-ghost hover:bg-base-300">Cancel</button>
+							<button onClick={() => { setIsModalOpen(false); setPathManuallyEdited(false) }} className="btn btn-ghost hover:bg-base-300">Cancel</button>
 							<button onClick={handleSaveProject} className="btn btn-primary px-8">
 								<Check className="w-4 h-4 mr-2" /> Save Project
 							</button>
 						</div>
 					</div>
-					<div className="modal-backdrop bg-black/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}>
+					<div className="modal-backdrop bg-black/60 backdrop-blur-sm" onClick={() => { setIsModalOpen(false); setPathManuallyEdited(false) }}>
 						<button className="cursor-default">close</button>
 					</div>
 				</dialog>

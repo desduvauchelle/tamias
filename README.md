@@ -108,6 +108,14 @@ Check and fix system dependencies, health checks, and configuration
 |---|---|
 | `tamias doctor` | Check and fix system dependencies, health checks, and configuration (`--fix`, `--json`) |
 
+### `tamias update`
+
+Check for and install the latest Tamias version
+
+| Command | Description |
+|---|---|
+| `tamias update` | Check for and install the latest Tamias version (`--force`, `--check`) |
+
 <!-- CLI_DOCS_END -->
 
 ---
@@ -230,7 +238,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.03.06.11)
+### Latest Version (v26.03.06.12)
 
 ### Features
-- implement Antigravity OAuth, add Kanban comment reaction support, and enhance AI project event handling.
+- Refine Kanban event handling by introducing a source parameter to prevent AI self-triggering and improve AI engagement logic.

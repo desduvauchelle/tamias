@@ -1,6 +1,6 @@
 {
 	"name": "tamias",
-	"version": "26.03.16.1",
+	"version": "26.03.16.2",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
@@ -21,18 +21,21 @@
 		"dev:start": "bun --hot src/index.ts start",
 		"install-it": "chmod +x install.sh && ./install.sh",
 		"test": "bun test --preload ./src/tests/setup.ts src/tests/*.test.ts src/utils/*.test.ts",
+		"test:e2e": "bunx playwright test",
 		"test:coverage": "bun test --coverage --preload ./src/tests/setup.ts src/tests/*.test.ts src/utils/*.test.ts",
 		"test:integration": "./test/integration/run.sh",
 		"test:onboarding": "./docker/test-onboarding.sh",
 		"test:onboarding:rebuild": "./docker/test-onboarding.sh --rebuild",
 		"typecheck": "bunx tsc --noEmit",
-		"typecheck:all": "bunx tsc --noEmit && bunx tsc --noEmit -p src/dashboard/tsconfig.json",
+		"typecheck:e2e": "bunx tsc --noEmit -p test/e2e/tsconfig.json",
+		"typecheck:all": "bunx tsc --noEmit && bunx tsc --noEmit -p src/dashboard/tsconfig.json && bunx tsc --noEmit -p test/e2e/tsconfig.json",
 		"prepare": "husky",
 		"changelog": "bun run src/utils/changelog.ts",
 		"bump-version": "bun run src/utils/bump-version.ts",
 		"docs:sync": "bun run scripts/sync-cli-docs.ts"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.58.2",
 		"@types/bun": "latest",
 		"@types/fluent-ffmpeg": "^2.1.28",
 		"@types/open": "^6.2.1",

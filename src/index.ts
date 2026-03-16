@@ -3,6 +3,7 @@ import { runStartCommand } from './commands/start.ts'
 import { runStopCommand } from './commands/stop.ts'
 import { runStatusCommand } from './commands/status.ts'
 import { runDoctorCommand } from './commands/doctor.ts'
+import { runUpdateCommand } from './commands/update.ts'
 import { VERSION } from './utils/version.ts'
 
 export const program = new Command()
@@ -39,6 +40,14 @@ program
 	.option('--fix', 'Automatically attempt to fix all issues')
 	.option('--json', 'Output results as JSON')
 	.action((opts: { fix?: boolean; json?: boolean }) => runDoctorCommand(opts))
+
+// ─── tamias update ────────────────────────────────────────────────────────────
+program
+	.command('update')
+	.description('Check for and install the latest Tamias version')
+	.option('--force', 'Re-install even if already on the latest version')
+	.option('--check', 'Only check for updates, do not install')
+	.action((opts: { force?: boolean; check?: boolean }) => runUpdateCommand(opts))
 
 // Only execute when run directly (not when imported by scripts)
 if (import.meta.main) {

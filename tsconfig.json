@@ -27,6 +27,8 @@
 	"exclude": [
 		"openclaw-main",
 		"node_modules",
-		"src/dashboard"
+		"src/dashboard",
+		"test/e2e",
+		"playwright.config.ts"
 	]
 }

@@ -4,9 +4,15 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync } from 'fs'
 
+// Run in Node.js runtime so that fs/path/os builtins work.
+// Edge Runtime stubs these out, causing existsSync to silently return false.
+export const runtime = 'nodejs'
+
 function isOnboarded(): boolean {
 	try {
-		const identityPath = join(homedir(), '.tamias', 'memory', 'IDENTITY.md')
+		// TAMIAS_DIR can be overridden in tests to avoid touching the real ~/.tamias
+		const tamiasDir = process.env.TAMIAS_DIR || join(homedir(), '.tamias')
+		const identityPath = join(tamiasDir, 'memory', 'IDENTITY.md')
 		return existsSync(identityPath)
 	} catch {
 		return false
