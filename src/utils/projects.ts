@@ -83,10 +83,7 @@ export function listProjects(tenantId?: string): Project[] {
 	for (const entry of entries) {
 		if (!entry.isDirectory()) continue
 		const projectPath = join(dir, entry.name)
-		const projectFile = join(projectPath, 'PROJECT.md')
-		if (!existsSync(projectFile)) continue
-
-		const project = parseProjectFile(entry.name, projectFile)
+		const project = parseProjectFromDir(entry.name, projectPath)
 		if (project) projects.push(project)
 	}
 
@@ -102,9 +99,9 @@ export function listProjects(tenantId?: string): Project[] {
 
 /** Get a single project */
 export function getProject(slug: string, tenantId?: string): Project | null {
-	const projectFile = join(getProjectDir(slug, tenantId), 'PROJECT.md')
-	if (!existsSync(projectFile)) return null
-	return parseProjectFile(slug, projectFile)
+	const projectPath = getProjectDir(slug, tenantId)
+	if (!existsSync(projectPath)) return null
+	return parseProjectFromDir(slug, projectPath)
 }
 
 /** Create a new project */
@@ -136,6 +133,20 @@ export function createProject(
 
 	writeProjectFile(slug, project, opts?.tenantId)
 
+	// Also write config.json for core/projects.ts compatibility
+	const configData = {
+		id: slug,
+		name,
+		description,
+		path: opts?.workspacePath || '',
+		status: 'active',
+		techStack: opts?.techStack,
+		createdAt: now,
+		updatedAt: now,
+	}
+	writeFileSync(join(projectDir, 'config.json'), JSON.stringify(configData, null, 2), 'utf-8')
+	writeFileSync(join(projectDir, 'kanban.json'), '[]', 'utf-8')
+
 	// Create ACTIVITY.md
 	writeFileSync(
 		join(projectDir, 'ACTIVITY.md'),
@@ -149,6 +160,9 @@ export function createProject(
 		`# ${name} — Notes\n\n`,
 		'utf-8'
 	)
+
+	// Create skills directory
+	mkdirSync(join(projectDir, 'skills'), { recursive: true })
 
 	// Create WORKSPACE.md if workspacePath provided
 	if (opts?.workspacePath) {
@@ -377,6 +391,35 @@ export function buildActiveProjectContext(slug: string, tenantId?: string): stri
 }
 
 // ─── Internal Helpers ──────────────────────────────────────────────────────────
+
+/** Parse a project from its directory, preferring config.json over PROJECT.md */
+function parseProjectFromDir(slug: string, projectPath: string): Project | null {
+	const configPath = join(projectPath, 'config.json')
+	if (existsSync(configPath)) {
+		try {
+			const raw = JSON.parse(readFileSync(configPath, 'utf-8'))
+			return {
+				slug: raw.id || slug,
+				name: raw.name || slug,
+				status: raw.status || 'active',
+				description: raw.description || '',
+				techStack: raw.techStack,
+				workspacePath: raw.path || raw.workspacePath,
+				createdAt: raw.createdAt || new Date().toISOString(),
+				updatedAt: raw.updatedAt || new Date().toISOString(),
+			}
+		} catch {
+			// Fall through to PROJECT.md
+		}
+	}
+
+	const projectFile = join(projectPath, 'PROJECT.md')
+	if (existsSync(projectFile)) {
+		return parseProjectFile(slug, projectFile)
+	}
+
+	return null
+}
 
 function parseProjectFile(slug: string, filePath: string): Project | null {
 	try {

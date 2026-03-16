@@ -1,12 +1,44 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { join } from 'path'
+import { homedir } from 'os'
+import { existsSync } from 'fs'
+
+function isOnboarded(): boolean {
+	try {
+		const identityPath = join(homedir(), '.tamias', 'memory', 'IDENTITY.md')
+		return existsSync(identityPath)
+	} catch {
+		return false
+	}
+}
 
 export function middleware(request: NextRequest) {
+	const pathname = request.nextUrl.pathname
+
+	// Allow static assets, API routes, and the onboarding page through without auth
+	const isStaticRes = pathname.startsWith('/_next') ||
+		pathname.includes('.') ||
+		pathname === '/favicon.ico'
+	const isOnboardingPage = pathname.startsWith('/onboarding')
+	const isApiRoute = pathname.startsWith('/api/')
+
+	if (isStaticRes) {
+		return NextResponse.next()
+	}
+
+	// During onboarding, skip auth for the onboarding page and API routes
+	if (!isOnboarded()) {
+		if (isOnboardingPage || isApiRoute) {
+			return NextResponse.next()
+		}
+		// Redirect everything else to onboarding
+		return NextResponse.redirect(new URL('/onboarding', request.url))
+	}
+
 	const authToken = process.env.TAMIAS_DASHBOARD_TOKEN
 
-	// If no token is configured in the environment, we assume the dashboard is running
-	// in an environment where auth isn't required (e.g. dev mode without daemon)
-	// or we want to allow access for now. However, based on the plan, we SHOULD have it.
+	// If no token is configured, allow access (dev mode)
 	if (!authToken) {
 		return NextResponse.next()
 	}
@@ -16,7 +48,7 @@ export function middleware(request: NextRequest) {
 
 	// 1. Handle token in URL: set cookie and redirect to clean URL
 	if (tokenParam) {
-		const response = NextResponse.redirect(new URL(request.nextUrl.pathname, request.url))
+		const response = NextResponse.redirect(new URL(pathname, request.url))
 		response.cookies.set('tamias_token', tokenParam, {
 			path: '/',
 			httpOnly: true,
@@ -34,18 +66,7 @@ export function middleware(request: NextRequest) {
 		return NextResponse.next()
 	}
 
-	// 3. Special case: /api/status might need to be public for health checks,
-	// but let's keep it secure for now as it reveals version info.
-	// We'll exclude static assets and favicon
-	const isStaticRes = request.nextUrl.pathname.startsWith('/_next') ||
-		request.nextUrl.pathname.includes('.') ||
-		request.nextUrl.pathname === '/favicon.ico'
-
-	if (isStaticRes) {
-		return NextResponse.next()
-	}
-
-	// 4. Deny access
+	// 3. Deny access
 	return new NextResponse(
 		JSON.stringify({ error: 'Unauthorized: Dashboard token required' }),
 		{ status: 401, headers: { 'content-type': 'application/json' } }

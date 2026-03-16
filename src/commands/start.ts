@@ -10,7 +10,7 @@ import { AIService, type Session } from '../services/aiService.ts'
 import { BridgeManager } from '../bridge/index.ts'
 import { watchSkills } from '../utils/skills.ts'
 import { loadCronJobs, recordCronJobRun } from '../utils/cronStore.ts'
-import { scaffoldFromTemplates } from '../utils/memory.ts'
+import { scaffoldFromTemplates, isOnboarded } from '../utils/memory.ts'
 import { loadAgents } from '../utils/agentsStore.ts'
 import { db } from '../utils/db.ts'
 import { getEstimatedCost } from '../utils/pricing.ts'
@@ -79,8 +79,16 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				p.note(`Verbose logging active — tail with:\n  tamias logs`, 'Debug')
 			}
 			if (info.dashboardPort) {
-				const url = `http://localhost:${info.dashboardPort}${info.token ? `?token=${info.token}` : ''}`
-				p.outro(pc.green(`✅ Dashboard running at ${pc.bold(url)}`))
+				const baseUrl = `http://localhost:${info.dashboardPort}`
+				const dashboardUrl = `${baseUrl}${info.token ? `?token=${info.token}` : ''}`
+				const onboardingUrl = `${baseUrl}/onboarding${info.token ? `?token=${info.token}` : ''}`
+				p.outro(pc.green(`✅ Dashboard running at ${pc.bold(dashboardUrl)}`))
+				if (!isOnboarded()) {
+					p.note(
+						`Looks like your first time! Run through the setup wizard:\n\n  ${pc.bold(pc.cyan(onboardingUrl))}`,
+						pc.yellow('⚡ First time setup')
+					)
+				}
 			}
 			process.exit(0)
 		} catch (err) {

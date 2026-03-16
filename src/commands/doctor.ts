@@ -2,9 +2,16 @@ import * as p from '@clack/prompts'
 import pc from 'picocolors'
 import { getDependencyStatus, installDependency, type Dependency } from '../utils/dependencies.ts'
 import { runHealthChecks, formatHealthReport, type HealthReport } from '../utils/health/index.ts'
+import { migrateFromProjectsJson } from '../core/projects.ts'
 
 export async function runDoctorCommand(opts: { fix?: boolean; json?: boolean }) {
 	if (!opts.json) p.intro(pc.bgBlue(pc.white(' Tamias Doctor — Health Check ')))
+
+	// Migrate old projects.json to directory-based storage
+	const migrated = migrateFromProjectsJson()
+	if (migrated && !opts.json) {
+		p.log.success('Migrated projects.json to per-project directory storage')
+	}
 
 	// Phase 1: Health checks (filesystem, identity, providers, channels, tools)
 	const healthReport = await runHealthChecks({ autoFix: opts.fix })

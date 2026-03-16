@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.03.06.11] - 2026-03-06
+
+### Features
+- implement Antigravity OAuth, add Kanban comment reaction support, and enhance AI project event handling.
+
 ## [v26.03.06.10] - 2026-03-06
 
 ### Features

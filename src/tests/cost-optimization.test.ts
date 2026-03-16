@@ -239,11 +239,15 @@ describe('websearch tool', () => {
 
 // ─── Model command: compaction model display ─────────────────────────────────
 
-describe('model command compaction model', () => {
-	test('runModelSetCompactionCommand export exists', async () => {
-		const mod = await import('../commands/model.ts')
-		expect(mod.runModelSetCompactionCommand).toBeDefined()
-		expect(typeof mod.runModelSetCompactionCommand).toBe('function')
+describe('model compaction config', () => {
+	test('compactionModel can be set and read from config', async () => {
+		const { loadConfig, saveConfig, invalidateConfigCache } = await import('../utils/config.ts')
+		const config = loadConfig()
+		config.compactionModel = 'test/model'
+		saveConfig(config)
+		invalidateConfigCache()
+		const reloaded = loadConfig()
+		expect(reloaded.compactionModel).toBe('test/model')
 	})
 })
 

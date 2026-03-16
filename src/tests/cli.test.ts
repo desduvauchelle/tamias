@@ -25,23 +25,8 @@ describe('CLI Structure', () => {
 		const commands = [
 			'start',
 			'stop',
-			'restart',
 			'status',
-			'chat',
-			'config',
-			'history',
-			'usage',
-			'cron',
-			'agents',
-			'models',
-			'tools',
-			'channels',
-			'emails',
-			'workspace',
 			'doctor',
-			'migrate',
-			'project',
-			'tenant',
 		]
 
 		for (const cmd of commands) {
@@ -49,19 +34,41 @@ describe('CLI Structure', () => {
 		}
 	})
 
-	test('stop command is a top-level command, not a subcommand of history', () => {
-		// history help should NOT contain 'stop' in its commands section
-		const result = runHelp(['history'])
+	test('removed commands are no longer present', () => {
+		const result = runHelp()
 		expect(result.status).toBe(0)
 
-		// Commander help output usually lists subcommands under "Commands:"
-		// We want to make sure 'stop' isn't one of them.
-		const commandsSection = result.stdout.split('Commands:')[1] || ''
-		expect(commandsSection).not.toContain('stop')
+		const removedCommands = [
+			'chat',
+			'config',
+			'setup',
+			'onboarding',
+			'restart',
+			'history',
+			'usage',
+			'models',
+			'tools',
+			'channels',
+			'emails',
+			'workspace',
+			'browser',
+			'uninstall',
+			'backup',
+			'restore',
+			'readme',
+			'prompt',
+			'docs',
+			'migrate',
+			'project',
+			'tenant',
+			'token',
+		]
 
-		// But the main help SHOULD contain it
-		const mainResult = runHelp()
-		expect(mainResult.stdout).toContain('stop')
+		for (const cmd of removedCommands) {
+			// Commands section should not contain these as registered commands
+			const commandsSection = result.stdout.split('Commands:')[1] || ''
+			expect(commandsSection).not.toContain(`  ${cmd} `)
+		}
 	})
 
 	test('start command is present and has expected options', () => {

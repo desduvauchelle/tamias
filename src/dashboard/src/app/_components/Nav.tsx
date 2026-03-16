@@ -139,12 +139,12 @@ function HealthStatus() {
 					<span className={`w-1.5 h-1.5 rounded-full ${status.running ? 'bg-success animate-pulse' : 'bg-error'}`} />
 					<span className="text-[10px] font-bold uppercase tracking-wider opacity-40">System Status</span>
 				</div>
-				<span className={`text-[10px] font-mono ${status.running ? 'text-success' : 'text-error'}`}>
+				{/* <span className={`text-[10px] font-mono ${status.running ? 'text-success' : 'text-error'}`}>
 					{status.running ? 'ONLINE' : 'OFFLINE'}
-				</span>
+				</span> */}
 			</div>
 
-			<div className="px-3 space-y-1 opacity-50">
+			<div className="px-1 opacity-50 flex flex-col gap-0.5">
 				{status.running && (
 					<div className="flex justify-between text-[9px] font-mono uppercase">
 						<span>PID {status.pid}</span>
@@ -213,7 +213,7 @@ function NavContent({ onNewProject }: NavContentProps) {
 	}
 
 	return (
-		<aside className="w-64 shrink-0 bg-base-200 border-r border-base-300 flex flex-col h-full overflow-hidden">
+		<aside className="w-64 shrink-0 bg-base-200 border-r border-base-300 flex flex-col h-screen overflow-hidden">
 			{/* Logo */}
 			<div className="px-6 py-5 border-b border-base-300 shrink-0">
 				<div className="flex items-center gap-2">
@@ -241,7 +241,7 @@ function NavContent({ onNewProject }: NavContentProps) {
 									</button>
 								</div>
 							</summary>
-							<ul className="before:bg-base-300/50 mt-1 flex flex-col gap-0.5">
+							<ul className="mt-1 flex flex-col gap-0.5">
 								{projects.map(p => {
 									const isActive = activeProjectId === p.id && pathname.startsWith('/projects')
 									return (
@@ -271,7 +271,7 @@ function NavContent({ onNewProject }: NavContentProps) {
 					<li>
 						<details open>
 							<summary className="font-bold text-xs uppercase tracking-widest text-base-content/40 hover:text-base-content/60 py-2">Capabilities</summary>
-							<ul className="before:bg-base-300/50 mt-1 flex flex-col gap-1">
+							<ul className="mt-1 flex flex-col gap-1">
 								{navGroups.Capabilities.map(renderItem)}
 							</ul>
 						</details>
@@ -281,7 +281,7 @@ function NavContent({ onNewProject }: NavContentProps) {
 					<li>
 						<details open>
 							<summary className="font-bold text-xs uppercase tracking-widest text-base-content/40 hover:text-base-content/60 py-2">Usage</summary>
-							<ul className="before:bg-base-300/50 mt-1 flex flex-col gap-1">
+							<ul className="mt-1 flex flex-col gap-1">
 								{navGroups.Usage.map(renderItem)}
 							</ul>
 						</details>
@@ -291,7 +291,7 @@ function NavContent({ onNewProject }: NavContentProps) {
 					<li>
 						<details open>
 							<summary className="font-bold text-xs uppercase tracking-widest text-base-content/40 hover:text-base-content/60 py-2">Infrastructure</summary>
-							<ul className="before:bg-base-300/50 mt-1 flex flex-col gap-1">
+							<ul className="mt-1 flex flex-col gap-1">
 								{navGroups.Infrastructure.map(renderItem)}
 							</ul>
 						</details>

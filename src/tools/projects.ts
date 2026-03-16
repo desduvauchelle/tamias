@@ -58,6 +58,9 @@ export const project_get_tasks = {
 				title: t.title,
 				status: t.status,
 				assignee: t.assignee,
+				priority: t.priority,
+				dueDate: t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : undefined,
+				labels: t.labels,
 				commentCount: t.comments?.length || 0,
 				details: t.details || ''
 			}))
@@ -71,9 +74,12 @@ export const project_add_task = {
 		title: z.string(),
 		details: z.string().optional().describe('Detailed description or acceptance criteria in Markdown.'),
 		assignee: z.string().optional().describe('Who is assigned to this task (e.g. AI, User, specific name).'),
-		status: z.enum(['todo', 'in-progress', 'done']).default('todo')
+		status: z.enum(['todo', 'in-progress', 'done']).default('todo'),
+		priority: z.enum(['low', 'medium', 'high', 'urgent']).optional().describe('Task priority level.'),
+		dueDate: z.string().optional().describe('Due date in ISO format (e.g. "2025-01-15").'),
+		labels: z.array(z.string()).optional().describe('Labels/tags for the task (e.g. ["bug", "frontend"]).'),
 	}),
-	execute: async (args: { title: string, details?: string, assignee?: string, status?: string }, context: any) => {
+	execute: async (args: { title: string, details?: string, assignee?: string, status?: string, priority?: string, dueDate?: string, labels?: string[] }, context: any) => {
 		const bridgeId = context.id
 		const project = bridgeId ? getProjectByDiscordChannel(bridgeId) : null
 		if (!project) return { error: 'No active project linked to this conversation context.' }
@@ -84,7 +90,10 @@ export const project_add_task = {
 			details: args.details,
 			assignee: args.assignee,
 			status: args.status || 'todo',
-			createdAt: Date.now()
+			createdAt: Date.now(),
+			priority: args.priority as KanbanTask['priority'],
+			dueDate: args.dueDate ? new Date(args.dueDate).getTime() : undefined,
+			labels: args.labels,
 		}
 
 		const updatedKanban = [...(project.kanban || []), newTask]
@@ -95,15 +104,18 @@ export const project_add_task = {
 }
 
 export const project_update_task = {
-	description: 'Update the properties of an existing task on the Kanban board (e.g. status, assignee, details, or reaction).',
+	description: 'Update the properties of an existing task on the Kanban board (e.g. status, assignee, details, priority, due date, labels, or reaction).',
 	parameters: z.object({
 		taskId: z.string().describe('The ID of the task to update.'),
 		status: z.enum(['todo', 'in-progress', 'awaiting-review', 'done']).optional(),
 		assignee: z.string().optional(),
 		details: z.string().optional(),
-		reaction: z.string().optional().describe('An emoji reaction to set for the task.')
+		reaction: z.string().optional().describe('An emoji reaction to set for the task.'),
+		priority: z.enum(['low', 'medium', 'high', 'urgent']).optional().describe('Task priority level.'),
+		dueDate: z.string().optional().describe('Due date in ISO format (e.g. "2025-01-15").'),
+		labels: z.array(z.string()).optional().describe('Labels/tags for the task.'),
 	}),
-	execute: async (args: { taskId: string, status?: string, assignee?: string, details?: string, reaction?: string }, context: any) => {
+	execute: async (args: { taskId: string, status?: string, assignee?: string, details?: string, reaction?: string, priority?: string, dueDate?: string, labels?: string[] }, context: any) => {
 		const bridgeId = context.id
 		const project = bridgeId ? getProjectByDiscordChannel(bridgeId) : null
 		if (!project) return { error: 'No active project linked to this conversation context.' }
@@ -118,6 +130,9 @@ export const project_update_task = {
 					...(args.assignee !== undefined && { assignee: args.assignee }),
 					...(args.details !== undefined && { details: args.details }),
 					...(args.reaction !== undefined && { reaction: args.reaction }),
+					...(args.priority !== undefined && { priority: args.priority as KanbanTask['priority'] }),
+					...(args.dueDate !== undefined && { dueDate: new Date(args.dueDate).getTime() }),
+					...(args.labels !== undefined && { labels: args.labels }),
 				}
 			}
 			return t

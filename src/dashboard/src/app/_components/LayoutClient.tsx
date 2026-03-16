@@ -1,12 +1,19 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { usePathname } from "next/navigation"
 import { Menu, FolderOpen, Check } from "lucide-react"
 import Nav from "./Nav"
 import { useToast } from "./ToastProvider"
 
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
+	const pathname = usePathname()
 	const { success, error } = useToast()
+
+	// Onboarding gets a clean layout — no sidebar, no drawer
+	if (pathname?.startsWith('/onboarding')) {
+		return <>{children}</>
+	}
 	const [isModalOpen, setIsModalOpen] = useState(false)
 	const [channels, setChannels] = useState<{ id: string, name: string, guildName: string, guildId: string }[]>([])
 
@@ -86,7 +93,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 				</main>
 			</div>
 
-			<div className="drawer-side z-40 h-full">
+			<div className="drawer-side z-40 h-full overflow-hidden">
 				<label htmlFor="nav-drawer" aria-label="close sidebar" className="drawer-overlay"></label>
 				<Nav onNewProject={() => setIsModalOpen(true)} />
 			</div>

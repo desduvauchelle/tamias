@@ -12,16 +12,37 @@ export interface Skill {
 	parent?: string
 	/** Optional preferred model override, e.g. "xai/grok-3" */
 	model?: string
+	/** If set, this skill belongs to a specific project */
+	projectId?: string
 }
 
 const BUILTIN_SKILLS_DIR = join(import.meta.dir, "../../src/skills")
 export const USER_SKILLS_DIR = join(homedir(), ".tamias", "skills")
+const PROJECTS_DIR = join(homedir(), ".tamias", "projects")
 
 let cachedSkills: Skill[] = []
 
 /** Retrieves the list of currently loaded skills. */
 export function getLoadedSkills(): Skill[] {
 	return cachedSkills
+}
+
+/** Get skills available for a specific project (global + project-local) */
+export function getSkillsForProject(projectId: string): Skill[] {
+	const globalSkills = cachedSkills.filter(s => !s.projectId)
+	const projectSkills = cachedSkills.filter(s => s.projectId === projectId)
+
+	// Project skills override globals with the same name
+	const result = [...globalSkills]
+	for (const ps of projectSkills) {
+		const idx = result.findIndex(s => s.name.toLowerCase() === ps.name.toLowerCase())
+		if (idx >= 0) {
+			result[idx] = ps
+		} else {
+			result.push(ps)
+		}
+	}
+	return result
 }
 
 /**
@@ -35,7 +56,7 @@ export async function loadSkills(): Promise<void> {
 	}
 
 	// Helper to load skills from a given directory
-	const loadFromDir = async (dirPath: string, isBuiltIn: boolean) => {
+	const loadFromDir = async (dirPath: string, isBuiltIn: boolean, projectId?: string) => {
 		if (!existsSync(dirPath)) return
 		try {
 			const entries = await fsPromises.readdir(dirPath, { withFileTypes: true })
@@ -55,6 +76,7 @@ export async function loadSkills(): Promise<void> {
 							tags: parsed.tags,
 							parent: parsed.parent,
 							model: parsed.model,
+							projectId,
 						})
 					}
 				}
@@ -66,6 +88,22 @@ export async function loadSkills(): Promise<void> {
 
 	await loadFromDir(BUILTIN_SKILLS_DIR, true)
 	await loadFromDir(USER_SKILLS_DIR, false)
+
+	// Load per-project skills
+	if (existsSync(PROJECTS_DIR)) {
+		try {
+			const projectEntries = await fsPromises.readdir(PROJECTS_DIR, { withFileTypes: true })
+			for (const entry of projectEntries) {
+				if (!entry.isDirectory()) continue
+				const projectSkillsDir = join(PROJECTS_DIR, entry.name, 'skills')
+				if (existsSync(projectSkillsDir)) {
+					await loadFromDir(projectSkillsDir, false, entry.name)
+				}
+			}
+		} catch {
+			// Ignore errors scanning projects
+		}
+	}
 
 	cachedSkills = loaded
 }

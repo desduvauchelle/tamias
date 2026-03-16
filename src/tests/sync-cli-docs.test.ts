@@ -46,22 +46,18 @@ describe('collectCommands', () => {
 
 	test('includes known top-level commands', () => {
 		const names = commands.map(c => c.full)
-		expect(names).toContain('tamias chat')
 		expect(names).toContain('tamias start')
 		expect(names).toContain('tamias stop')
 		expect(names).toContain('tamias status')
-		expect(names).toContain('tamias config')
-		expect(names).toContain('tamias setup')
-		expect(names).toContain('tamias update')
+		expect(names).toContain('tamias doctor')
 	})
 
-	test('includes subcommands (e.g. agents add, models list)', () => {
+	test('removed commands are no longer present', () => {
 		const names = commands.map(c => c.full)
-		expect(names).toContain('tamias agents add')
-		expect(names).toContain('tamias agents list')
-		expect(names).toContain('tamias models list')
-		expect(names).toContain('tamias config show')
-		expect(names).toContain('tamias channels add')
+		expect(names).not.toContain('tamias chat')
+		expect(names).not.toContain('tamias config')
+		expect(names).not.toContain('tamias setup')
+		expect(names).not.toContain('tamias update')
 	})
 
 	test('captures options for commands that have them', () => {
@@ -71,38 +67,19 @@ describe('collectCommands', () => {
 		expect(start!.options.some(o => o.includes('--daemon'))).toBe(true)
 	})
 
-	test('captures arguments for commands that have them', () => {
-		const usage = commands.find(c => c.full === 'tamias usage')
-		expect(usage).toBeDefined()
-		expect(usage!.args.length).toBeGreaterThan(0)
-		expect(usage!.args[0]).toBe('[period]')
+	test('captures options for doctor command', () => {
+		const doctor = commands.find(c => c.full === 'tamias doctor')
+		expect(doctor).toBeDefined()
+		expect(doctor!.options.length).toBeGreaterThan(0)
+		expect(doctor!.options.some(o => o.includes('--fix'))).toBe(true)
 	})
 
-	test('includes the token command', () => {
+	test('does not include removed commands', () => {
 		const names = commands.map(c => c.full)
-		expect(names).toContain('tamias token')
-	})
-
-	test('includes skills subcommands', () => {
-		const names = commands.map(c => c.full)
-		expect(names).toContain('tamias skills')
-		expect(names).toContain('tamias skills list')
-		expect(names).toContain('tamias skills add')
-	})
-
-	test('includes project subcommands', () => {
-		const names = commands.map(c => c.full)
-		expect(names).toContain('tamias project')
-		expect(names).toContain('tamias project list')
-		expect(names).toContain('tamias project create')
-	})
-
-	test('includes tenant subcommands', () => {
-		const names = commands.map(c => c.full)
-		expect(names).toContain('tamias tenant')
-		expect(names).toContain('tamias tenant list')
-		expect(names).toContain('tamias tenant create')
-		expect(names).toContain('tamias tenant switch')
+		expect(names).not.toContain('tamias token')
+		expect(names).not.toContain('tamias skills')
+		expect(names).not.toContain('tamias project')
+		expect(names).not.toContain('tamias tenant')
 	})
 })
 
@@ -124,17 +101,9 @@ describe('renderMarkdown', () => {
 	test('contains command entries in table rows', () => {
 		const commands = collectCommands(program)
 		const md = renderMarkdown(commands)
-		expect(md).toContain('`tamias chat`')
-		expect(md).toContain('`tamias agents add`')
 		expect(md).toContain('`tamias start`')
-	})
-
-	test('groups commands under ### headers', () => {
-		const commands = collectCommands(program)
-		const md = renderMarkdown(commands)
-		expect(md).toContain('### `tamias config`')
-		expect(md).toContain('### `tamias agents`')
-		expect(md).toContain('### `tamias models`')
+		expect(md).toContain('`tamias stop`')
+		expect(md).toContain('`tamias doctor`')
 	})
 
 	test('minimal input produces valid output', () => {

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useToast } from "../_components/ToastProvider"
-import { KanbanSquare, FolderOpen, Settings, Plus, LayoutDashboard, ExternalLink, Link as LinkIcon, Edit, Check, FileText, MessageSquare } from "lucide-react"
+import { KanbanSquare, FolderOpen, Settings, Plus, LayoutDashboard, ExternalLink, Link as LinkIcon, Edit, Check, FileText, MessageSquare, Puzzle, Trash2, Calendar, Flag } from "lucide-react"
 import FileNavigator from '../_components/FileNavigator'
 import ChatTerminal from '../_components/ChatTerminal'
 import { marked } from 'marked'
@@ -26,6 +26,10 @@ interface KanbanTask {
 	reaction?: string
 	status: string
 	createdAt: number
+	priority?: 'low' | 'medium' | 'high' | 'urgent'
+	dueDate?: number
+	labels?: string[]
+	order?: number
 	comments?: KanbanComment[]
 }
 
@@ -79,14 +83,14 @@ function ProjectsContent() {
 	})
 
 	const [activeProject, setActiveProject] = useState<Project | null>(null)
-	const [activeTab, setActiveTab] = useState<'overview' | 'chat' | 'kanban' | 'files' | 'settings'>(
-		['overview', 'chat', 'kanban', 'files', 'settings'].includes(initialTab) ? initialTab : 'overview'
+	const [activeTab, setActiveTab] = useState<'overview' | 'chat' | 'kanban' | 'skills' | 'files' | 'settings'>(
+		['overview', 'chat', 'kanban', 'skills', 'files', 'settings'].includes(initialTab) ? initialTab : 'overview'
 	)
 
 	// Sync activeTab to URL and vice-versa
 	useEffect(() => {
 		const tabQuery = searchParams.get('tab')
-		if (tabQuery && ['overview', 'chat', 'kanban', 'files', 'settings'].includes(tabQuery) && tabQuery !== activeTab) {
+		if (tabQuery && ['overview', 'chat', 'kanban', 'skills', 'files', 'settings'].includes(tabQuery) && tabQuery !== activeTab) {
 			setActiveTab(tabQuery as any)
 		}
 	}, [searchParams])
@@ -107,6 +111,9 @@ function ProjectsContent() {
 	const [modalAssignee, setModalAssignee] = useState("")
 	const [modalStatus, setModalStatus] = useState("")
 	const [newComment, setNewComment] = useState("")
+	const [modalPriority, setModalPriority] = useState<string>("")
+	const [modalDueDate, setModalDueDate] = useState<string>("")
+	const [modalLabels, setModalLabels] = useState<string>("")
 
 	const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null)
 
@@ -360,6 +367,9 @@ function ProjectsContent() {
 		setModalDetails(task.details || "")
 		setModalAssignee(task.assignee || "")
 		setModalStatus(task.status)
+		setModalPriority(task.priority || "")
+		setModalDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : "")
+		setModalLabels(task.labels?.join(', ') || "")
 		setNewComment("")
 	}
 
@@ -369,12 +379,15 @@ function ProjectsContent() {
 
 	const saveTaskDetails = async () => {
 		if (!selectedTask || !activeProject) return
-		const updatedTask = {
+		const updatedTask: KanbanTask = {
 			...selectedTask,
 			title: modalTitle,
 			details: modalDetails,
 			assignee: modalAssignee,
-			status: modalStatus
+			status: modalStatus,
+			priority: modalPriority ? modalPriority as KanbanTask['priority'] : undefined,
+			dueDate: modalDueDate ? new Date(modalDueDate).getTime() : undefined,
+			labels: modalLabels ? modalLabels.split(',').map(l => l.trim()).filter(Boolean) : undefined,
 		}
 		const oldKanban = activeProject.kanban || []
 		const updatedKanban = oldKanban.map(t =>
@@ -500,6 +513,12 @@ function ProjectsContent() {
 								<KanbanSquare className="w-4 h-4" /> Kanban Board
 							</button>
 							<button
+								className={`tab tab-lg gap-2 transition-all ${activeTab === 'skills' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
+								onClick={() => setActiveTab('skills')}
+							>
+								<Puzzle className="w-4 h-4" /> Skills
+							</button>
+							<button
 								className={`tab tab-lg gap-2 transition-all ${activeTab === 'files' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
 								onClick={() => setActiveTab('files')}
 							>
@@ -597,6 +616,28 @@ function ProjectsContent() {
 
 														{/* Badges */}
 														<div className="flex flex-wrap gap-2 mt-2">
+															{task.priority && task.priority !== 'medium' && (
+																<span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+																	task.priority === 'urgent' ? 'bg-error/20 text-error' :
+																	task.priority === 'high' ? 'bg-warning/20 text-warning' :
+																	'bg-base-300 text-base-content/50'
+																}`}>
+																	{task.priority}
+																</span>
+															)}
+															{task.dueDate && (
+																<span className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 ${
+																	task.dueDate < Date.now() ? 'bg-error/20 text-error' : 'bg-info/10 text-info'
+																}`}>
+																	<Calendar className="w-3 h-3" />
+																	{new Date(task.dueDate).toLocaleDateString()}
+																</span>
+															)}
+															{task.labels && task.labels.map(label => (
+																<span key={label} className="text-[10px] px-2 py-0.5 bg-accent/10 text-accent rounded-full">
+																	{label}
+																</span>
+															))}
 															{task.reaction && (
 																<span className="text-[14px]">
 																	{task.reaction}
@@ -666,6 +707,10 @@ function ProjectsContent() {
 							<div className="absolute inset-0 bg-base-100 flex flex-col">
 								<ChatTerminal sessionId={`project-${activeProject.id}`} />
 							</div>
+						)}
+
+						{activeTab === 'skills' && activeProject && (
+							<ProjectSkillsPanel projectId={activeProject.id} />
 						)}
 
 						{activeTab === 'files' && activeProject?.path && (
@@ -849,6 +894,42 @@ function ProjectsContent() {
 									</div>
 								</div>
 
+								<div className="form-control">
+									<label className="label pt-0"><span className="label-text font-semibold flex items-center gap-1"><Flag className="w-3 h-3" /> Priority</span></label>
+									<select
+										className="select select-bordered select-sm w-full"
+										value={modalPriority}
+										onChange={e => setModalPriority(e.target.value as any)}
+									>
+										<option value="">None</option>
+										<option value="low">Low</option>
+										<option value="medium">Medium</option>
+										<option value="high">High</option>
+										<option value="urgent">Urgent</option>
+									</select>
+								</div>
+
+								<div className="form-control">
+									<label className="label pt-0"><span className="label-text font-semibold flex items-center gap-1"><Calendar className="w-3 h-3" /> Due Date</span></label>
+									<input
+										type="date"
+										className="input input-bordered input-sm w-full"
+										value={modalDueDate}
+										onChange={e => setModalDueDate(e.target.value)}
+									/>
+								</div>
+
+								<div className="form-control">
+									<label className="label pt-0"><span className="label-text font-semibold">Labels</span></label>
+									<input
+										type="text"
+										className="input input-bordered input-sm w-full"
+										placeholder="bug, feature, docs (comma-separated)"
+										value={modalLabels}
+										onChange={e => setModalLabels(e.target.value)}
+									/>
+								</div>
+
 								<div className="text-xs opacity-50 mt-auto pt-4 border-t border-base-200">
 									Created: {new Date(selectedTask.createdAt).toLocaleString()}
 								</div>
@@ -857,6 +938,149 @@ function ProjectsContent() {
 					</div>
 				</div>
 			)}
+		</div>
+	)
+}
+
+function ProjectSkillsPanel({ projectId }: { projectId: string }) {
+	const [skills, setSkills] = useState<{ name: string; description: string; content: string }[]>([])
+	const [loading, setLoading] = useState(true)
+	const [newSkillName, setNewSkillName] = useState('')
+	const [newSkillContent, setNewSkillContent] = useState('')
+	const [isAdding, setIsAdding] = useState(false)
+	const { success, error } = useToast()
+
+	const fetchSkills = useCallback(async () => {
+		try {
+			const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/skills`)
+			if (res.ok) {
+				setSkills(await res.json())
+			}
+		} catch {
+			// ignore
+		} finally {
+			setLoading(false)
+		}
+	}, [projectId])
+
+	useEffect(() => {
+		fetchSkills()
+	}, [fetchSkills])
+
+	const handleAdd = async () => {
+		if (!newSkillName.trim() || !newSkillContent.trim()) {
+			error('Name and content are required')
+			return
+		}
+		try {
+			const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/skills`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: newSkillName, content: newSkillContent }),
+			})
+			if (res.ok) {
+				success('Skill added')
+				setNewSkillName('')
+				setNewSkillContent('')
+				setIsAdding(false)
+				fetchSkills()
+			} else {
+				const data = await res.json()
+				error(data.error || 'Failed to add skill')
+			}
+		} catch {
+			error('Failed to add skill')
+		}
+	}
+
+	const handleDelete = async (skillName: string) => {
+		try {
+			const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/skills?name=${encodeURIComponent(skillName)}`, {
+				method: 'DELETE',
+			})
+			if (res.ok) {
+				success('Skill deleted')
+				fetchSkills()
+			}
+		} catch {
+			error('Failed to delete skill')
+		}
+	}
+
+	if (loading) {
+		return <div className="p-8 flex justify-center"><span className="loading loading-spinner loading-lg text-primary" /></div>
+	}
+
+	return (
+		<div className="h-full overflow-y-auto p-8 max-w-4xl mx-auto">
+			<div className="flex justify-between items-center mb-6">
+				<div>
+					<h3 className="text-lg font-bold">Project Skills</h3>
+					<p className="text-sm text-base-content/60">Skills local to this project. They override global skills with the same name.</p>
+				</div>
+				<button onClick={() => setIsAdding(!isAdding)} className="btn btn-primary btn-sm gap-2">
+					<Plus className="w-4 h-4" /> Add Skill
+				</button>
+			</div>
+
+			{isAdding && (
+				<div className="card bg-base-200 border border-base-300 mb-6">
+					<div className="card-body gap-4">
+						<div className="form-control">
+							<label className="label"><span className="label-text font-medium">Skill Name</span></label>
+							<input
+								value={newSkillName}
+								onChange={e => setNewSkillName(e.target.value)}
+								className="input input-bordered w-full"
+								placeholder="e.g. my-custom-skill"
+							/>
+						</div>
+						<div className="form-control">
+							<label className="label"><span className="label-text font-medium">SKILL.md Content</span></label>
+							<textarea
+								value={newSkillContent}
+								onChange={e => setNewSkillContent(e.target.value)}
+								className="textarea textarea-bordered h-48 font-mono text-sm"
+								placeholder={"---\nname: \"My Skill\"\ndescription: \"What this skill does\"\ntags: [\"example\"]\n---\n\n# My Skill Instructions\n\n..."}
+							/>
+						</div>
+						<div className="flex gap-2 justify-end">
+							<button onClick={() => setIsAdding(false)} className="btn btn-ghost btn-sm">Cancel</button>
+							<button onClick={handleAdd} className="btn btn-primary btn-sm">Save Skill</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{skills.length === 0 && !isAdding && (
+				<div className="text-center py-12 text-base-content/40">
+					<Puzzle className="w-12 h-12 mx-auto mb-4 opacity-30" />
+					<p className="text-lg">No project-specific skills yet</p>
+					<p className="text-sm mt-1">Add skills to customize AI behavior for this project</p>
+				</div>
+			)}
+
+			<div className="space-y-3">
+				{skills.map(skill => (
+					<div key={skill.name} className="card bg-base-200 border border-base-300">
+						<div className="card-body py-4 px-5">
+							<div className="flex justify-between items-start">
+								<div>
+									<h4 className="font-bold font-mono">{skill.name}</h4>
+									{skill.description && <p className="text-sm text-base-content/60 mt-1">{skill.description}</p>}
+								</div>
+								<button onClick={() => handleDelete(skill.name)} className="btn btn-ghost btn-xs text-error">
+									<Trash2 className="w-4 h-4" />
+								</button>
+							</div>
+							<details className="mt-2">
+								<summary className="cursor-pointer text-sm text-base-content/50 hover:text-base-content/80">View content</summary>
+								<pre className="mt-2 p-3 bg-base-100 rounded text-xs font-mono overflow-x-auto max-h-60 overflow-y-auto">{skill.content}</pre>
+							</details>
+						</div>
+					</div>
+				))}
+			</div>
 		</div>
 	)
 }

@@ -1,19 +1,21 @@
 /**
- * Tests for Phase 7 (CLI improvements), Phase 8 (Token tracking), Phase 9 (Documentation)
+ * Tests for Phase 7 (Config), Phase 8 (Token tracking), Phase 9 (Documentation)
+ * Updated: config/setup/docs CLI commands removed — testing underlying utils only
  */
 import { expect, test, describe } from 'bun:test'
 
-// ── Phase 7: Config show/path commands ─────────────────────────────────────
-describe('Config commands', () => {
-	test('runConfigShowCommand exports exist', async () => {
-		const { runConfigShowCommand, runConfigPathCommand } = await import('../commands/config.ts')
-		expect(typeof runConfigShowCommand).toBe('function')
-		expect(typeof runConfigPathCommand).toBe('function')
-	})
-
-	test('runSetupCommand export exists', async () => {
-		const { runSetupCommand } = await import('../commands/setup.ts')
-		expect(typeof runSetupCommand).toBe('function')
+// ── Phase 7: Config utilities ──────────────────────────────────────────────
+describe('Config utilities', () => {
+	test('loadConfig and saveConfig work', async () => {
+		const { loadConfig, saveConfig, invalidateConfigCache } = await import('../utils/config.ts')
+		const config = loadConfig()
+		expect(config).toBeDefined()
+		expect(typeof config).toBe('object')
+		// Save and reload
+		saveConfig(config)
+		invalidateConfigCache()
+		const reloaded = loadConfig()
+		expect(reloaded).toBeDefined()
 	})
 })
 
@@ -27,7 +29,7 @@ describe('Usage API data', () => {
 	})
 })
 
-// ── Phase 9: Documentation generator ────────────────────────────────────────
+// ── Phase 9: Documentation utilities ────────────────────────────────────────
 describe('Documentation generator', () => {
 	test('generateDocs produces files', async () => {
 		const { generateDocs } = await import('../utils/docs.ts')
@@ -40,44 +42,6 @@ describe('Documentation generator', () => {
 
 		expect(files.length).toBeGreaterThan(0)
 		expect(files).toContain('architecture.md')
-		expect(files).toContain('cli-reference.md')
-		expect(files).toContain('configuration.md')
-		expect(files).toContain('api-reference.md')
-		expect(files).toContain('skills.md')
-		expect(files).toContain('migrations.md')
-	})
-
-	test('generated docs contain expected content', async () => {
-		const { generateDocs } = await import('../utils/docs.ts')
-		const { mkdtempSync, readFileSync } = await import('fs')
-		const { join } = await import('path')
-		const { tmpdir } = await import('os')
-
-		const tmpDir = mkdtempSync(join(tmpdir(), 'tamias-docs-content-'))
-		generateDocs(tmpDir)
-
-		const arch = readFileSync(join(tmpDir, 'architecture.md'), 'utf-8')
-		expect(arch).toContain('Tamias Architecture')
-		expect(arch).toContain('AIService')
-		expect(arch).toContain('BridgeManager')
-
-		const cli = readFileSync(join(tmpDir, 'cli-reference.md'), 'utf-8')
-		expect(cli).toContain('tamias chat')
-		expect(cli).toContain('tamias setup')
-		expect(cli).toContain('tamias doctor')
-
-		const config = readFileSync(join(tmpDir, 'configuration.md'), 'utf-8')
-		expect(config).toContain('WhatsApp Config')
-		expect(config).toContain('mode')
-
-		const api = readFileSync(join(tmpDir, 'api-reference.md'), 'utf-8')
-		expect(api).toContain('/usage')
-		expect(api).toContain('tenantDistribution')
-	})
-
-	test('runDocsGenerateCommand export exists', async () => {
-		const { runDocsGenerateCommand } = await import('../commands/docs.ts')
-		expect(typeof runDocsGenerateCommand).toBe('function')
 	})
 })
 

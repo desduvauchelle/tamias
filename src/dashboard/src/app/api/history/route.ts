@@ -75,6 +75,7 @@ export async function GET(request: Request) {
 	try {
 		const { searchParams } = new URL(request.url)
 		const query = searchParams.get('q')?.trim().toLowerCase() ?? ''
+		const projectFilter = searchParams.get('project')?.trim() ?? ''
 		const limitParam = searchParams.get('limit')
 		const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : undefined
 		const limit = parsedLimit && Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined
@@ -116,8 +117,14 @@ export async function GET(request: Request) {
 			fullHistory: l.fullHistory ?? []
 		}))
 
-		const filteredLogs = query
+		let filteredLogs = projectFilter
 			? mappedLogs.filter((log: DashboardLogEntry) => {
+				return log.sessionId === `project-${projectFilter}` || log.sessionId === projectFilter
+			})
+			: mappedLogs
+
+		if (query) {
+			filteredLogs = filteredLogs.filter((log: DashboardLogEntry) => {
 				const haystack = [
 					log.sessionId,
 					log.model,
@@ -126,7 +133,7 @@ export async function GET(request: Request) {
 				].join(' ').toLowerCase()
 				return haystack.includes(query)
 			})
-			: mappedLogs
+		}
 
 		const logs = typeof limit === 'number' ? filteredLogs.slice(0, limit) : filteredLogs
 
