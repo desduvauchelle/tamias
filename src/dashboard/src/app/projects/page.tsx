@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useToast } from "../_components/ToastProvider"
 import { KanbanSquare, FolderOpen, Settings, Plus, LayoutDashboard, ExternalLink, Link as LinkIcon, Edit, Check, FileText, MessageSquare, Puzzle, Trash2, Calendar, Flag } from "lucide-react"
@@ -134,6 +134,14 @@ function ProjectsContent() {
 	// Kanban State
 	const [newTaskTitle, setNewTaskTitle] = useState("")
 	const [newTaskCol, setNewTaskCol] = useState("")
+
+	// AI Activity State
+	type AiLogEntry = { type: 'tool' | 'text' | 'status'; text: string; ts: number }
+	const [aiStatus, setAiStatus] = useState<'idle' | 'thinking' | 'done' | 'error'>('idle')
+	const [aiLog, setAiLog] = useState<AiLogEntry[]>([])
+	const [aiTextPreview, setAiTextPreview] = useState('')
+	const aiEventSourceRef = useRef<EventSource | null>(null)
+	const aiDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
 	const KANBAN_COLUMNS = ['todo', 'in-progress', 'awaiting-review', 'done']
 
@@ -314,10 +322,80 @@ function ProjectsContent() {
 		await updateKanban(updatedKanban)
 	}
 
+	// Cleanup AI stream on unmount
+	useEffect(() => {
+		return () => {
+			aiEventSourceRef.current?.close()
+			if (aiDismissTimerRef.current) clearTimeout(aiDismissTimerRef.current)
+		}
+	}, [])
+
+	// Watch AI session stream and populate the activity log
+	const startWatchingAI = useCallback((projectId: string) => {
+		// Clean up any existing stream
+		if (aiEventSourceRef.current) {
+			aiEventSourceRef.current.close()
+			aiEventSourceRef.current = null
+		}
+		if (aiDismissTimerRef.current) {
+			clearTimeout(aiDismissTimerRef.current)
+			aiDismissTimerRef.current = null
+		}
+
+		setAiStatus('thinking')
+		setAiLog([])
+		setAiTextPreview('')
+
+		const es = new EventSource(`/api/sessions/project-${projectId}/activity`)
+		aiEventSourceRef.current = es
+		let textBuffer = ''
+
+		es.onmessage = (e) => {
+			try {
+				const data = JSON.parse(e.data)
+				if (data.type === 'tool_call') {
+					setAiLog(prev => [...prev, { type: 'tool', text: data.name || 'unknown_tool', ts: Date.now() }])
+				} else if (data.type === 'chunk' && data.text) {
+					textBuffer += data.text
+					// Keep only last 200 chars for preview to avoid huge state
+					setAiTextPreview(textBuffer.length > 200 ? '…' + textBuffer.slice(-200) : textBuffer)
+				} else if (data.type === 'done') {
+					setAiStatus('done')
+					if (textBuffer.trim()) {
+						setAiLog(prev => [...prev, { type: 'status', text: '✓ Done', ts: Date.now() }])
+					}
+					es.close()
+					aiEventSourceRef.current = null
+					aiDismissTimerRef.current = setTimeout(() => {
+						setAiStatus('idle')
+						setAiLog([])
+						setAiTextPreview('')
+					}, 5000)
+				} else if (data.type === 'error') {
+					setAiStatus('error')
+					setAiLog(prev => [...prev, { type: 'status', text: `✕ ${data.message || 'Error'}`, ts: Date.now() }])
+					es.close()
+					aiEventSourceRef.current = null
+					aiDismissTimerRef.current = setTimeout(() => setAiStatus('idle'), 8000)
+				}
+			} catch { /* ignore malformed */ }
+		}
+
+		es.onerror = () => {
+			// SSE closed (normal after stream ends) or real error
+			if (aiStatus !== 'done') {
+				es.close()
+				aiEventSourceRef.current = null
+			}
+		}
+	}, [aiStatus])
+
 	// Notify daemon so AI can react to kanban changes
 	const notifyAIKanbanEvent = async (oldKanban: KanbanTask[], newKanban: KanbanTask[]) => {
 		if (!activeProject) return
 		try {
+			// Start watching BEFORE posting so we don't miss early events
+			startWatchingAI(activeProject.id)
 			await fetch('/api/project-event', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -570,136 +648,182 @@ function ProjectsContent() {
 						)}
 
 						{activeTab === 'kanban' && (
-							<div className="absolute inset-0 flex gap-4 p-6 overflow-x-auto items-start">
-								{KANBAN_COLUMNS.map(col => {
-									let colTasks = (activeProject.kanban || []).filter(t => t.status === col)
-									const totalInCol = colTasks.length
+							<div className="absolute inset-0 flex flex-col">
+								{/* AI Activity Panel */}
+								{aiStatus !== 'idle' && (
+									<div className={`shrink-0 mx-4 mt-3 rounded-xl border px-4 py-3 font-mono text-xs transition-all ${aiStatus === 'thinking' ? 'bg-primary/10 border-primary/30 text-primary' :
+											aiStatus === 'done' ? 'bg-success/10 border-success/30 text-success' :
+												'bg-error/10 border-error/30 text-error'
+										}`}>
+										<div className="flex items-center gap-3 mb-2">
+											{aiStatus === 'thinking' ? (
+												<span className="relative flex h-2.5 w-2.5 shrink-0">
+													<span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+													<span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
+												</span>
+											) : aiStatus === 'done' ? (
+												<span className="h-2.5 w-2.5 rounded-full bg-success shrink-0"></span>
+											) : (
+												<span className="h-2.5 w-2.5 rounded-full bg-error shrink-0"></span>
+											)}
+											<span className="font-bold uppercase tracking-wider text-[10px]">
+												{aiStatus === 'thinking' ? 'AI is thinking…' : aiStatus === 'done' ? 'AI done' : 'AI error'}
+											</span>
+											<button
+												className="ml-auto opacity-40 hover:opacity-80"
+												onClick={() => { setAiStatus('idle'); setAiLog([]); setAiTextPreview(''); if (aiDismissTimerRef.current) clearTimeout(aiDismissTimerRef.current) }}
+											>✕</button>
+										</div>
+										{/* Tool call log */}
+										{aiLog.length > 0 && (
+											<div className="flex flex-wrap gap-1.5 mb-2">
+												{aiLog.map((entry, i) => (
+													<span key={i} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${entry.type === 'tool' ? 'bg-warning/20 text-warning' :
+															entry.type === 'status' ? 'bg-base-300 text-base-content/70' : ''
+														}`}>
+														{entry.type === 'tool' && <span>🔧</span>}
+														{entry.text}
+													</span>
+												))}
+											</div>
+										)}
+										{/* Live text preview */}
+										{aiTextPreview && aiStatus === 'thinking' && (
+											<div className="text-[10px] opacity-60 leading-relaxed line-clamp-2 break-all">
+												{aiTextPreview}<span className="animate-pulse">▋</span>
+											</div>
+										)}
+									</div>
+								)}
+								<div className="flex-1 flex gap-4 p-6 pt-3 overflow-x-auto items-start min-h-0">
+									{KANBAN_COLUMNS.map(col => {
+										let colTasks = (activeProject.kanban || []).filter(t => t.status === col)
+										const totalInCol = colTasks.length
 
-									if (col === 'done') {
-										// Sort by createdAt desc and take 10
-										colTasks = [...colTasks].sort((a, b) => b.createdAt - a.createdAt).slice(0, 10)
-									}
+										if (col === 'done') {
+											// Sort by createdAt desc and take 10
+											colTasks = [...colTasks].sort((a, b) => b.createdAt - a.createdAt).slice(0, 10)
+										}
 
-									return (
-										<div
-											key={col}
-											onDragOver={(e) => e.preventDefault()}
-											onDrop={(e) => {
-												e.preventDefault()
-												if (draggedTaskId) {
-													moveTask(draggedTaskId, col)
-													setDraggedTaskId(null)
-												}
-											}}
-											className="w-72 shrink-0 flex flex-col max-h-full bg-base-200/50 rounded-xl border border-base-300"
-										>
-											<div className="p-3 border-b border-base-300/50 flex justify-between items-center bg-base-300/30 rounded-t-xl">
-												<div className="flex flex-col">
-													<h3 className="font-bold text-sm uppercase tracking-wider text-base-content/70">{col.replace('-', ' ')}</h3>
-													{col === 'done' && totalInCol > 10 && (
-														<span className="text-[10px] opacity-50 font-medium">Showing last 10 tasks</span>
+										return (
+											<div
+												key={col}
+												onDragOver={(e) => e.preventDefault()}
+												onDrop={(e) => {
+													e.preventDefault()
+													if (draggedTaskId) {
+														moveTask(draggedTaskId, col)
+														setDraggedTaskId(null)
+													}
+												}}
+												className="w-72 shrink-0 flex flex-col max-h-full bg-base-200/50 rounded-xl border border-base-300"
+											>
+												<div className="p-3 border-b border-base-300/50 flex justify-between items-center bg-base-300/30 rounded-t-xl">
+													<div className="flex flex-col">
+														<h3 className="font-bold text-sm uppercase tracking-wider text-base-content/70">{col.replace('-', ' ')}</h3>
+														{col === 'done' && totalInCol > 10 && (
+															<span className="text-[10px] opacity-50 font-medium">Showing last 10 tasks</span>
+														)}
+													</div>
+													<span className="text-xs font-mono bg-base-300 px-2 py-0.5 rounded-full">{totalInCol}</span>
+												</div>
+												<div className="p-3 flex-1 overflow-y-auto space-y-3">
+													{colTasks.map(task => (
+														<div
+															key={task.id}
+															draggable
+															onDragStart={() => setDraggedTaskId(task.id)}
+															onDragEnd={() => setDraggedTaskId(null)}
+															onClick={() => openTaskModal(task)}
+															className={`bg-base-100 p-3 rounded-lg border border-base-300 shadow-sm group cursor-pointer hover:border-primary/50 transition-colors relative ${draggedTaskId === task.id ? 'opacity-50' : ''}`}
+														>
+															<div className="text-sm font-medium pr-6">{task.title}</div>
+
+															{/* Badges */}
+															<div className="flex flex-wrap gap-2 mt-2">
+																{task.priority && task.priority !== 'medium' && (
+																	<span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${task.priority === 'urgent' ? 'bg-error/20 text-error' :
+																			task.priority === 'high' ? 'bg-warning/20 text-warning' :
+																				'bg-base-300 text-base-content/50'
+																		}`}>
+																		{task.priority}
+																	</span>
+																)}
+																{task.dueDate && (
+																	<span className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 ${task.dueDate < Date.now() ? 'bg-error/20 text-error' : 'bg-info/10 text-info'
+																		}`}>
+																		<Calendar className="w-3 h-3" />
+																		{new Date(task.dueDate).toLocaleDateString()}
+																	</span>
+																)}
+																{task.labels && task.labels.map(label => (
+																	<span key={label} className="text-[10px] px-2 py-0.5 bg-accent/10 text-accent rounded-full">
+																		{label}
+																	</span>
+																))}
+																{task.reaction && (
+																	<span className="text-[14px]">
+																		{task.reaction}
+																	</span>
+																)}
+																{task.assignee && (
+																	<span className="text-[10px] px-2 py-0.5 bg-secondary/10 text-secondary rounded-full font-medium">
+																		{task.assignee}
+																	</span>
+																)}
+																{task.comments && task.comments.length > 0 && (
+																	<span className="text-[10px] px-1.5 py-0.5 bg-base-200 text-base-content/70 rounded flex items-center gap-1">
+																		💬 {task.comments.length}
+																	</span>
+																)}
+															</div>
+
+															<div className="flex justify-between items-end mt-3 relative z-10">
+																<div className="flex gap-1">
+																	{KANBAN_COLUMNS.map(targetCol => targetCol !== col && (
+																		<button
+																			key={targetCol}
+																			onClick={(e) => { e.stopPropagation(); moveTask(task.id, targetCol) }}
+																			className="text-[10px] px-1.5 py-0.5 bg-base-200 hover:bg-primary/20 hover:text-primary rounded text-base-content/50 transition-colors"
+																		>
+																			{targetCol === 'done' ? '→ Done' : targetCol === 'todo' ? '← To Do' : '→ Doing'}
+																		</button>
+																	))}
+																</div>
+																<button onClick={(e) => { e.stopPropagation(); removeTask(task.id) }} className="text-error/50 hover:text-error opacity-0 group-hover:opacity-100 transition-opacity">
+																	<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+																</button>
+															</div>
+														</div>
+													))}
+
+													{newTaskCol === col ? (
+														<form onSubmit={addTask} className="bg-base-100 p-2 rounded-lg border border-primary/50 flex flex-col gap-2">
+															<input
+																autoFocus
+																value={newTaskTitle}
+																onChange={e => setNewTaskTitle(e.target.value)}
+																placeholder="Task title..."
+																className="input input-sm input-ghost w-full px-2"
+															/>
+															<div className="flex gap-2 justify-end">
+																<button type="button" onClick={() => setNewTaskCol('')} className="btn btn-ghost btn-xs">Cancel</button>
+																<button type="submit" className="btn btn-primary btn-xs">Add</button>
+															</div>
+														</form>
+													) : (
+														<button
+															onClick={() => { setNewTaskCol(col); setNewTaskTitle('') }}
+															className="w-full py-2 text-sm text-base-content/50 hover:text-base-content hover:bg-base-300/50 rounded-lg flex items-center justify-center gap-1 transition-colors"
+														>
+															<Plus className="w-4 h-4" /> Add Task
+														</button>
 													)}
 												</div>
-												<span className="text-xs font-mono bg-base-300 px-2 py-0.5 rounded-full">{totalInCol}</span>
 											</div>
-											<div className="p-3 flex-1 overflow-y-auto space-y-3">
-												{colTasks.map(task => (
-													<div
-														key={task.id}
-														draggable
-														onDragStart={() => setDraggedTaskId(task.id)}
-														onDragEnd={() => setDraggedTaskId(null)}
-														onClick={() => openTaskModal(task)}
-														className={`bg-base-100 p-3 rounded-lg border border-base-300 shadow-sm group cursor-pointer hover:border-primary/50 transition-colors relative ${draggedTaskId === task.id ? 'opacity-50' : ''}`}
-													>
-														<div className="text-sm font-medium pr-6">{task.title}</div>
-
-														{/* Badges */}
-														<div className="flex flex-wrap gap-2 mt-2">
-															{task.priority && task.priority !== 'medium' && (
-																<span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-																	task.priority === 'urgent' ? 'bg-error/20 text-error' :
-																	task.priority === 'high' ? 'bg-warning/20 text-warning' :
-																	'bg-base-300 text-base-content/50'
-																}`}>
-																	{task.priority}
-																</span>
-															)}
-															{task.dueDate && (
-																<span className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 ${
-																	task.dueDate < Date.now() ? 'bg-error/20 text-error' : 'bg-info/10 text-info'
-																}`}>
-																	<Calendar className="w-3 h-3" />
-																	{new Date(task.dueDate).toLocaleDateString()}
-																</span>
-															)}
-															{task.labels && task.labels.map(label => (
-																<span key={label} className="text-[10px] px-2 py-0.5 bg-accent/10 text-accent rounded-full">
-																	{label}
-																</span>
-															))}
-															{task.reaction && (
-																<span className="text-[14px]">
-																	{task.reaction}
-																</span>
-															)}
-															{task.assignee && (
-																<span className="text-[10px] px-2 py-0.5 bg-secondary/10 text-secondary rounded-full font-medium">
-																	{task.assignee}
-																</span>
-															)}
-															{task.comments && task.comments.length > 0 && (
-																<span className="text-[10px] px-1.5 py-0.5 bg-base-200 text-base-content/70 rounded flex items-center gap-1">
-																	💬 {task.comments.length}
-																</span>
-															)}
-														</div>
-
-														<div className="flex justify-between items-end mt-3 relative z-10">
-															<div className="flex gap-1">
-																{KANBAN_COLUMNS.map(targetCol => targetCol !== col && (
-																	<button
-																		key={targetCol}
-																		onClick={(e) => { e.stopPropagation(); moveTask(task.id, targetCol) }}
-																		className="text-[10px] px-1.5 py-0.5 bg-base-200 hover:bg-primary/20 hover:text-primary rounded text-base-content/50 transition-colors"
-																	>
-																		{targetCol === 'done' ? '→ Done' : targetCol === 'todo' ? '← To Do' : '→ Doing'}
-																	</button>
-																))}
-															</div>
-															<button onClick={(e) => { e.stopPropagation(); removeTask(task.id) }} className="text-error/50 hover:text-error opacity-0 group-hover:opacity-100 transition-opacity">
-																<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-															</button>
-														</div>
-													</div>
-												))}
-
-												{newTaskCol === col ? (
-													<form onSubmit={addTask} className="bg-base-100 p-2 rounded-lg border border-primary/50 flex flex-col gap-2">
-														<input
-															autoFocus
-															value={newTaskTitle}
-															onChange={e => setNewTaskTitle(e.target.value)}
-															placeholder="Task title..."
-															className="input input-sm input-ghost w-full px-2"
-														/>
-														<div className="flex gap-2 justify-end">
-															<button type="button" onClick={() => setNewTaskCol('')} className="btn btn-ghost btn-xs">Cancel</button>
-															<button type="submit" className="btn btn-primary btn-xs">Add</button>
-														</div>
-													</form>
-												) : (
-													<button
-														onClick={() => { setNewTaskCol(col); setNewTaskTitle('') }}
-														className="w-full py-2 text-sm text-base-content/50 hover:text-base-content hover:bg-base-300/50 rounded-lg flex items-center justify-center gap-1 transition-colors"
-													>
-														<Plus className="w-4 h-4" /> Add Task
-													</button>
-												)}
-											</div>
-										</div>
-									)
-								})}
+										)
+									})}
+								</div>
 							</div>
 						)}
 

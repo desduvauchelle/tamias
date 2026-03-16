@@ -228,7 +228,7 @@ export default function AgentsPage() {
 						<Bot className="w-5 h-5 text-primary" />
 						Agents
 					</h2>
-					<button onClick={openCreate} className="btn btn-sm btn-ghost btn-circle" title="New Agent">
+					<button data-testid="agent-create-btn" onClick={openCreate} className="btn btn-sm btn-ghost btn-circle" title="New Agent">
 						<Plus className="w-5 h-5" />
 					</button>
 				</div>
@@ -240,8 +240,7 @@ export default function AgentsPage() {
 						<div className="p-4 text-center text-base-content/50">No agents yet.</div>
 					) : (
 						agents.map(agent => (
-							<button
-								key={agent.id}
+							<button data-testid={`agent-item-${agent.slug}`} key={agent.id}
 								onClick={() => setSelected(agent)}
 								className={`w-full text-left p-3 rounded-xl transition-all ${selected?.id === agent.id
 									? 'bg-primary/10 text-primary'
@@ -286,6 +285,7 @@ export default function AgentsPage() {
 							</div>
 							<div className="flex gap-1 shrink-0">
 								<button
+									data-testid="agent-toggle-btn"
 									onClick={() => handleToggle(selected)}
 									className={`btn btn-sm btn-ghost btn-square ${selected.enabled ? 'text-warning hover:bg-warning/10' : 'text-success hover:bg-success/10'}`}
 									title={selected.enabled ? 'Disable' : 'Enable'}
@@ -293,6 +293,7 @@ export default function AgentsPage() {
 									{selected.enabled ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
 								</button>
 								<button
+									data-testid="agent-edit-btn"
 									onClick={() => openEdit(selected)}
 									className="btn btn-sm btn-ghost btn-square text-info hover:bg-info/10"
 									title="Edit"
@@ -300,6 +301,7 @@ export default function AgentsPage() {
 									<Pencil className="w-4 h-4" />
 								</button>
 								<button
+									data-testid="agent-delete-btn"
 									onClick={() => handleDelete(selected)}
 									className="btn btn-sm btn-ghost btn-square text-error hover:bg-error/10"
 									title="Delete"
@@ -375,7 +377,7 @@ export default function AgentsPage() {
 							</div>
 
 							<div className="flex flex-col items-center gap-4 pt-4 text-center">
-								<button onClick={openCreate} className="btn btn-primary btn-lg px-8 gap-3 shadow-lg shadow-primary/20 rounded-2xl">
+								<button data-testid="agent-create-empty-btn" onClick={openCreate} className="btn btn-primary btn-lg px-8 gap-3 shadow-lg shadow-primary/20 rounded-2xl">
 									<Plus className="w-5 h-5" />
 									Create New Agent
 								</button>
@@ -396,8 +398,8 @@ export default function AgentsPage() {
 				className="w-11/12 max-w-3xl"
 				footer={
 					<div className="flex justify-end gap-2">
-						<button onClick={() => setIsModalOpen(false)} className="btn btn-ghost">Cancel</button>
-						<button onClick={handleSave} className="btn btn-primary gap-2" disabled={saving}>
+						<button data-testid="agent-modal-cancel" onClick={() => setIsModalOpen(false)} className="btn btn-ghost">Cancel</button>
+						<button data-testid="agent-modal-save" onClick={handleSave} className="btn btn-primary gap-2" disabled={saving}>
 							{saving ? <span className="loading loading-spinner loading-sm" /> : null}
 							{editingAgent ? 'Save Changes' : 'Create Agent'}
 						</button>
@@ -409,6 +411,7 @@ export default function AgentsPage() {
 					<div className="space-y-2">
 						<label className="block text-sm font-medium">Name *</label>
 						<input
+							data-testid="agent-name-input"
 							type="text"
 							className="input input-bordered w-full focus:input-primary transition-colors"
 							placeholder="e.g. Researcher, Customer Support"
@@ -424,6 +427,7 @@ export default function AgentsPage() {
 							<span className="text-xs text-base-content/40">auto-derived from name</span>
 						</div>
 						<input
+							data-testid="agent-slug-input"
 							type="text"
 							className="input input-bordered input-sm w-full font-mono focus:input-primary transition-colors"
 							placeholder="my-agent"
@@ -511,6 +515,7 @@ export default function AgentsPage() {
 					<div className="space-y-2">
 						<label className="block text-sm font-medium">Instructions *</label>
 						<textarea
+							data-testid="agent-instructions-input"
 							className="textarea textarea-bordered w-full font-mono text-sm leading-relaxed min-h-45 focus:textarea-primary transition-colors resize-none"
 							placeholder="You are a research assistant specializing in..."
 							value={form.instructions}

@@ -470,13 +470,14 @@ function CronCard({
 				</div>
 
 				<div className="flex items-center justify-end gap-2">
-					<button onClick={() => onTest(job)} className="btn btn-xs btn-ghost text-success">
+					<button data-testid="cron-test-btn" onClick={() => onTest(job)} className="btn btn-xs btn-ghost text-success">
 						<Play size={14} /> Test
 					</button>
-					<button onClick={() => onEdit(job)} className="btn btn-xs btn-primary">
+					<button data-testid="cron-edit-btn" onClick={() => onEdit(job)} className="btn btn-xs btn-primary">
 						<Pencil size={14} /> Edit
 					</button>
 					<button
+						data-testid="cron-delete-btn"
 						onClick={() => {
 							if (window.confirm(`Delete "${job.name}"? This cannot be undone.`)) {
 								onRemove(job.id)
@@ -524,12 +525,12 @@ export default function CronsPage() {
 			})
 	}, [])
 
-	const save = async () => {
+	const save = async (cronsList?: CronJob[]) => {
 		setSaving(true)
 		await fetch('/api/crons', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ crons }),
+			body: JSON.stringify({ crons: cronsList ?? crons }),
 		})
 		setSaving(false)
 		setSaved(true)
@@ -573,7 +574,7 @@ export default function CronsPage() {
 						</p>
 					</div>
 					<button
-						onClick={save}
+						onClick={() => save()}
 						disabled={saving}
 						className="btn btn-primary btn-md shadow-lg m-1 px-8 rounded-full"
 					>
@@ -587,7 +588,7 @@ export default function CronsPage() {
 						<h2 className="text-2xl font-black flex items-center gap-3 uppercase">
 							Active Background Tasks
 						</h2>
-						<button onClick={addCron} className="btn btn-sm btn-primary gap-2">
+						<button data-testid="cron-add-btn" onClick={addCron} className="btn btn-sm btn-primary gap-2">
 							<Plus size={16} /> Create Cron
 						</button>
 					</div>
@@ -625,8 +626,10 @@ export default function CronsPage() {
 					targetOptions={targetOptions}
 					onClose={() => setEditingJob(null)}
 					onSave={(job) => {
+						const updatedCrons = crons.map(c => c.id === job.id ? job : c)
 						updateCron(job.id, job)
 						setEditingJob(null)
+						save(updatedCrons)
 					}}
 				/>
 			)}

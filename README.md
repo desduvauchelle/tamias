@@ -238,7 +238,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.03.16.1)
+### Latest Version (v26.03.16.2)
 
-### Other Changes
-- Add comprehensive tests for project management and skills functionality
+### Features
+- add project creation and update APIs with validation

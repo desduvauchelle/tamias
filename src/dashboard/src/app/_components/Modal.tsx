@@ -37,13 +37,14 @@ export function Modal({ isOpen, onClose, title, children, footer, className = 'w
 	}, [onClose])
 
 	return (
-		<dialog ref={dialogRef} className="modal">
+		<dialog ref={dialogRef} className="modal" data-testid="modal">
 			<div className={`modal-box bg-base-200 border border-base-300 p-0 overflow-hidden flex flex-col max-h-[90vh] ${className}`}>
 				{/* Header */}
 				{title && (
 					<div className="px-6 py-4 border-b border-base-300 bg-base-300/50 flex items-center justify-between shrink-0">
 						<div className="flex-1 min-w-0">{title}</div>
 						<button
+							data-testid="modal-close"
 							className="btn btn-sm btn-ghost btn-square shrink-0 ml-4"
 							onClick={() => dialogRef.current?.close()}
 						>

@@ -133,10 +133,10 @@ function HealthStatus() {
 	if (!status) return null
 
 	return (
-		<li className="mt-4 pt-4 border-t border-base-300/50">
+		<li data-testid="health-status" className="mt-4 pt-4 border-t border-base-300/50">
 			<div className="px-3 flex items-center justify-between mb-2">
 				<div className="flex items-center gap-2">
-					<span className={`w-1.5 h-1.5 rounded-full ${status.running ? 'bg-success animate-pulse' : 'bg-error'}`} />
+					<span data-testid="health-indicator" className={`w-1.5 h-1.5 rounded-full ${status.running ? 'bg-success animate-pulse' : 'bg-error'}`} />
 					<span className="text-[10px] font-bold uppercase tracking-wider opacity-40">System Status</span>
 				</div>
 				{/* <span className={`text-[10px] font-mono ${status.running ? 'text-success' : 'text-error'}`}>
@@ -198,6 +198,7 @@ function NavContent({ onNewProject }: NavContentProps) {
 		return (
 			<li key={item.href}>
 				<Link
+					data-testid={`nav-${item.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
 					href={item.href}
 					onClick={() => {
 						const drawer = document.getElementById('nav-drawer') as HTMLInputElement
@@ -213,7 +214,7 @@ function NavContent({ onNewProject }: NavContentProps) {
 	}
 
 	return (
-		<aside className="w-64 shrink-0 bg-base-200 border-r border-base-300 flex flex-col h-screen overflow-hidden">
+		<aside data-testid="sidebar" className="w-64 shrink-0 bg-base-200 border-r border-base-300 flex flex-col h-screen overflow-hidden">
 			{/* Logo */}
 			<div className="px-6 py-5 border-b border-base-300 shrink-0">
 				<div className="flex items-center gap-2">

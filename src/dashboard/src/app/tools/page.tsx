@@ -157,13 +157,19 @@ const SERVICE_GUIDES: Record<string, { label: string; url: string; steps: string
 }
 
 function EmailAccountCard({
+	emailId,
 	config,
+	allEmails,
 	onChange,
-	onRemove
+	onRemove,
+	onSaveAll,
 }: {
+	emailId: string
 	config: EmailAccountConfig
+	allEmails: Record<string, EmailAccountConfig>
 	onChange: (c: EmailAccountConfig) => void
 	onRemove: () => void
+	onSaveAll: (overrides: { emails: Record<string, EmailAccountConfig> }) => Promise<void>
 }) {
 	const [isModalOpen, setIsModalOpen] = useState(false)
 	const [draft, setDraft] = useState<EmailAccountConfig>(config)
@@ -188,6 +194,9 @@ function EmailAccountCard({
 		if (draftPassword) updated.appPassword = draftPassword
 		onChange(updated)
 		setIsModalOpen(false)
+		// Auto-persist to server
+		const updatedEmails = { ...allEmails, [emailId]: updated }
+		onSaveAll({ emails: updatedEmails })
 	}
 
 	const closeModal = () => setIsModalOpen(false)
@@ -657,17 +666,37 @@ function InternalToolCard({
 }
 
 function McpServerCard({
+	serverId,
 	name,
 	config,
+	allMcpServers,
 	onChange,
-	onRemove
+	onRemove,
+	onSaveAll,
 }: {
+	serverId: string
 	name: string
 	config: McpServerConfig
+	allMcpServers: Record<string, McpServerConfig>
 	onChange: (c: McpServerConfig) => void
 	onRemove: () => void
+	onSaveAll: (overrides: { mcpServers: Record<string, McpServerConfig> }) => Promise<void>
 }) {
 	const [isModalOpen, setIsModalOpen] = useState(false)
+	const [draft, setDraft] = useState<McpServerConfig>(config)
+
+	const openModal = () => {
+		setDraft(config)
+		setIsModalOpen(true)
+	}
+
+	const saveModal = () => {
+		onChange(draft)
+		setIsModalOpen(false)
+		// Auto-persist to server
+		const updatedServers = { ...allMcpServers, [serverId]: draft }
+		onSaveAll({ mcpServers: updatedServers })
+	}
 
 	return (
 		<div className={`card bg-base-200 border ${config.enabled ? 'border-success/40' : 'border-base-300 opacity-60 hover:opacity-100'} transition-all group relative`}>
@@ -700,7 +729,7 @@ function McpServerCard({
 
 				<div className="text-[10px] text-base-content/50 flex items-center justify-between pt-1 border-t border-base-content/5">
 					<span>{config.transport === 'stdio' ? 'Local stdio transport' : 'Remote HTTP transport'}</span>
-					<button onClick={() => setIsModalOpen(true)} className="btn btn-xs btn-ghost">Edit Details</button>
+					<button data-testid="mcp-edit-btn" onClick={openModal} className="btn btn-xs btn-ghost">Edit Details</button>
 				</div>
 			</div>
 
@@ -709,52 +738,62 @@ function McpServerCard({
 				onClose={() => setIsModalOpen(false)}
 				title={<h3 className="text-lg font-semibold">MCP Server Settings</h3>}
 				className="w-11/12 max-w-3xl"
+				footer={
+					<div className="flex justify-end gap-2">
+						<button data-testid="mcp-modal-cancel" onClick={() => setIsModalOpen(false)} className="btn btn-sm btn-ghost">Cancel</button>
+						<button data-testid="mcp-modal-save" onClick={saveModal} className="btn btn-sm btn-success">Save</button>
+					</div>
+				}
 			>
 				<div className="space-y-3">
 					<div className="form-control">
 						<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Label</span></label>
 						<input
+							data-testid="mcp-label-input"
 							type="text"
 							placeholder="e.g. Memory Server"
 							className="input input-sm input-bordered w-full font-mono text-xs"
-							value={config.label || ''}
-							onChange={e => onChange({ ...config, label: e.target.value })}
+							value={draft.label || ''}
+							onChange={e => setDraft({ ...draft, label: e.target.value })}
 						/>
 					</div>
 
 					<div className="form-control">
 						<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Transport</span></label>
 						<select
+							data-testid="mcp-transport-select"
 							className="select select-sm select-bordered font-mono w-full text-xs"
-							value={config.transport}
-							onChange={e => onChange({ ...config, transport: e.target.value as 'stdio' | 'http' })}
+							value={draft.transport}
+							onChange={e => setDraft({ ...draft, transport: e.target.value as 'stdio' | 'http' })}
 						>
 							<option value="stdio">Local Process (Stdio)</option>
 							<option value="http">Remote Server (HTTP / SSE)</option>
 						</select>
 					</div>
 
-					{config.transport === 'stdio' ? (
+					{draft.transport === 'stdio' ? (
 						<>
 							<div className="form-control">
 								<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Command</span></label>
 								<input
+									data-testid="mcp-command-input"
 									type="text"
 									placeholder="e.g. npx"
 									className="input input-sm input-bordered w-full font-mono text-xs"
-									value={config.command || ''}
-									onChange={e => onChange({ ...config, command: e.target.value })}
+									value={draft.command || ''}
+									onChange={e => setDraft({ ...draft, command: e.target.value })}
 								/>
 							</div>
 							<div className="form-control">
 								<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Args</span></label>
 								<textarea
+									data-testid="mcp-args-input"
 									placeholder="e.g. -y, @modelcontextprotocol/server-memory"
 									className="textarea textarea-bordered textarea-sm w-full font-mono min-h-15"
-									value={(config.args || []).join('\n')}
+									value={(draft.args || []).join('\n')}
 									onChange={e => {
 										const lines = e.target.value.split('\n').map(l => l.trim()).filter(Boolean)
-										onChange({ ...config, args: lines })
+										setDraft({ ...draft, args: lines })
 									}}
 								/>
 								<p className="text-[10px] text-base-content/40 mt-1">One argument per line</p>
@@ -762,9 +801,10 @@ function McpServerCard({
 							<div className="form-control">
 								<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Env Vars</span></label>
 								<textarea
+									data-testid="mcp-env-input"
 									placeholder="e.g. API_KEY=abc123"
 									className="textarea textarea-bordered textarea-sm w-full font-mono min-h-15"
-									value={Object.entries(config.env || {}).map(([k, v]) => `${k}=${v}`).join('\n')}
+									value={Object.entries(draft.env || {}).map(([k, v]) => `${k}=${v}`).join('\n')}
 									onChange={e => {
 										const env: Record<string, string> = {}
 										e.target.value.split('\n').forEach(line => {
@@ -775,7 +815,7 @@ function McpServerCard({
 												if (k) env[k] = v
 											}
 										})
-										onChange({ ...config, env: Object.keys(env).length ? env : undefined })
+										setDraft({ ...draft, env: Object.keys(env).length ? env : undefined })
 									}}
 								/>
 								<p className="text-[10px] text-base-content/40 mt-1">KEY=VALUE, one per line</p>
@@ -786,19 +826,21 @@ function McpServerCard({
 							<div className="form-control">
 								<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">SSE URL</span></label>
 								<input
+									data-testid="mcp-url-input"
 									type="text"
 									placeholder="https://my-server.com/mcp/sse"
 									className="input input-sm input-bordered w-full font-mono text-xs"
-									value={config.url || ''}
-									onChange={e => onChange({ ...config, url: e.target.value })}
+									value={draft.url || ''}
+									onChange={e => setDraft({ ...draft, url: e.target.value })}
 								/>
 							</div>
 							<div className="form-control">
 								<label className="label"><span className="label-text text-xs uppercase font-bold text-base-content/50">Headers</span></label>
 								<textarea
+									data-testid="mcp-headers-input"
 									placeholder="e.g. Authorization=Bearer abc"
 									className="textarea textarea-bordered textarea-sm w-full font-mono min-h-15"
-									value={Object.entries(config.headers || {}).map(([k, v]) => `${k}=${v}`).join('\n')}
+									value={Object.entries(draft.headers || {}).map(([k, v]) => `${k}=${v}`).join('\n')}
 									onChange={e => {
 										const headers: Record<string, string> = {}
 										e.target.value.split('\n').forEach(line => {
@@ -809,7 +851,7 @@ function McpServerCard({
 												if (k) headers[k] = v
 											}
 										})
-										onChange({ ...config, headers: Object.keys(headers).length ? headers : undefined })
+										setDraft({ ...draft, headers: Object.keys(headers).length ? headers : undefined })
 									}}
 								/>
 								<p className="text-[10px] text-base-content/40 mt-1">KEY=VALUE, one per line</p>
@@ -845,12 +887,22 @@ export default function ToolsPage() {
 			})
 	}, [])
 
-	const save = async () => {
+	const save = async (overrides?: {
+		internalTools?: Record<string, InternalToolConfig>
+		mcpServers?: Record<string, McpServerConfig>
+		emails?: Record<string, EmailAccountConfig>
+		defaultImageModels?: string[]
+	}) => {
 		setSaving(true)
 		await fetch('/api/tools', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ internalTools, mcpServers, emails, defaultImageModels }),
+			body: JSON.stringify({
+				internalTools: overrides?.internalTools ?? internalTools,
+				mcpServers: overrides?.mcpServers ?? mcpServers,
+				emails: overrides?.emails ?? emails,
+				defaultImageModels: overrides?.defaultImageModels ?? defaultImageModels,
+			}),
 		})
 		setSaving(false)
 		setSaved(true)
@@ -927,7 +979,8 @@ export default function ToolsPage() {
 					<p className="text-base-content/50 text-sm mt-1">Configure internal tools and third-party Model Context Protocol integrations.</p>
 				</div>
 				<button
-					onClick={save}
+					data-testid="tools-save-btn"
+					onClick={() => save()}
 					disabled={saving}
 					className="btn btn-primary btn-md shadow-lg m-1 px-8 rounded-full"
 				>
@@ -939,7 +992,7 @@ export default function ToolsPage() {
 			<section className="space-y-6">
 				<div className="border-b-2 border-info/20 pb-4 flex justify-between items-end">
 					<h2 className="text-2xl font-black flex items-center gap-3 uppercase text-info">Email Accounts</h2>
-					<button onClick={addEmailAccount} className="btn btn-sm btn-info">+ Add Account</button>
+					<button data-testid="add-email-btn" onClick={addEmailAccount} className="btn btn-sm btn-info">+ Add Account</button>
 				</div>
 
 				{Object.keys(emails).length === 0 ? (
@@ -951,9 +1004,12 @@ export default function ToolsPage() {
 						{Object.entries(emails).map(([id, config]) => (
 							<EmailAccountCard
 								key={id}
+								emailId={id}
 								config={config}
+								allEmails={emails}
 								onChange={(u) => updateEmailAccount(id, u)}
 								onRemove={() => removeEmailAccount(id)}
+								onSaveAll={save}
 							/>
 						))}
 					</div>
@@ -999,7 +1055,7 @@ export default function ToolsPage() {
 			<section className="space-y-6">
 				<div className="border-b-2 border-success/20 pb-4 flex justify-between items-end">
 					<h2 className="text-2xl font-black flex items-center gap-3 uppercase">MCP Integrations</h2>
-					<button onClick={addMcpServer} className="btn btn-sm btn-success">+ Add MCP Server</button>
+					<button data-testid="add-mcp-btn" onClick={addMcpServer} className="btn btn-sm btn-success">+ Add MCP Server</button>
 				</div>
 
 				{Object.keys(mcpServers).length === 0 ? (
@@ -1011,10 +1067,13 @@ export default function ToolsPage() {
 						{Object.entries(mcpServers).map(([id, config]) => (
 							<McpServerCard
 								key={id}
+								serverId={id}
 								name={id}
 								config={config}
+								allMcpServers={mcpServers}
 								onChange={(u) => updateMcpServer(id, u)}
 								onRemove={() => removeMcpServer(id)}
+								onSaveAll={save}
 							/>
 						))}
 					</div>

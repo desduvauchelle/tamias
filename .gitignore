@@ -179,3 +179,4 @@ openclaw-main
 tamias
 tamias-darwin-arm64
 src/dashboard/next-env.d.ts
+test-results/

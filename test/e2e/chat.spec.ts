@@ -12,23 +12,10 @@
  */
 
 import { test, expect } from '@playwright/test'
-import { existsSync, mkdirSync, writeFileSync, rmSync } from 'fs'
-import { join } from 'path'
-
-const TAMIAS_E2E_DIR = '/tmp/tamias-e2e'
-const IDENTITY_PATH = join(TAMIAS_E2E_DIR, 'memory', 'IDENTITY.md')
-
-function ensureOnboarded() {
-	mkdirSync(join(TAMIAS_E2E_DIR, 'memory'), { recursive: true })
-	if (!existsSync(IDENTITY_PATH)) {
-		writeFileSync(IDENTITY_PATH, '# Test Identity\n')
-	}
-}
+import { ensureOnboarded, cleanupIdentity } from './helpers'
 
 test.beforeAll(() => ensureOnboarded())
-test.afterAll(() => {
-	if (existsSync(IDENTITY_PATH)) rmSync(IDENTITY_PATH)
-})
+test.afterAll(() => cleanupIdentity())
 
 const MOCK_SESSIONS = [
 	{ id: 'session-alpha', name: 'Alpha Chat', model: 'gpt-4o', messageCount: 12 },

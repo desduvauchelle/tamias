@@ -114,7 +114,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 
 			{/* Project Creation Modal - Global Position */}
 			{isModalOpen && (
-				<dialog className="modal modal-open z-[100]" open>
+				<dialog data-testid="project-create-modal" className="modal modal-open z-[100]" open>
 					<div className="modal-box bg-base-100 border border-base-300 w-full max-w-lg shadow-2xl">
 						<h3 className="text-xl font-bold mb-6 text-primary flex items-center gap-3">
 							<FolderOpen className="w-6 h-6" />
@@ -124,11 +124,12 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 						<div className="space-y-5">
 							<div className="form-control">
 								<label className="label"><span className="label-text font-medium">Project Name *</span></label>
-								<input value={formName} onChange={e => handleNameChange(e.target.value)} type="text" className="input input-bordered w-full focus:input-primary" placeholder="e.g. My Awesome Startup" />
+								<input data-testid="project-name-input" value={formName} onChange={e => handleNameChange(e.target.value)} type="text" className="input input-bordered w-full focus:input-primary" placeholder="e.g. My Awesome Startup" />
 							</div>
 							<div className="form-control">
 								<label className="label"><span className="label-text font-medium">Path *</span></label>
 								<input
+									data-testid="project-path-input"
 									value={formPath}
 									onChange={e => { setPathManuallyEdited(true); setFormPath(e.target.value) }}
 									type="text"
@@ -143,7 +144,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 							</div>
 							<div className="form-control">
 								<label className="label"><span className="label-text font-medium">Description</span></label>
-								<textarea value={formDesc} onChange={e => setFormDesc(e.target.value)} className="textarea textarea-bordered h-24 text-sm focus:textarea-primary" placeholder="Brief context about this project" />
+								<textarea data-testid="project-desc-input" value={formDesc} onChange={e => setFormDesc(e.target.value)} className="textarea textarea-bordered h-24 text-sm focus:textarea-primary" placeholder="Brief context about this project" />
 							</div>
 
 							<div className="divider opacity-30">Discord Integration</div>
@@ -169,8 +170,8 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 						</div>
 
 						<div className="modal-action gap-3 mt-8 border-t border-base-300/50 pt-5">
-							<button onClick={() => { setIsModalOpen(false); setPathManuallyEdited(false) }} className="btn btn-ghost hover:bg-base-300">Cancel</button>
-							<button onClick={handleSaveProject} className="btn btn-primary px-8">
+							<button data-testid="project-cancel-btn" onClick={() => { setIsModalOpen(false); setPathManuallyEdited(false) }} className="btn btn-ghost hover:bg-base-300">Cancel</button>
+							<button data-testid="project-save-btn" onClick={handleSaveProject} className="btn btn-primary px-8">
 								<Check className="w-4 h-4 mr-2" /> Save Project
 							</button>
 						</div>

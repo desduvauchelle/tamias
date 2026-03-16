@@ -11,6 +11,7 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
 	testDir: './test/e2e',
 	fullyParallel: false, // tests manipulate filesystem state — run sequentially
+	workers: 1, // single worker to avoid overwhelming the dev server with parallel compilations
 	retries: 0,
 	timeout: 15_000,
 	reporter: [['list']],

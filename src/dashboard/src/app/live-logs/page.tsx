@@ -45,13 +45,13 @@ export default function LiveLogsPage() {
 	}, [])
 
 	return (
-		<div className="h-full flex flex-col p-6 gap-4">
+		<div data-testid="live-logs-page" className="h-full flex flex-col p-6 gap-4">
 			<div className="flex items-center justify-between shrink-0">
 				<div>
 					<h1 className="text-2xl font-bold text-success font-mono">Live Logs</h1>
 					<p className="text-xs text-base-content/50 font-mono mt-1 uppercase tracking-tighter">Realtime episodic history feed (10s polling)</p>
 				</div>
-				<button className="btn btn-ghost btn-sm btn-square" onClick={fetchLogs} title="Refresh Live Logs">
+				<button data-testid="live-logs-refresh-btn" className="btn btn-ghost btn-sm btn-square" onClick={fetchLogs} title="Refresh Live Logs">
 					<svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
 					</svg>

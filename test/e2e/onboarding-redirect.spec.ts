@@ -10,13 +10,10 @@
 
 import { test, expect } from '@playwright/test'
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'fs'
-import { join } from 'path'
-
-const TAMIAS_E2E_DIR = '/tmp/tamias-e2e'
-const IDENTITY_PATH = join(TAMIAS_E2E_DIR, 'memory', 'IDENTITY.md')
+import { TAMIAS_E2E_DIR, IDENTITY_PATH } from './helpers'
 
 function createIdentity() {
-	mkdirSync(join(TAMIAS_E2E_DIR, 'memory'), { recursive: true })
+	mkdirSync(TAMIAS_E2E_DIR + '/memory', { recursive: true })
 	writeFileSync(IDENTITY_PATH, '# Test Identity\n\nThis is a test identity file.\n')
 }
 

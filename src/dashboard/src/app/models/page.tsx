@@ -194,7 +194,7 @@ function EditConnectionModal({
 	}, [])
 
 	return (
-		<dialog ref={dialogRef} className="modal modal-bottom sm:modal-middle" onClose={onClose}>
+		<dialog ref={dialogRef} className="modal modal-bottom sm:modal-middle" onClose={onClose} data-testid="edit-connection-modal">
 			<div className="modal-box max-w-lg font-mono">
 				<h3 className="font-black text-lg uppercase flex items-center gap-2 mb-4">
 					<span>{meta.icon}</span> Edit Connection
@@ -257,14 +257,16 @@ function EditConnectionModal({
 
 				<div className="modal-action mt-6 flex justify-between">
 					<button
+						data-testid="connection-delete-btn"
 						className="btn btn-error btn-sm btn-outline"
 						onClick={() => { onDelete(originalNickname.current); onClose() }}
 					>
 						Delete
 					</button>
 					<div className="flex gap-2">
-						<button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+						<button data-testid="connection-cancel-btn" className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
 						<button
+							data-testid="connection-save-btn"
 							className="btn btn-primary btn-sm"
 							onClick={() => { onSave(originalNickname.current, draft); onClose() }}
 						>
@@ -289,6 +291,7 @@ function ConnectionRow({
 	const hasKey = config.apiKey === '[REDACTED]' || (!!config.apiKey && config.apiKey !== '')
 	return (
 		<div
+			data-testid={`connection-row-${config.nickname}`}
 			className="flex items-center gap-4 p-4 bg-base-200 border border-base-300 rounded-xl hover:bg-base-300 cursor-pointer transition-colors group"
 			onClick={onEdit}
 		>
@@ -379,7 +382,21 @@ export default function ModelsPage() {
 			{editingConfig && (
 				<EditConnectionModal
 					config={editingConfig}
-					onSave={(orig, updated) => updateConnection(orig, updated)}
+					onSave={(orig, updated) => {
+						const updatedConns = connections.map(c => c.nickname === orig ? updated : c)
+						updateConnection(orig, updated)
+						// Auto-persist to server
+						setSaving(true)
+						fetch('/api/models', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ connections: updatedConns, defaultModels, smartModels, defaultConnection }),
+						}).then(() => {
+							setSaving(false)
+							setSaved(true)
+							setTimeout(() => setSaved(false), 2000)
+						})
+					}}
 					onDelete={(nick) => removeConnection(nick)}
 					onClose={() => setEditingNickname(null)}
 				/>
@@ -391,6 +408,7 @@ export default function ModelsPage() {
 					<p className="text-base-content/50 text-sm mt-1">Configure your API keys and select available models.</p>
 				</div>
 				<button
+					data-testid="models-save-btn"
 					onClick={save}
 					disabled={saving}
 					className="btn btn-primary btn-md shadow-lg m-1 px-8 rounded-full"

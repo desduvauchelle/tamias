@@ -146,6 +146,7 @@ function HistoryContent() {
 					<div className="relative">
 						<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/30" />
 						<input
+							data-testid="history-filter-input"
 							type="text"
 							placeholder="Filter by prompt, model, session..."
 							className="input input-bordered input-sm pl-9 w-64 font-mono text-xs focus:input-success transition-all"
@@ -153,7 +154,7 @@ function HistoryContent() {
 							onChange={e => setFilter(e.target.value)}
 						/>
 					</div>
-					<button className="btn btn-ghost btn-sm btn-square" onClick={fetchLogs} title="Refresh History">
+					<button data-testid="history-refresh-btn" className="btn btn-ghost btn-sm btn-square" onClick={fetchLogs} title="Refresh History">
 						<svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
 							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
 						</svg>

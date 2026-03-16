@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.03.16.2] - 2026-03-16
+
+### Features
+- add project creation and update APIs with validation
+
 ## [v26.03.16.1] - 2026-03-16
 
 ### Other Changes

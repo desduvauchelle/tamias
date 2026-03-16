@@ -774,6 +774,7 @@ export class AIService {
 
 			console.log(`[AIService] Attempting session ${session.id} via ${currentModelStr} (provider=${connection.provider})`)
 			debug(`  API key present: ${!!getApiKeyForConnection(connection.nickname)}, modelId=${modelId}`)
+			let _streamResult: ReturnType<typeof streamText> | undefined
 			try {
 				await this.refreshTools(session.id)
 				const model = this.buildModel(connection, modelId)
@@ -928,7 +929,7 @@ export class AIService {
 				// Build provider-specific options (cache scoping, usage tracking)
 				const providerOpts = buildProviderOptions(connection.provider, modelId, session.id)
 
-				const result = streamText({
+				_streamResult = streamText({
 					model,
 					system: systemPrompt,
 					messages: messagesForSend as any,
@@ -967,7 +968,7 @@ export class AIService {
 				let fullResponse = ''
 				let suppressed = false
 
-				for await (const chunk of result.textStream) {
+				for await (const chunk of _streamResult.textStream) {
 					fullResponse += chunk
 					session.emitter.emit('event', { type: 'chunk', text: chunk } as DaemonEvent)
 				}
@@ -977,7 +978,7 @@ export class AIService {
 				}
 
 				// Await totalUsage (sums ALL multi-step tool-call rounds, not just the last step)
-				const usage = await Promise.resolve(result.totalUsage).catch((err: unknown) => {
+				const usage = await Promise.resolve(_streamResult.totalUsage).catch((err: unknown) => {
 					console.warn('[AIService] Failed to retrieve usage stats:', err)
 					return {
 						inputTokens: undefined,
@@ -988,7 +989,7 @@ export class AIService {
 					} satisfies import('ai').LanguageModelUsage
 				})
 
-				const response = await Promise.resolve(result.response).catch(() => null)
+				const response = await Promise.resolve(_streamResult.response).catch(() => null)
 				const fullMessages = response?.messages ?? []
 
 				const logId = logAiRequest({
@@ -1105,8 +1106,15 @@ export class AIService {
 				}
 				return // Success!
 			} catch (err: any) {
+				// Suppress the totalUsage promise rejection that floats after a stream error
+				if (_streamResult) Promise.resolve(_streamResult.totalUsage).catch(() => { })
 				const errStr = err?.message || String(err)
-				console.error(`[AIService] Failed with model ${currentModelStr}: ${errStr}`)
+				const isToolUnsupported = errStr.includes('tool use') || errStr.includes('tool_use') || errStr.includes('No endpoints found that support')
+				if (isToolUnsupported) {
+					console.warn(`[AIService] Skipping ${currentModelStr} — does not support tool use, trying next model`)
+				} else {
+					console.error(`[AIService] Failed with model ${currentModelStr}: ${errStr}`)
+				}
 				failures.push({ model: currentModelStr, error: errStr })
 				lastError = err
 				// Continue to next model
