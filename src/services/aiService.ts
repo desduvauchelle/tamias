@@ -13,7 +13,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
-import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getAllModelOptions, getCompactionModel, getAllConnections, getWorkspacePath as getWorkspacePathSync } from '../utils/config'
+import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getSmartModels, getAllModelOptions, getCompactionModel, getAllConnections, getWorkspacePath as getWorkspacePathSync } from '../utils/config'
 import { getProject } from '../core/projects.ts'
 import { buildActiveTools } from '../utils/toolRegistry'
 import { estimateTokens, estimateMessageTokens, getMessageTokenBudget, trimMessagesToTokenBudget } from '../utils/tokenBudget'
@@ -71,6 +71,8 @@ export interface Session {
 	projectSlug?: string
 	/** Per-session workspace directory (e.g. ~/.tamias/workspace/time-tracker). Overrides global workspacePath. */
 	workspacePath: string
+	/** Model tier: 'normal' for everyday tasks, 'smart' for complex/coding tasks */
+	modelTier?: 'normal' | 'smart'
 }
 
 export interface CreateSessionOptions {
@@ -84,6 +86,8 @@ export interface CreateSessionOptions {
 	task?: string
 	agentId?: string
 	projectSlug?: string
+	/** Model tier: 'normal' for everyday tasks, 'smart' for complex/coding tasks */
+	modelTier?: 'normal' | 'smart'
 }
 
 /**
@@ -453,6 +457,7 @@ export class AIService {
 			agentDir,
 			projectSlug: projectSlug,
 			workspacePath: sessionWorkspacePath,
+			modelTier: options.modelTier,
 		}
 
 		// Sub-agents MUST NOT overwrite the parent's entry in bridgeSessionMap.
@@ -700,13 +705,15 @@ export class AIService {
 		session.messages.push({ role: 'user', content: userContent })
 
 		const config = loadConfig()
-		// Priority order: configured default models → session's stored model → any other configured model
+		// Priority order: smart models (if tier=smart) → configured default models → session's stored model → any other configured model
 		// Only include models whose connection actually exists on this machine.
 		const currentDefaults = getDefaultModels()
+		const currentSmartModels = getSmartModels()
 		const allConfiguredModels = getAllModelOptions()
-		debug(`processSession(${session.id}): session.model=${session.model} connectionNickname=${session.connectionNickname}`)
+		debug(`processSession(${session.id}): session.model=${session.model} connectionNickname=${session.connectionNickname} modelTier=${session.modelTier}`)
 		debug(`processSession(${session.id}): config connections=[${Object.keys(config.connections).join(', ') || 'NONE'}]`)
 		debug(`processSession(${session.id}): currentDefaults=[${currentDefaults.join(', ') || 'NONE'}]`)
+		debug(`processSession(${session.id}): smartModels=[${currentSmartModels.join(', ') || 'NONE'}]`)
 		debug(`processSession(${session.id}): allConfiguredModels=[${allConfiguredModels.join(', ') || 'NONE'}]`)
 		const modelsToTry = [
 			// Agent-specific models take highest priority
@@ -714,6 +721,8 @@ export class AIService {
 				const agent = findAgent(session.agentId)
 				return agent ? resolveAgentModelChain(agent) : []
 			})() : []),
+			// Smart models take priority when tier is 'smart'
+			...(session.modelTier === 'smart' ? currentSmartModels : []),
 			...currentDefaults,
 			session.model,
 			...allConfiguredModels,

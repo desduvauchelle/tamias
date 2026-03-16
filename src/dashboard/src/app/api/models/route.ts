@@ -19,16 +19,17 @@ export async function GET() {
 		return NextResponse.json({
 			connections,
 			defaultModels: config.defaultModels || [],
+			smartModels: config.smartModels || [],
 			defaultConnection: config.defaultConnection || ''
 		})
 	} catch (error) {
-		return NextResponse.json({ connections: [], defaultModel: '', defaultConnection: '' })
+		return NextResponse.json({ connections: [], defaultModels: [], smartModels: [], defaultConnection: '' })
 	}
 }
 
 export async function POST(request: Request) {
 	try {
-		const { connections, defaultModels, defaultConnection } = await request.json()
+		const { connections, defaultModels, smartModels, defaultConnection } = await request.json()
 		const config = await getTamiasConfig()
 
 		if (!config.connections) config.connections = {}
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
 		}
 
 		if (defaultModels !== undefined) config.defaultModels = defaultModels
+		if (smartModels !== undefined) config.smartModels = smartModels
 		if (defaultConnection !== undefined) config.defaultConnection = defaultConnection
 
 		await saveTamiasConfig(config)

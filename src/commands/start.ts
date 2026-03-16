@@ -204,8 +204,12 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	const { getOrCreateDashboardToken } = await import('../utils/token.ts')
 	const dashboardToken = await getOrCreateDashboardToken()
 
-	let dashboardProc: ReturnType<typeof Bun.spawn>
-	if (isStandalone) {
+	const noDashboard = process.env.TAMIAS_NO_DASHBOARD === 'true'
+
+	let dashboardProc: ReturnType<typeof Bun.spawn> | undefined
+	if (noDashboard) {
+		console.log('[Daemon] Dashboard not launched (TAMIAS_NO_DASHBOARD=true) — run `next dev` separately')
+	} else if (isStandalone) {
 		// Standalone server: bun <path/server.js> — no package.json scripts needed
 		dashboardProc = Bun.spawn([bunPath, standaloneServer], {
 			cwd: join(dashboardDir, '.next', 'standalone', 'src', 'dashboard'),
@@ -222,7 +226,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			env: { ...process.env, TAMIAS_DASHBOARD_TOKEN: dashboardToken }
 		})
 	}
-	dashboardProc.unref()
+	dashboardProc?.unref()
 
 
 	// Store caffeinatePid in daemon info for cleanup
@@ -231,7 +235,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 		port,
 		startedAt: new Date().toISOString(),
 		dashboardPort,
-		dashboardPid: dashboardProc.pid,
+		dashboardPid: dashboardProc?.pid,
 		caffeinatePid: caffeinateProc?.pid, // <-- used by stop.ts
 		token: dashboardToken
 	})

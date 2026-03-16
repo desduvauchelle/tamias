@@ -147,6 +147,8 @@ export const TamiasConfigSchema = z.object({
 	defaultModels: z.array(z.string()).optional(),
 	/** Image generation model priority */
 	defaultImageModels: z.array(z.string()).optional(),
+	/** Smart models for complex tasks (coding, prolonged thinking). Format: "nickname/modelId" */
+	smartModels: z.array(z.string()).optional(),
 	/** Model to use for session compaction (cheap model recommended). Format: "nickname/modelId" */
 	compactionModel: z.string().optional(),
 	internalTools: z.record(z.string(), InternalToolConfigSchema).optional(),
@@ -424,6 +426,30 @@ export const setDefaultImageModels = (models: string[]): void => {
 	const c = loadConfig()
 	c.defaultImageModels = models
 	saveConfig(c)
+}
+
+export const getSmartModels = (): string[] => {
+	return loadConfig().smartModels || []
+}
+
+export const setSmartModels = (models: string[]): void => {
+	const c = loadConfig()
+	c.smartModels = models
+	saveConfig(c)
+}
+
+export type ModelTier = 'normal' | 'smart'
+
+/** Get models for a given tier. 'normal' = defaultModels, 'smart' = smartModels (falls back to defaultModels). */
+export const getModelsForTier = (tier: ModelTier): string[] => {
+	const config = loadConfig()
+	if (tier === 'smart') {
+		const smart = config.smartModels
+		if (smart && smart.length > 0) return smart
+		// Fall back to default models if no smart models configured
+		return config.defaultModels || []
+	}
+	return config.defaultModels || []
 }
 
 export const getCompactionModel = (): string | undefined => {

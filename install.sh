@@ -192,29 +192,47 @@ else
   fi
 fi
 
-# 5b. Restart daemon if it was already running (so new binary takes effect)
-# If tamias is in PATH, we use the new 'tamias restart' command
-if command -v tamias &> /dev/null; then
-  echo ""
-  echo "=> Restarting Tamias daemon..."
-  tamias restart --daemon || true
-else
-  # Fallback for old versions or fresh installs where it's not yet in PATH
-  DAEMON_JSON="$HOME/.tamias/daemon.json"
+# 5b. Start (or restart) the daemon so the new binary takes effect immediately.
+# Make the new binary available before we try to run it.
+export PATH="$PATH:$INSTALL_DIR"
+
+# Stop any running daemon first (by PID — avoids relying on old binary's commands)
+DAEMON_JSON="$HOME/.tamias/daemon.json"
+if [ -f "$DAEMON_JSON" ]; then
+  DAEMON_PID=$(grep -o '"pid": *[0-9]*' "$DAEMON_JSON" | grep -o '[0-9]*' | head -1)
+  if [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>/dev/null; then
+    echo ""
+    echo "=> Stopping running daemon (PID $DAEMON_PID) so new binary takes effect..."
+    kill "$DAEMON_PID" 2>/dev/null || true
+    sleep 1
+  fi
+fi
+
+# Start the daemon in background with the new binary
+echo ""
+echo "=> Starting Tamias daemon..."
+"$INSTALL_DIR/$BINARY_NAME" start --daemon 2>/dev/null &
+
+# Wait up to 8 seconds for daemon.json to appear with port/token info
+DAEMON_STARTED=0
+DASHBOARD_PORT=""
+DASHBOARD_TOKEN=""
+for i in $(seq 1 16); do
+  sleep 0.5
   if [ -f "$DAEMON_JSON" ]; then
-    DAEMON_PID=$(grep -o '"pid": *[0-9]*' "$DAEMON_JSON" | grep -o '[0-9]*' | head -1)
-    if [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>/dev/null; then
-      echo ""
-      echo "=> Stopping running daemon (PID $DAEMON_PID) so new binary takes effect..."
-      kill "$DAEMON_PID" 2>/dev/null || true
-      sleep 1
-      echo "=> Restarting daemon..."
-      export PATH="$PATH:$INSTALL_DIR"
-      "$INSTALL_DIR/$BINARY_NAME" start --daemon &
-      sleep 2
-      echo "=> Daemon restarted."
+    _PORT=$(grep -o '"dashboardPort": *[0-9]*' "$DAEMON_JSON" | grep -o '[0-9]*' | head -1)
+    _TOKEN=$(grep -o '"token": *"[^"]*"' "$DAEMON_JSON" | head -1 | cut -d'"' -f4)
+    if [ -n "$_PORT" ]; then
+      DAEMON_STARTED=1
+      DASHBOARD_PORT="$_PORT"
+      DASHBOARD_TOKEN="$_TOKEN"
+      break
     fi
   fi
+done
+
+if [ "$DAEMON_STARTED" = "0" ]; then
+  echo "WARNING: Daemon took too long to start. Run 'tamias start' manually."
 fi
 
 # 6. PATH Setup
@@ -257,10 +275,18 @@ if [ ! -f "$INSTALL_DIR/$BINARY_NAME" ]; then
   exit 1
 fi
 
-# Make tamias available in the current shell immediately (no restart needed)
-export PATH="$PATH:$INSTALL_DIR"
+DISPLAY_DATA_HOME="${HOME/$HOME/~}/.tamias"
 
-DISPLAY_DATA_HOME="${TAMIAS_DATA_HOME/$HOME/~}"
+# Build URLs from daemon.json data if the daemon started
+if [ "$DAEMON_STARTED" = "1" ] && [ -n "$DASHBOARD_PORT" ]; then
+  if [ -n "$DASHBOARD_TOKEN" ]; then
+    _DASH_URL="http://localhost:${DASHBOARD_PORT}?token=${DASHBOARD_TOKEN}"
+    _ONBOARD_URL="http://localhost:${DASHBOARD_PORT}/onboarding?token=${DASHBOARD_TOKEN}"
+  else
+    _DASH_URL="http://localhost:${DASHBOARD_PORT}"
+    _ONBOARD_URL="http://localhost:${DASHBOARD_PORT}/onboarding"
+  fi
+fi
 
 echo ""
 echo "  ╔══════════════════════════════════════════════════════╗"
@@ -269,20 +295,17 @@ echo "  ╠═══════════════════════
 printf "  ║  Data dir  : %s\n"   "$DISPLAY_DATA_HOME"
 printf "  ║  Binary    : %s/%s\n" "$INSTALL_DIR" "$BINARY_NAME"
 echo "  ╠══════════════════════════════════════════════════════╣"
-if [ "$ALREADY_IN_PATH" = "true" ]; then
-  echo "  ║  Update successful!                                   "
+if [ "$DAEMON_STARTED" = "1" ] && [ -n "$DASHBOARD_PORT" ]; then
+  echo "  ║  Daemon is running!                                   "
+  printf "  ║    Dashboard  : %s\n" "$_DASH_URL"
+  printf "  ║    Onboarding : %s\n" "$_ONBOARD_URL"
 elif [ "$NEEDS_RESTART" = "true" ]; then
   echo "  ║  To finish installation, please:                      "
   echo "  ║    1. CLOSE this terminal                             "
   echo "  ║    2. OPEN a new terminal                             "
-  echo "  ║    3. Run: tamias                                     "
+  echo "  ║    3. Run: tamias start                               "
 else
-  echo "  ║  Tamias is ready.                                     "
+  echo "  ║  Run 'tamias start' to launch the daemon.             "
 fi
-echo "  ╠══════════════════════════════════════════════════════╣"
-echo "  ║"
-echo "  ║  Run:  tamias"
-echo "  ║        (runs the setup wizard on first launch)"
-echo "  ║"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo ""

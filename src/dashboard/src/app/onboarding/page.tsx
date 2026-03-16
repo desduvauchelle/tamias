@@ -35,6 +35,87 @@ const COMM_STYLES = [
 type Step = 'welcome' | 'model' | 'agent' | 'user' | 'channels' | 'complete'
 const STEPS: Step[] = ['welcome', 'model', 'agent', 'user', 'channels', 'complete']
 
+function ModelTierSelector({
+	label,
+	description,
+	icon,
+	selectedModels,
+	availableModels,
+	onAdd,
+	onRemove,
+}: {
+	label: string
+	description: string
+	icon: string
+	selectedModels: string[]
+	availableModels: { id: string; name: string }[]
+	onAdd: (modelId: string) => void
+	onRemove: (modelId: string) => void
+}) {
+	const unselected = availableModels.filter(m => !selectedModels.includes(m.id))
+
+	return (
+		<div className="p-4 bg-base-200 border border-base-300 rounded-xl space-y-3">
+			<div className="flex items-center gap-2">
+				<span className="text-xl">{icon}</span>
+				<div>
+					<div className="font-semibold text-sm">{label}</div>
+					<div className="text-xs text-base-content/50">{description}</div>
+				</div>
+			</div>
+
+			{/* Selected models */}
+			{selectedModels.length > 0 && (
+				<div className="flex flex-wrap gap-2">
+					{selectedModels.map((modelId, i) => (
+						<div key={modelId} className="badge badge-primary gap-1 py-3 px-3">
+							<span className="text-xs opacity-50">{i + 1}.</span>
+							<span className="text-xs font-mono">{modelId}</span>
+							<button
+								className="ml-1 hover:text-error"
+								onClick={() => onRemove(modelId)}
+							>✕</button>
+						</div>
+					))}
+				</div>
+			)}
+
+			{/* Add model dropdown */}
+			{availableModels.length > 0 ? (
+				<select
+					className="select select-bordered select-sm w-full font-mono text-xs"
+					value=""
+					onChange={e => {
+						if (e.target.value) onAdd(e.target.value)
+					}}
+				>
+					<option value="">+ Add a model...</option>
+					{unselected.map(m => (
+						<option key={m.id} value={m.id}>
+							{m.name !== m.id ? `${m.name} (${m.id})` : m.id}
+						</option>
+					))}
+				</select>
+			) : (
+				<input
+					type="text"
+					className="input input-bordered input-sm w-full font-mono text-xs"
+					placeholder="Type a model ID and press Enter"
+					onKeyDown={e => {
+						if (e.key === 'Enter') {
+							const val = (e.target as HTMLInputElement).value.trim()
+							if (val && !selectedModels.includes(val)) {
+								onAdd(val)
+									; (e.target as HTMLInputElement).value = ''
+							}
+						}
+					}}
+				/>
+			)}
+		</div>
+	)
+}
+
 export default function OnboardingPage() {
 	const router = useRouter()
 	const [step, setStep] = useState<Step>('welcome')
@@ -46,6 +127,12 @@ export default function OnboardingPage() {
 	const [apiKey, setApiKey] = useState('')
 	const [nickname, setNickname] = useState('')
 	const [modelConnected, setModelConnected] = useState(false)
+
+	// Model selection step (after connection)
+	const [availableModels, setAvailableModels] = useState<{ id: string; name: string }[]>([])
+	const [loadingModels, setLoadingModels] = useState(false)
+	const [normalModels, setNormalModels] = useState<string[]>([])
+	const [smartModels, setSmartModels] = useState<string[]>([])
 
 	// Agent step
 	const [agentName, setAgentName] = useState('')
@@ -96,9 +183,61 @@ export default function OnboardingPage() {
 			})
 			if (!res.ok) throw new Error(await res.text())
 			setModelConnected(true)
-			next()
+
+			// Fetch available models from this provider
+			setLoadingModels(true)
+			try {
+				const modelsRes = await fetch('/api/models/available', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ provider, apiKey, nickname }),
+				})
+				if (modelsRes.ok) {
+					const { models } = await modelsRes.json()
+					setAvailableModels(models || [])
+				}
+			} catch {
+				// Non-fatal — user can still type models manually
+			} finally {
+				setLoadingModels(false)
+			}
 		} catch (e) {
 			setError(e instanceof Error ? e.message : 'Failed to save connection')
+		} finally {
+			setSaving(false)
+		}
+	}
+
+	const saveModelSelections = async () => {
+		if (normalModels.length === 0 && smartModels.length === 0) {
+			next()
+			return
+		}
+		setSaving(true)
+		setError('')
+		try {
+			const selectedModels = [...new Set([...normalModels, ...smartModels])]
+			const conn: Record<string, unknown> = { nickname, provider, selectedModels }
+			if (provider !== 'ollama' && apiKey) {
+				conn.apiKey = apiKey
+			}
+			const defaultModelsFormatted = normalModels.map(m => `${nickname}/${m}`)
+			const smartModelsFormatted = smartModels.map(m => `${nickname}/${m}`)
+
+			const res = await fetch('/api/models', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					connections: [conn],
+					defaultModels: defaultModelsFormatted,
+					smartModels: smartModelsFormatted,
+					defaultConnection: nickname,
+				}),
+			})
+			if (!res.ok) throw new Error(await res.text())
+			next()
+		} catch (e) {
+			setError(e instanceof Error ? e.message : 'Failed to save model selections')
 		} finally {
 			setSaving(false)
 		}
@@ -226,69 +365,146 @@ export default function OnboardingPage() {
 				{step === 'model' && (
 					<div className="space-y-6">
 						<div>
-							<h2 className="text-2xl font-bold">Connect an AI Model</h2>
-							<p className="text-base-content/60 mt-1">Choose a provider and enter your API key</p>
+							<h2 className="text-2xl font-bold">
+								{modelConnected ? 'Select Your Models' : 'Connect an AI Model'}
+							</h2>
+							<p className="text-base-content/60 mt-1">
+								{modelConnected
+									? 'Choose which models to use for everyday tasks and complex work'
+									: 'Choose a provider and enter your API key'}
+							</p>
 						</div>
 
-						{/* Provider selector */}
-						<div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-							{(Object.entries(PROVIDERS) as [ProviderType, typeof PROVIDERS[ProviderType]][]).map(([key, p]) => (
-								<button
-									key={key}
-									className={`card p-3 text-center cursor-pointer transition-all border-2 ${provider === key
-										? 'border-primary bg-primary/10'
-										: 'border-base-300 hover:border-primary/50'
-										}`}
-									onClick={() => {
-										setProvider(key)
-										if (!nickname) setNickname(key)
-									}}
-								>
-									<span className="text-2xl">{p.icon}</span>
-									<span className="text-sm font-medium mt-1">{p.label}</span>
-								</button>
-							))}
-						</div>
-
-						{provider && (
-							<div className="space-y-4 animate-in fade-in">
-								<div className="form-control">
-									<label className="label"><span className="label-text">Connection Nickname</span></label>
-									<input
-										type="text"
-										className="input input-bordered w-full"
-										placeholder="e.g. my-openai"
-										value={nickname}
-										onChange={e => setNickname(e.target.value.replace(/\s/g, '-'))}
-									/>
+						{!modelConnected ? (
+							<>
+								{/* Provider selector */}
+								<div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+									{(Object.entries(PROVIDERS) as [ProviderType, typeof PROVIDERS[ProviderType]][]).map(([key, p]) => (
+										<button
+											key={key}
+											className={`card p-3 text-center cursor-pointer transition-all border-2 ${provider === key
+												? 'border-primary bg-primary/10'
+												: 'border-base-300 hover:border-primary/50'
+												}`}
+											onClick={() => {
+												setProvider(key)
+												if (!nickname) setNickname(key)
+											}}
+										>
+											<span className="text-2xl">{p.icon}</span>
+											<span className="text-sm font-medium mt-1">{p.label}</span>
+										</button>
+									))}
 								</div>
 
-								{provider !== 'ollama' && (
-									<div className="form-control">
-										<label className="label"><span className="label-text">API Key</span></label>
-										<input
-											type="password"
-											className="input input-bordered w-full font-mono"
-											placeholder={PROVIDERS[provider].keyPlaceholder}
-											value={apiKey}
-											onChange={e => setApiKey(e.target.value)}
-										/>
+								{provider && (
+									<div className="space-y-4 animate-in fade-in">
+										<div className="form-control">
+											<label className="label"><span className="label-text">Connection Nickname</span></label>
+											<input
+												type="text"
+												className="input input-bordered w-full"
+												placeholder="e.g. my-openai"
+												value={nickname}
+												onChange={e => setNickname(e.target.value.replace(/\s/g, '-'))}
+											/>
+										</div>
+
+										{provider !== 'ollama' && (
+											<div className="form-control">
+												<label className="label"><span className="label-text">API Key</span></label>
+												<input
+													type="password"
+													className="input input-bordered w-full font-mono"
+													placeholder={PROVIDERS[provider].keyPlaceholder}
+													value={apiKey}
+													onChange={e => setApiKey(e.target.value)}
+												/>
+											</div>
+										)}
+
+										<button
+											className="btn btn-primary w-full"
+											disabled={!nickname || (provider !== 'ollama' && !apiKey) || saving}
+											onClick={saveModel}
+										>
+											{saving ? <span className="loading loading-spinner loading-sm" /> : 'Connect & Fetch Models'}
+										</button>
 									</div>
+								)}
+							</>
+						) : (
+							<div className="space-y-6 animate-in fade-in">
+								{/* Connection summary */}
+								<div className="flex items-center gap-3 p-3 bg-success/10 border border-success/30 rounded-lg">
+									<span className="text-xl">{PROVIDERS[provider as ProviderType]?.icon}</span>
+									<div>
+										<div className="font-medium text-sm">{PROVIDERS[provider as ProviderType]?.label}</div>
+										<div className="text-xs text-base-content/50">Connected as &quot;{nickname}&quot;</div>
+									</div>
+									<span className="text-success ml-auto">✓</span>
+								</div>
+
+								{loadingModels ? (
+									<div className="flex items-center justify-center gap-2 p-8">
+										<span className="loading loading-spinner loading-md" />
+										<span className="text-base-content/60">Fetching available models...</span>
+									</div>
+								) : (
+									<>
+										{/* Normal Models */}
+										<ModelTierSelector
+											label="Normal Models"
+											description="For everyday tasks — chat, summaries, quick answers"
+											icon="💬"
+											selectedModels={normalModels}
+											availableModels={availableModels}
+											onAdd={(modelId) => setNormalModels([...normalModels, modelId])}
+											onRemove={(modelId) => setNormalModels(normalModels.filter(m => m !== modelId))}
+										/>
+
+										{/* Smart Models */}
+										<ModelTierSelector
+											label="Smart Models"
+											description="For complex tasks — coding, deep analysis, prolonged thinking"
+											icon="🧠"
+											selectedModels={smartModels}
+											availableModels={availableModels}
+											onAdd={(modelId) => setSmartModels([...smartModels, modelId])}
+											onRemove={(modelId) => setSmartModels(smartModels.filter(m => m !== modelId))}
+										/>
+
+										<button
+											className="btn btn-primary w-full"
+											disabled={saving}
+											onClick={saveModelSelections}
+										>
+											{saving ? <span className="loading loading-spinner loading-sm" /> : 'Save & Continue →'}
+										</button>
+									</>
 								)}
 
 								<button
-									className="btn btn-primary w-full"
-									disabled={!nickname || (provider !== 'ollama' && !apiKey) || saving}
-									onClick={saveModel}
+									className="btn btn-ghost btn-sm"
+									onClick={() => {
+										setModelConnected(false)
+										setAvailableModels([])
+										setNormalModels([])
+										setSmartModels([])
+									}}
 								>
-									{saving ? <span className="loading loading-spinner loading-sm" /> : 'Connect & Continue'}
+									← Change provider
 								</button>
 							</div>
 						)}
 
 						<div className="flex justify-between pt-4">
 							<button className="btn btn-ghost" onClick={prev}>← Back</button>
-							<div />
+							{modelConnected && (
+								<button className="btn btn-ghost" onClick={next}>
+									Skip model selection →
+								</button>
+							)}
 						</div>
 					</div>
 				)}

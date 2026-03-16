@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.03.16.1] - 2026-03-16
+
+### Other Changes
+- Add comprehensive tests for project management and skills functionality
+
 ## [v26.03.06.12] - 2026-03-06
 
 ### Features
