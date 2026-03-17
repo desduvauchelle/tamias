@@ -129,10 +129,11 @@ test.describe('create agent', () => {
 		await page.route('/api/agents', route => {
 			if (route.request().method() === 'POST') {
 				capturedBody = route.request().postDataJSON()
+				const bodyObj = capturedBody as Record<string, unknown>
 				return route.fulfill({
 					status: 200,
 					contentType: 'application/json',
-					body: JSON.stringify({ ...(capturedBody as Record<string, unknown>), id: 'new-id', enabled: true }),
+					body: JSON.stringify({ ...bodyObj, id: 'new-id', enabled: true }),
 				})
 			}
 			return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_AGENTS) })

@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+- add model tier selection for onboarding and AI service
+
 ## [v26.03.16.2] - 2026-03-16
 
 ### Features

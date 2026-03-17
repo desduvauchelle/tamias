@@ -197,8 +197,8 @@ test.describe('cancel behaviour', () => {
 
 	test('backdrop click closes the modal', async ({ page }) => {
 		await openCreateModal(page)
-		// Click the modal-backdrop element
-		await page.locator('.modal-backdrop').click({ force: true })
+		// Click the backdrop area at the top-left corner, well outside the centered modal-box
+		await page.mouse.click(10, 10)
 		await expect(page.getByText('Create New Project')).not.toBeVisible({ timeout: 2000 })
 	})
 

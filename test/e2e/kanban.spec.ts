@@ -38,11 +38,10 @@ async function goToKanban(page: import('@playwright/test').Page, project = MOCK_
 			return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(project) })
 		}
 		if (route.request().method() === 'PUT') {
-			// Echo back the update
-			return route.request().postDataJSON().then((body: any) => {
-				const updated = { ...project, ...body }
-				return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(updated) })
-			})
+			// postDataJSON() is synchronous in Playwright
+			const body = route.request().postDataJSON() as Record<string, unknown>
+			const updated = { ...project, ...body }
+			return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(updated) })
 		}
 		return route.continue()
 	})
@@ -67,10 +66,10 @@ async function goToKanban(page: import('@playwright/test').Page, project = MOCK_
 test.describe('kanban board layout', () => {
 	test('renders all four columns', async ({ page }) => {
 		await goToKanban(page)
-		// Column headers (capitalized display names)
+		// Column headers use col.replace('-', ' ') — spaces, not hyphens
 		await expect(page.getByText('todo', { exact: true })).toBeVisible()
-		await expect(page.getByText('in-progress', { exact: true })).toBeVisible()
-		await expect(page.getByText('awaiting-review', { exact: true })).toBeVisible()
+		await expect(page.getByText('in progress', { exact: true })).toBeVisible()
+		await expect(page.getByText('awaiting review', { exact: true })).toBeVisible()
 		await expect(page.getByText('done', { exact: true })).toBeVisible()
 	})
 
@@ -160,20 +159,20 @@ test.describe('task detail modal', () => {
 	test('modal shows status, priority, and assignee fields', async ({ page }) => {
 		await goToKanban(page)
 		await page.getByText('Existing Task').click()
-		// Status select
+		// Status select contains the column name options
 		await expect(page.locator('select').filter({ hasText: 'todo' })).toBeVisible()
-		// Priority select (shows 'low', 'medium', 'high', 'urgent' options)
-		await expect(page.getByRole('option', { name: 'medium' })).toBeAttached()
-		// Assignee input
-		await expect(page.locator('input[placeholder*="ssignee"]').or(page.locator('input[placeholder*="assign"]'))).toBeVisible()
+		// Priority select has capitalized options (None/Low/Medium/High/Urgent)
+		await expect(page.getByRole('option', { name: 'Medium' })).toBeAttached()
+		// Assignee input placeholder is 'e.g. AI or User'
+		await expect(page.locator('input[placeholder*="AI or User"]')).toBeVisible()
 	})
 
 	test('modal closes when the X / close button is clicked', async ({ page }) => {
 		await goToKanban(page)
 		await page.getByText('Existing Task').click()
 		await expect(page.locator('textarea').filter({ hasText: 'Existing Task' })).toBeVisible()
-		// The close button has aria text or is an × character
-		await page.keyboard.press('Escape')
+		// Click the ✕ close button in the modal header (btn-circle)
+		await page.locator('button.btn-circle').filter({ hasText: '✕' }).click()
 		await expect(page.locator('textarea').filter({ hasText: 'Existing Task' })).not.toBeVisible({ timeout: 2000 })
 	})
 })

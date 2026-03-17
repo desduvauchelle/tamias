@@ -469,6 +469,189 @@ function GeminiToolCard({
 	)
 }
 
+}
+
+function BrowserToolCard({
+	config,
+	availableFunctions,
+	onChange,
+}: {
+	config: InternalToolConfig
+	availableFunctions: string[]
+	onChange: (c: InternalToolConfig) => void
+}) {
+	const [isModalOpen, setIsModalOpen] = useState(false)
+	const [authUrl, setAuthUrl] = useState('')
+	const [status, setStatus] = useState<{ installed: boolean; headedOpen: boolean; daemonOffline?: boolean } | null>(null)
+	const [launching, setLaunching] = useState(false)
+	const [closing, setClosing] = useState(false)
+	const [actionMessage, setActionMessage] = useState('')
+
+	const toggleFunction = (fnName: string, fnConfig: ToolFunctionConfig) => {
+		const updatedFns = { ...(config.functions || {}), [fnName]: fnConfig }
+		onChange({ ...config, functions: updatedFns })
+	}
+
+	const fetchStatus = async () => {
+		try {
+			const res = await fetch('/api/browser')
+			if (res.ok) setStatus(await res.json())
+		} catch {
+			setStatus({ installed: false, headedOpen: false, daemonOffline: true })
+		}
+	}
+
+	const handleLaunch = async () => {
+		setLaunching(true)
+		setActionMessage('')
+		try {
+			const res = await fetch('/api/browser', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'launch', url: authUrl || undefined }),
+			})
+			const data = await res.json() as { ok: boolean; message?: string }
+			setActionMessage(data.message || (data.ok ? 'Browser launched.' : 'Failed.'))
+			await fetchStatus()
+		} finally {
+			setLaunching(false)
+		}
+	}
+
+	const handleClose = async () => {
+		setClosing(true)
+		setActionMessage('')
+		try {
+			await fetch('/api/browser', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'close' }),
+			})
+			setActionMessage('Browser closed. Session cookies saved.')
+			await fetchStatus()
+		} finally {
+			setClosing(false)
+		}
+	}
+
+	const openModal = () => {
+		fetchStatus()
+		setActionMessage('')
+		setIsModalOpen(true)
+	}
+
+	return (
+		<div className={`card bg-base-200 border ${config.enabled ? 'border-primary/40' : 'border-base-300 opacity-60 hover:opacity-100'} transition-all`}>
+			<div className="card-body p-4 space-y-3">
+				<div className="flex items-center gap-4">
+					<span className="text-3xl w-10 text-center shrink-0">🌐</span>
+					<div className="flex-1">
+						<div className="font-mono font-bold text-sm text-primary uppercase">Browser</div>
+						<div className="text-[10px] text-base-content/50">Web scraping, clicking, screenshots</div>
+					</div>
+					<input
+						type="checkbox"
+						className="toggle toggle-primary toggle-sm shrink-0"
+						checked={config.enabled}
+						onChange={e => onChange({ ...config, enabled: e.target.checked })}
+					/>
+				</div>
+				<div className="text-[10px] text-base-content/50 flex items-center justify-between pt-1 border-t border-base-content/5">
+					<span>{availableFunctions.length} functions available</span>
+					<button
+						onClick={openModal}
+						className="btn btn-xs btn-ghost"
+						disabled={!config.enabled}
+					>
+						Authenticate →
+					</button>
+				</div>
+			</div>
+
+			<Modal
+				isOpen={isModalOpen}
+				onClose={() => setIsModalOpen(false)}
+				title={<h3 className="text-lg font-semibold">Browser Authentication</h3>}
+				className="w-11/12 max-w-2xl"
+			>
+				<div className="space-y-5">
+					{/* Status row */}
+					<div className="flex items-center gap-3 p-3 bg-base-300/50 rounded-lg">
+						{status === null ? (
+							<span className="text-xs text-base-content/40">Checking status…</span>
+						) : status.daemonOffline ? (
+							<span className="text-xs text-warning">⚠ Daemon offline — start Tamias first</span>
+						) : !status.installed ? (
+							<span className="text-xs text-warning">⚠ Playwright not installed — ask the AI to run <code className="bg-base-content/10 px-1 rounded">browser_install</code></span>
+						) : (
+							<>
+								<div className={`w-2 h-2 rounded-full shrink-0 ${status.headedOpen ? 'bg-success animate-pulse' : 'bg-base-content/30'}`} />
+								<span className="text-xs text-base-content/70">
+									{status.headedOpen ? 'Browser window is open' : 'Browser is available'}
+								</span>
+								<button onClick={fetchStatus} className="btn btn-xs btn-ghost ml-auto">↻ Refresh</button>
+							</>
+						)}
+					</div>
+
+					{/* Explanation */}
+					<div className="text-[11px] text-base-content/60 leading-relaxed space-y-1">
+						<p>Launch a visible browser window to sign in to services (Google, GitHub, Notion, etc.). Tamias will reuse those saved sessions when running browser tools headlessly.</p>
+						<p className="text-base-content/40">Sessions are stored in <code className="bg-base-content/10 px-1 rounded">~/.tamias/browser-data/</code></p>
+					</div>
+
+					{/* URL input */}
+					<div className="space-y-1">
+						<label className="text-[10px] uppercase font-bold text-base-content/40">Optional start URL</label>
+						<input
+							type="url"
+							placeholder="https://accounts.google.com — leave blank to open an empty tab"
+							className="input input-sm input-bordered w-full font-mono text-xs"
+							value={authUrl}
+							onChange={e => setAuthUrl(e.target.value)}
+						/>
+					</div>
+
+					{/* Action message */}
+					{actionMessage && (
+						<div className="text-[11px] text-success bg-success/10 border border-success/20 rounded-lg px-3 py-2">
+							{actionMessage}
+						</div>
+					)}
+
+					{/* Buttons */}
+					<div className="flex gap-2">
+						<button
+							onClick={handleLaunch}
+							disabled={launching || !status?.installed || !!status?.daemonOffline}
+							className="btn btn-primary btn-sm flex-1"
+						>
+							{launching ? <span className="loading loading-spinner loading-xs" /> : '🚀'}
+							{launching ? 'Launching…' : 'Launch Browser'}
+						</button>
+						{status?.headedOpen && (
+							<button
+								onClick={handleClose}
+								disabled={closing}
+								className="btn btn-ghost btn-sm"
+							>
+								{closing ? <span className="loading loading-spinner loading-xs" /> : '✕'}
+								{closing ? 'Closing…' : 'Close Browser'}
+							</button>
+						)}
+					</div>
+
+					<FunctionRulesSection
+						config={config}
+						availableFunctions={availableFunctions}
+						onFunctionChange={toggleFunction}
+					/>
+				</div>
+			</Modal>
+		</div>
+	)
+}
+
 function ImageToolCard({
 	config,
 	availableFunctions,
@@ -1038,8 +1221,17 @@ export default function ToolsPage() {
 						onModelsChange={setDefaultImageModels}
 					/>
 
+					{/* Specialized Browser Card */}
+					{'browser' in availableInternalTools && (
+						<BrowserToolCard
+							config={internalTools['browser'] || { enabled: true }}
+							availableFunctions={availableFunctions['browser'] || []}
+							onChange={(u) => updateInternalTool('browser', u)}
+						/>
+					)}
+
 					{/* Other Internal Tools */}
-					{Object.entries(availableInternalTools).filter(([id]) => id !== 'gemini' && id !== 'email' && id !== 'image').map(([id, label]) => (
+					{Object.entries(availableInternalTools).filter(([id]) => id !== 'gemini' && id !== 'email' && id !== 'image' && id !== 'browser').map(([id, label]) => (
 						<InternalToolCard
 							key={id}
 							id={id}

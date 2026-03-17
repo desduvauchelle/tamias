@@ -25,6 +25,7 @@ async function loadPlaywright() {
 }
 
 let sharedContext: BrowserContext | null = null
+let authContext: BrowserContext | null = null
 
 async function getBrowserContext(headless = true): Promise<BrowserContext> {
 	if (sharedContext) {
@@ -108,6 +109,63 @@ async function getPageSnapshot(page: Page): Promise<string> {
 	})
 
 	return `URL: ${page.url()}\nTitle: ${await page.title()}\n\n${snapshot}`
+}
+
+export async function getBrowserInstallStatus(): Promise<{ installed: boolean }> {
+	try {
+		await loadPlaywright()
+		return { installed: true }
+	} catch {
+		return { installed: false }
+	}
+}
+
+export function isAuthBrowserOpen(): boolean {
+	return authContext !== null
+}
+
+export async function launchAuthBrowser(url?: string): Promise<{ ok: boolean; message: string }> {
+	try {
+		if (!existsSync(BROWSER_DATA_DIR)) {
+			mkdirSync(BROWSER_DATA_DIR, { recursive: true })
+		}
+		if (!authContext) {
+			const { chromium } = await loadPlaywright()
+			authContext = await chromium.launchPersistentContext(BROWSER_DATA_DIR, {
+				headless: false,
+				viewport: { width: 1280, height: 900 },
+			})
+			authContext.on('close', () => {
+				authContext = null
+				// Reset shared headless context so it re-reads saved cookies on next use
+				if (sharedContext) {
+					sharedContext.close().catch(() => { })
+					sharedContext = null
+				}
+			})
+		}
+		if (url) {
+			const pages = authContext.pages()
+			const page = pages.length > 0 ? pages[0] : await authContext.newPage()
+			await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
+		}
+		return { ok: true, message: 'Browser launched. Authenticate in the browser window, then close it or click "Close Browser" when done.' }
+	} catch (err) {
+		return { ok: false, message: String(err) }
+	}
+}
+
+export async function closeAuthBrowser(): Promise<{ ok: boolean }> {
+	if (authContext) {
+		await authContext.close().catch(() => { })
+		authContext = null
+	}
+	// Reset headless context so next tool invocation picks up the saved session
+	if (sharedContext) {
+		await sharedContext.close().catch(() => { })
+		sharedContext = null
+	}
+	return { ok: true }
 }
 
 export function createBrowserTools(aiService: AIService, sessionId: string) {

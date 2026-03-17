@@ -966,6 +966,41 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				return json({ error: 'Unknown action' }, 404)
 			}
 
+			// ── Browser Auth Endpoints ────────────────────────────────
+			// GET  /browser/status → { installed: bool, headedOpen: bool }
+			// POST /browser/launch → { url?: string } → open headed browser for auth
+			// POST /browser/close  → close headed browser
+			if (url.pathname === '/browser/status' && method === 'GET') {
+				try {
+					const { getBrowserInstallStatus, isAuthBrowserOpen } = await import('../tools/browser.ts')
+					const { installed } = await getBrowserInstallStatus()
+					return json({ installed, headedOpen: isAuthBrowserOpen() })
+				} catch (err) {
+					return json({ installed: false, headedOpen: false, error: String(err) })
+				}
+			}
+
+			if (url.pathname === '/browser/launch' && method === 'POST') {
+				try {
+					const { launchAuthBrowser } = await import('../tools/browser.ts')
+					const body = await req.json() as { url?: string }
+					const result = await launchAuthBrowser(body?.url)
+					return json(result)
+				} catch (err) {
+					return json({ ok: false, message: String(err) })
+				}
+			}
+
+			if (url.pathname === '/browser/close' && method === 'POST') {
+				try {
+					const { closeAuthBrowser } = await import('../tools/browser.ts')
+					const result = await closeAuthBrowser()
+					return json(result)
+				} catch (err) {
+					return json({ ok: false, message: String(err) })
+				}
+			}
+
 			return json({ error: 'Not found' }, 404)
 		},
 	})

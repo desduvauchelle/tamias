@@ -57,8 +57,8 @@ async function gotoChat(page: import('@playwright/test').Page) {
 	)
 
 	await page.goto('/', { waitUntil: 'load' })
-	// Wait until at least the Sessions heading is visible
-	await expect(page.getByText('Sessions')).toBeVisible({ timeout: 10_000 })
+	// Wait until the Sessions heading (h2) is visible — use role to avoid matching 'No active sessions'
+	await expect(page.getByRole('heading', { name: 'Sessions' })).toBeVisible({ timeout: 10_000 })
 }
 
 // ---------------------------------------------------------------------------
@@ -69,7 +69,8 @@ test.describe('sessions sidebar', () => {
 		await gotoChat(page)
 		await expect(page.getByText('Alpha Chat')).toBeVisible()
 		await expect(page.getByText('Beta Research')).toBeVisible()
-		await expect(page.getByText('Discord Channel')).toBeVisible()
+		// first() avoids strict-mode violation: primary + secondary label both contain 'Discord Channel'
+		await expect(page.getByText('Discord Channel').first()).toBeVisible()
 	})
 
 	test('search filters visible sessions by name', async ({ page }) => {
@@ -94,35 +95,19 @@ test.describe('sessions sidebar', () => {
 test.describe('new session modal', () => {
 	test('clicking the "+" button opens the new session modal', async ({ page }) => {
 		await gotoChat(page)
-		// The "+" button is next to the "Sessions" heading
-		await page.locator('aside, nav, [class*="sidebar"], [class*="w-60"]')
-			.or(page.getByRole('complementary'))
-			.locator('button')
-			.filter({ hasText: /^\+$/ })
-			.first()
-			.click()
-			.catch(async () => {
-				// Fallback: find any button with a plus icon near the Sessions heading
-				await page.locator('button svg').first().locator('..').click()
-			})
-		// The modal has a session name input
-		await expect(page.locator('input[placeholder*="ession"]').or(page.locator('input[placeholder*="ame"]')).first()).toBeVisible({ timeout: 3000 })
+		// The "+" SVG button has title="Start New Session"
+		await page.locator('button[title="Start New Session"]').click()
+		// The modal renders an input for the context identifier
+		await expect(page.locator('input[placeholder="e.g. workspace-analysis"]')).toBeVisible({ timeout: 3000 })
 	})
 
 	test('creating a session opens the chat panel for that session', async ({ page }) => {
 		await gotoChat(page)
-		// Open new session modal via + button next to Sessions
-		//  (we look for it generically in case the aria is not set)
-		const plusButtons = page.locator('button').filter({ hasText: '+' })
-		await plusButtons.first().click()
+		// Open new session modal via the "+" button (title attr identifies it)
+		await page.locator('button[title="Start New Session"]').click()
 
-		// Fill the name and submit
-		const nameInput = page.locator('input').filter({ hasText: '' }).nth(0)
-		// Playwright text filter won't work for empty inputs — locate by placeholder
-		const sessionInput = page.locator('input[placeholder*="ession"]')
-			.or(page.locator('input[placeholder*="ame"]'))
-			.or(page.locator('input[placeholder*="ID"]'))
-			.first()
+		// The modal input uses placeholder 'e.g. workspace-analysis'
+		const sessionInput = page.locator('input[placeholder="e.g. workspace-analysis"]')
 		await sessionInput.fill('my-test-session')
 
 		// Mock the session history endpoint for this new session
@@ -130,15 +115,11 @@ test.describe('new session modal', () => {
 			route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ messages: [] }) })
 		)
 
-		// Submit (Enter or button)
+		// Submit via Enter
 		await sessionInput.press('Enter')
 
-		// The chat terminal for that session should be shown
-		// ChatTerminal renders a message input area
-		await expect(page.locator('input[placeholder*="essage"]')
-			.or(page.locator('input[placeholder*="ype"]'))
-			.or(page.locator('textarea'))
-		).toBeVisible({ timeout: 5000 })
+		// ChatTerminal renders a text input for sending messages
+		await expect(page.locator('input[type="text"]').last()).toBeVisible({ timeout: 5000 })
 	})
 })
 
@@ -157,21 +138,19 @@ test.describe('chat terminal', () => {
 	test('sending a message streams the assistant reply', async ({ page }) => {
 		// Mock the SSE chat endpoint to return a short text response
 		await page.route('/api/chat**', route => {
-			// AI SDK Data Stream format:
-			const sseBody = [
-				'0:"Hello from the AI!"\n',
-				'd:{"finishReason":"stop","usage":{"promptTokens":10,"completionTokens":5}}\n',
+			// AI SDK v6 SSE JSON event stream format consumed by DefaultChatTransport
+			const body = [
+				'data: {"type":"text-start","id":"msg-1"}\n\n',
+				'data: {"type":"text-delta","id":"msg-1","delta":"Hello from the AI!"}\n\n',
+				'data: {"type":"text-end","id":"msg-1"}\n\n',
+				'data: [DONE]\n\n',
 			].join('')
 
 			return route.fulfill({
 				status: 200,
 				contentType: 'text/event-stream',
-				headers: {
-					'Cache-Control': 'no-cache',
-					Connection: 'keep-alive',
-					'x-vercel-ai-data-stream': 'v1',
-				},
-				body: sseBody,
+				headers: { 'Cache-Control': 'no-cache' },
+				body,
 			})
 		})
 
@@ -181,8 +160,8 @@ test.describe('chat terminal', () => {
 		const input = page.locator('input[type="text"]').last()
 		await input.fill('Hello AI!')
 
-		// Send it
-		await page.keyboard.press('Enter')
+		// Send it — use .press() on the locator to ensure the Enter key goes to the input
+		await input.press('Enter')
 
 		// The user message appears in the thread
 		await expect(page.getByText('Hello AI!')).toBeVisible({ timeout: 5000 })
@@ -193,12 +172,17 @@ test.describe('chat terminal', () => {
 
 	test('send button is present and triggers the same submit', async ({ page }) => {
 		await page.route('/api/chat**', route => {
-			const sseBody = '0:"Acknowledged."\nd:{"finishReason":"stop","usage":{}}\n'
+			const body = [
+				'data: {"type":"text-start","id":"msg-2"}\n\n',
+				'data: {"type":"text-delta","id":"msg-2","delta":"Acknowledged."}\n\n',
+				'data: {"type":"text-end","id":"msg-2"}\n\n',
+				'data: [DONE]\n\n',
+			].join('')
 			return route.fulfill({
 				status: 200,
 				contentType: 'text/event-stream',
-				headers: { 'x-vercel-ai-data-stream': 'v1' },
-				body: sseBody,
+				headers: { 'Cache-Control': 'no-cache' },
+				body,
 			})
 		})
 
@@ -212,19 +196,22 @@ test.describe('chat terminal', () => {
 
 	test('error response from chat API shows an error indicator', async ({ page }) => {
 		await page.route('/api/chat**', route => {
-			const errorBody = '3:"Something went wrong"\n'
+			const body = [
+				'data: {"type":"error","errorText":"Something went wrong"}\n\n',
+				'data: [DONE]\n\n',
+			].join('')
 			return route.fulfill({
 				status: 200,
 				contentType: 'text/event-stream',
-				headers: { 'x-vercel-ai-data-stream': 'v1' },
-				body: errorBody,
+				headers: { 'Cache-Control': 'no-cache' },
+				body,
 			})
 		})
 
 		await selectFirstSession(page)
 		const input = page.locator('input[type="text"]').last()
 		await input.fill('trigger error')
-		await page.keyboard.press('Enter')
+		await input.press('Enter')
 		// The AI SDK surfaces `3:` frames as errors — some error indication should appear
 		await expect(
 			page.getByText(/error|Something went wrong/i).first()
