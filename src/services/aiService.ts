@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import { join, isAbsolute } from 'path'
+import { join } from 'path'
 import { existsSync, writeFileSync, mkdirSync } from 'fs'
 import { streamText, generateText, generateObject, stepCountIs } from 'ai'
 
@@ -14,7 +14,6 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { loadConfig, getApiKeyForConnection, type ConnectionConfig, getDefaultModel, getDefaultModels, getSmartModels, getAllModelOptions, getCompactionModel, getAllConnections, getWorkspacePath as getWorkspacePathSync } from '../utils/config'
-import { getProject } from '../core/projects.ts'
 import { buildActiveTools } from '../utils/toolRegistry'
 import { estimateTokens, estimateMessageTokens, getMessageTokenBudget, trimMessagesToTokenBudget } from '../utils/tokenBudget'
 import { buildProviderOptions } from '../utils/promptCaching'
@@ -93,7 +92,7 @@ export interface CreateSessionOptions {
 /**
  * Resolve the workspace path for a session.
  * - Sub-agents inherit their parent's workspace.
- * - Sessions linked to a project use that project's configured workspacePath.
+ * - Sessions linked to a project use ~/.tamias/workspace/<projectSlug> directly.
  * - All other sessions (bridge or terminal) use the global configured workspace.
  */
 function resolveSessionWorkspacePath(options: {
@@ -105,12 +104,7 @@ function resolveSessionWorkspacePath(options: {
 		return options.parentWorkspacePath
 	}
 	if (options.projectSlug) {
-		const project = getProject(options.projectSlug)
-		if (project?.path) {
-			if (isAbsolute(project.path)) return project.path
-			// All dashboard projects are relative to ~/.tamias/workspace
-			return join(getWorkspacePathSync(), project.path)
-		}
+		return join(getWorkspacePathSync(), options.projectSlug)
 	}
 	return getWorkspacePathSync()
 }
@@ -206,7 +200,15 @@ export class AIService {
 				// High-priority auto-execution path
 				task.reaction = '👀'
 				needsSave = true
-				prompts.push(`[KANBAN EVENT] Task "${task.title}" (ID: ${task.id}) was just assigned to you. Please use the projects tools to set the reaction to 👀 to acknowledge, then move it to 'in-progress' with reaction 🧠 while you execute it. Once done, move it to 'awaiting-review', leave a comment with your result, and change the reaction to ✅.`)
+				prompts.push(`[KANBAN EVENT] Task "${task.title}" (ID: ${task.id}) was just assigned to you.
+
+Execution workflow:
+1. Set reaction to 👀 to acknowledge receipt
+2. Move task to 'in-progress' and set reaction to 🧠
+3. As you work, post progress comments using project_add_comment to keep the user informed of what you're doing (e.g. "Analyzing requirements...", "Implementing solution...", "Running validation...")
+4. When finished, move task to 'awaiting-review', post a final comment with your result, and set reaction to ✅
+
+Important: Post at least one progress comment before your final result so the user can see you're actively working.`)
 			} else if (hasNewComment && isUserComment) {
 				// Comment on any task — AI should engage
 				newComment.reaction = '👀'

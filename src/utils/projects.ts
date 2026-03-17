@@ -51,9 +51,9 @@ export interface Project {
 
 function getProjectsDir(tenantId?: string): string {
 	if (tenantId && tenantId !== 'default') {
-		return join(TAMIAS_DIR, 'tenants', tenantId, 'projects')
+		return join(TAMIAS_DIR, 'tenants', tenantId, 'workspace')
 	}
-	return join(TAMIAS_DIR, 'projects')
+	return join(TAMIAS_DIR, 'workspace')
 }
 
 function ensureProjectsDir(tenantId?: string): string {

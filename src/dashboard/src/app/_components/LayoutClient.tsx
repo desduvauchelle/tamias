@@ -39,7 +39,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 		setFormName(value)
 		if (!pathManuallyEdited) {
 			const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-			setFormPath(slug ? `~/.tamias/workspace/${slug}` : '')
+			setFormPath(slug || '')
 		}
 	}
 
@@ -127,18 +127,21 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 								<input data-testid="project-name-input" value={formName} onChange={e => handleNameChange(e.target.value)} type="text" className="input input-bordered w-full focus:input-primary" placeholder="e.g. My Awesome Startup" />
 							</div>
 							<div className="form-control">
-								<label className="label"><span className="label-text font-medium">Path *</span></label>
-								<input
-									data-testid="project-path-input"
-									value={formPath}
-									onChange={e => { setPathManuallyEdited(true); setFormPath(e.target.value) }}
-									type="text"
-									className="input input-bordered w-full font-mono text-sm focus:input-primary"
-									placeholder="~/.tamias/workspace/my-project"
-								/>
+								<label className="label"><span className="label-text font-medium">Folder Name *</span></label>
+								<div className="flex items-center gap-0 input input-bordered w-full font-mono text-sm overflow-hidden p-0">
+									<span className="px-3 py-2 bg-base-300 border-r border-base-300 text-base-content/50 text-xs shrink-0">~/.tamias/workspace/</span>
+									<input
+										data-testid="project-path-input"
+										value={formPath}
+										onChange={e => { setPathManuallyEdited(true); setFormPath(e.target.value) }}
+										type="text"
+										className="flex-1 bg-transparent px-3 py-2 outline-none text-sm"
+										placeholder="my-project"
+									/>
+								</div>
 								<label className="label">
 									<span className="label-text-alt text-base-content/50 italic">
-										{pathManuallyEdited ? "Custom path" : "Auto-generated from project name — edit to override"}
+										{pathManuallyEdited ? "Custom folder name" : "Auto-generated from project name — edit to override"}
 									</span>
 								</label>
 							</div>
