@@ -18,7 +18,7 @@ export interface Skill {
 
 const BUILTIN_SKILLS_DIR = join(import.meta.dir, "../../src/skills")
 export const USER_SKILLS_DIR = join(homedir(), ".tamias", "skills")
-const PROJECTS_DIR = join(homedir(), ".tamias", "projects")
+const PROJECTS_DIR = join(homedir(), ".tamias", "workspace")
 
 let cachedSkills: Skill[] = []
 

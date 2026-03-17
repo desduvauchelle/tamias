@@ -16,12 +16,13 @@ import { migration as layout_v001 } from './layout/v001_projects_dir'
 import { migration as layout_v002 } from './layout/v002_meta_json'
 import { migration as layout_v003 } from './layout/v003_tenants_dir'
 import { migration as layout_v004 } from './layout/v004_memory_format_upgrade'
+import { migration as layout_v005 } from './layout/v005_unify_project_workspace'
 
 // ─── Config Migrations (config.json) ─────────────────────────────────────────
 import { migration as config_v001 } from './config/v001_config_version'
 import { migration as config_v002 } from './config/v002_channel_modes'
 
-const LAYOUT_MIGRATIONS: Migration[] = [layout_v001, layout_v002, layout_v003, layout_v004]
+const LAYOUT_MIGRATIONS: Migration[] = [layout_v001, layout_v002, layout_v003, layout_v004, layout_v005]
 const CONFIG_MIGRATIONS: Migration[] = [config_v001, config_v002]
 
 // DB migrations are handled separately by src/utils/db.ts's inline migration array.

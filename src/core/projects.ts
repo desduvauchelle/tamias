@@ -59,7 +59,7 @@ interface ProjectConfigFile {
 	updatedAt?: string
 }
 
-const PROJECTS_DIR = join(TAMIAS_DIR, 'projects')
+const PROJECTS_DIR = join(TAMIAS_DIR, 'workspace')
 const OLD_PROJECTS_FILE = join(TAMIAS_DIR, 'projects.json')
 
 function ensureProjectsDir(): void {
@@ -226,7 +226,7 @@ export function addProject(project: Omit<ProjectConfig, 'id' | 'kanban'>): Proje
 		id: finalId,
 		name: project.name,
 		description: project.description,
-		path: project.path,
+		path: finalId,
 		discordServerId: project.discordServerId,
 		discordChannelId: project.discordChannelId,
 		contextFile: project.contextFile,
@@ -265,6 +265,7 @@ export function updateProject(id: string, updates: Partial<Omit<ProjectConfig, '
 		const updatedConfig: ProjectConfigFile = {
 			...config,
 			...configUpdates,
+			path: id,
 			updatedAt: new Date().toISOString(),
 		}
 		writeProjectConfig(projectDir, updatedConfig)

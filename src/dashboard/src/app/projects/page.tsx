@@ -1,48 +1,17 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useToast } from "../_components/ToastProvider"
-import { KanbanSquare, FolderOpen, Settings, Plus, LayoutDashboard, ExternalLink, Link as LinkIcon, Edit, Check, FileText, MessageSquare, Puzzle, Trash2, Calendar, Flag } from "lucide-react"
+import { KanbanSquare, FolderOpen, Settings, Plus, LayoutDashboard, Edit, Check, FileText, MessageSquare, Puzzle, Trash2 } from "lucide-react"
 import FileNavigator from '../_components/FileNavigator'
 import ChatTerminal from '../_components/ChatTerminal'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-
-interface KanbanComment {
-	id: string
-	author: string
-	text: string
-	createdAt: number
-	reaction?: string
-}
-
-interface KanbanTask {
-	id: string
-	title: string
-	description?: string
-	details?: string
-	assignee?: string
-	reaction?: string
-	status: string
-	createdAt: number
-	priority?: 'low' | 'medium' | 'high' | 'urgent'
-	dueDate?: number
-	labels?: string[]
-	order?: number
-	comments?: KanbanComment[]
-}
-
-interface Project {
-	id: string
-	name: string
-	description?: string
-	path: string
-	discordServerId?: string
-	discordChannelId?: string
-	contextFile?: string
-	kanban: KanbanTask[]
-}
+import { Suspense } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import type { Project } from "./_components/types"
+import KanbanBoard from "./_components/KanbanBoard"
 
 interface DiscordChannel {
 	id: string
@@ -52,15 +21,11 @@ interface DiscordChannel {
 	instanceKey: string
 }
 
-import { Suspense } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-
 function ProjectsContent() {
 	const searchParams = useSearchParams()
 	const router = useRouter()
 	const queryClient = useQueryClient()
 	const projectId = searchParams.get('id')
-	const initialTab = (searchParams.get('tab') as any) || 'overview'
 
 	const { data: projects = [], isLoading: loading } = useQuery<Project[]>({
 		queryKey: ['projects'],
@@ -84,7 +49,7 @@ function ProjectsContent() {
 
 	const [activeProject, setActiveProject] = useState<Project | null>(null)
 	const [activeTab, setActiveTab] = useState<'overview' | 'chat' | 'kanban' | 'skills' | 'files' | 'settings'>(
-		['overview', 'chat', 'kanban', 'skills', 'files', 'settings'].includes(initialTab) ? initialTab : 'overview'
+		(['overview', 'chat', 'kanban', 'skills', 'files', 'settings'].includes(searchParams.get('tab') || '') ? searchParams.get('tab') : 'overview') as any
 	)
 
 	// Sync activeTab to URL and vice-versa
@@ -104,19 +69,6 @@ function ProjectsContent() {
 		}
 	}, [activeTab, projectId, router, searchParams])
 
-	// Task Modal State
-	const [selectedTask, setSelectedTask] = useState<KanbanTask | null>(null)
-	const [modalTitle, setModalTitle] = useState("")
-	const [modalDetails, setModalDetails] = useState("")
-	const [modalAssignee, setModalAssignee] = useState("")
-	const [modalStatus, setModalStatus] = useState("")
-	const [newComment, setNewComment] = useState("")
-	const [modalPriority, setModalPriority] = useState<string>("")
-	const [modalDueDate, setModalDueDate] = useState<string>("")
-	const [modalLabels, setModalLabels] = useState<string>("")
-
-	const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null)
-
 	const { toast, success, error } = useToast()
 
 	// Form State for new/editing project
@@ -130,22 +82,6 @@ function ProjectsContent() {
 	const [contextMarkdown, setContextMarkdown] = useState<string>("")
 	const [isEditingContext, setIsEditingContext] = useState(false)
 	const [editedContext, setEditedContext] = useState("")
-
-	// Kanban State
-	const [newTaskTitle, setNewTaskTitle] = useState("")
-	const [newTaskCol, setNewTaskCol] = useState("")
-
-	// AI Activity State
-	type AiLogEntry = { type: 'tool' | 'text' | 'status'; text: string; ts: number }
-	const [aiStatus, setAiStatus] = useState<'idle' | 'thinking' | 'done' | 'error'>('idle')
-	const [aiLog, setAiLog] = useState<AiLogEntry[]>([])
-	const [aiTextPreview, setAiTextPreview] = useState('')
-	const aiEventSourceRef = useRef<EventSource | null>(null)
-	const aiDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-	const KANBAN_COLUMNS = ['todo', 'in-progress', 'awaiting-review', 'done']
-
-	// Query hooks replace the manual useEffect polling
 
 	// Update active project when ID param changes or projects load
 	useEffect(() => {
@@ -188,9 +124,8 @@ function ProjectsContent() {
 
 	const fetchContextMarkdown = async (proj: Project) => {
 		try {
-			// Build the API path — project.path is relative to ~/.tamias/workspace
-			const projectApiPath = proj.path ? `workspace/${proj.path}` : ''
-			const rawPath = projectApiPath ? `${projectApiPath}/${proj.contextFile}` : (proj.contextFile || '')
+			const projectApiPath = `workspace/${proj.id}`
+			const rawPath = proj.contextFile ? `${projectApiPath}/${proj.contextFile}` : ''
 			const res = await fetch(`/api/files/content?path=${encodeURIComponent(rawPath)}`)
 			if (res.ok) {
 				const fileData = await res.json()
@@ -206,9 +141,8 @@ function ProjectsContent() {
 	const saveContextMarkdown = async () => {
 		if (!activeProject) return
 		try {
-			// Build the API path — project.path is relative to ~/.tamias/workspace
-			const projectApiPath = activeProject.path ? `workspace/${activeProject.path}` : ''
-			const rawPath = projectApiPath ? `${projectApiPath}/${activeProject.contextFile}` : (activeProject.contextFile || '')
+			const projectApiPath = `workspace/${activeProject.id}`
+			const rawPath = activeProject.contextFile ? `${projectApiPath}/${activeProject.contextFile}` : ''
 			const res = await fetch(`/api/files/content?path=${encodeURIComponent(rawPath)}`, {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
@@ -226,8 +160,6 @@ function ProjectsContent() {
 		}
 	}
 
-	// queryClient automatically handles channels now
-
 	const handleSave = async () => {
 		if (!formName || !formPath) {
 			error("Name and Path are required")
@@ -239,7 +171,6 @@ function ProjectsContent() {
 
 		const selectedChannel = channels.find(c => c.id === formChannel)
 
-		// Normalize: strip any leading 'workspace/' the user might have typed
 		const normalizedPath = formPath.trim().replace(/^workspace\/+/i, '').replace(/^\/+/, '').replace(/\/+$/, '')
 
 		try {
@@ -261,7 +192,6 @@ function ProjectsContent() {
 				success("Project config saved!")
 				queryClient.invalidateQueries({ queryKey: ['projects'] })
 
-				// If creating new, navigate to it
 				if (!activeProject) {
 					router.push(`/projects?id=${updated.id}`)
 				}
@@ -288,248 +218,6 @@ function ProjectsContent() {
 			}
 		} catch (err) {
 			error("An error occurred")
-		}
-	}
-
-	/* KANBAN UTILS */
-	const addTask = async (e: React.FormEvent) => {
-		e.preventDefault()
-		if (!newTaskTitle.trim() || !activeProject) return
-
-		const newTask: KanbanTask = {
-			id: Math.random().toString(36).substring(2, 9),
-			title: newTaskTitle,
-			status: newTaskCol,
-			createdAt: Date.now()
-		}
-
-		const oldKanban = activeProject.kanban || []
-		const updatedKanban = [...oldKanban, newTask]
-		const ok = await updateKanban(updatedKanban)
-		if (ok) {
-			setNewTaskTitle('')
-			setNewTaskCol('')
-			// Notify AI of the new task being created
-			await notifyAIKanbanEvent(oldKanban, updatedKanban)
-		}
-	}
-
-	const moveTask = async (taskId: string, newStatus: string) => {
-		if (!activeProject) return
-		const updatedKanban = (activeProject.kanban || []).map(t =>
-			t.id === taskId ? { ...t, status: newStatus } : t
-		)
-		await updateKanban(updatedKanban)
-	}
-
-	// Cleanup AI stream on unmount
-	useEffect(() => {
-		return () => {
-			aiEventSourceRef.current?.close()
-			if (aiDismissTimerRef.current) clearTimeout(aiDismissTimerRef.current)
-		}
-	}, [])
-
-	// Watch AI session stream and populate the activity log
-	const startWatchingAI = useCallback((projectId: string) => {
-		// Clean up any existing stream
-		if (aiEventSourceRef.current) {
-			aiEventSourceRef.current.close()
-			aiEventSourceRef.current = null
-		}
-		if (aiDismissTimerRef.current) {
-			clearTimeout(aiDismissTimerRef.current)
-			aiDismissTimerRef.current = null
-		}
-
-		setAiStatus('thinking')
-		setAiLog([])
-		setAiTextPreview('')
-
-		const es = new EventSource(`/api/sessions/project-${projectId}/activity`)
-		aiEventSourceRef.current = es
-		let textBuffer = ''
-
-		es.onmessage = (e) => {
-			try {
-				const data = JSON.parse(e.data)
-				if (data.type === 'tool_call') {
-					setAiLog(prev => [...prev, { type: 'tool', text: data.name || 'unknown_tool', ts: Date.now() }])
-				} else if (data.type === 'chunk' && data.text) {
-					textBuffer += data.text
-					// Keep only last 200 chars for preview to avoid huge state
-					setAiTextPreview(textBuffer.length > 200 ? '…' + textBuffer.slice(-200) : textBuffer)
-				} else if (data.type === 'done') {
-					setAiStatus('done')
-					if (textBuffer.trim()) {
-						setAiLog(prev => [...prev, { type: 'status', text: '✓ Done', ts: Date.now() }])
-					}
-					es.close()
-					aiEventSourceRef.current = null
-					aiDismissTimerRef.current = setTimeout(() => {
-						setAiStatus('idle')
-						setAiLog([])
-						setAiTextPreview('')
-					}, 5000)
-				} else if (data.type === 'error') {
-					setAiStatus('error')
-					setAiLog(prev => [...prev, { type: 'status', text: `✕ ${data.message || 'Error'}`, ts: Date.now() }])
-					es.close()
-					aiEventSourceRef.current = null
-					aiDismissTimerRef.current = setTimeout(() => setAiStatus('idle'), 8000)
-				}
-			} catch { /* ignore malformed */ }
-		}
-
-		es.onerror = () => {
-			// SSE closed (normal after stream ends) or real error
-			if (aiStatus !== 'done') {
-				es.close()
-				aiEventSourceRef.current = null
-			}
-		}
-	}, [aiStatus])
-
-	// Notify daemon so AI can react to kanban changes
-	const notifyAIKanbanEvent = async (oldKanban: KanbanTask[], newKanban: KanbanTask[]) => {
-		if (!activeProject) return
-		try {
-			// Start watching BEFORE posting so we don't miss early events
-			startWatchingAI(activeProject.id)
-			await fetch('/api/project-event', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					type: 'kanban_changed',
-					projectId: activeProject.id,
-					oldKanban,
-					newKanban
-				})
-			})
-		} catch (e) {
-			console.error('Failed to notify AI of kanban event', e)
-		}
-	}
-
-	const removeTask = async (taskId: string) => {
-		if (!activeProject || !confirm('Delete task?')) return
-		const updatedKanban = (activeProject.kanban || []).filter(t => t.id !== taskId)
-		await updateKanban(updatedKanban)
-	}
-
-	const updateKanban = async (newKanban: KanbanTask[]) => {
-		try {
-			const res = await fetch(`/api/projects/${activeProject!.id}`, {
-				method: "PUT",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ kanban: newKanban })
-			})
-			if (res.ok) {
-				const updated = await res.json()
-				setActiveProject(updated)
-				queryClient.invalidateQueries({ queryKey: ['projects'] })
-				return true
-			} else {
-				error("Failed to update kanban")
-				return false
-			}
-		} catch {
-			error("Error saving kanban")
-			return false
-		}
-	}
-
-	const openTaskModal = (task: KanbanTask) => {
-		setSelectedTask(task)
-		setModalTitle(task.title || "")
-		setModalDetails(task.details || "")
-		setModalAssignee(task.assignee || "")
-		setModalStatus(task.status)
-		setModalPriority(task.priority || "")
-		setModalDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : "")
-		setModalLabels(task.labels?.join(', ') || "")
-		setNewComment("")
-	}
-
-	const closeTaskModal = () => {
-		setSelectedTask(null)
-	}
-
-	const saveTaskDetails = async () => {
-		if (!selectedTask || !activeProject) return
-		const updatedTask: KanbanTask = {
-			...selectedTask,
-			title: modalTitle,
-			details: modalDetails,
-			assignee: modalAssignee,
-			status: modalStatus,
-			priority: modalPriority ? modalPriority as KanbanTask['priority'] : undefined,
-			dueDate: modalDueDate ? new Date(modalDueDate).getTime() : undefined,
-			labels: modalLabels ? modalLabels.split(',').map(l => l.trim()).filter(Boolean) : undefined,
-		}
-		const oldKanban = activeProject.kanban || []
-		const updatedKanban = oldKanban.map(t =>
-			t.id === selectedTask.id ? updatedTask : t
-		)
-		const ok = await updateKanban(updatedKanban)
-		if (ok) {
-			success('Task updated')
-			setSelectedTask(updatedTask)
-			// Notify AI that the task was edited
-			await notifyAIKanbanEvent(oldKanban, updatedKanban)
-		}
-	}
-
-	const deleteTaskFromModal = async () => {
-		if (!selectedTask || !activeProject || !confirm('Delete this task?')) return
-		const oldKanban = activeProject.kanban || []
-		const updatedKanban = oldKanban.filter(t => t.id !== selectedTask.id)
-		const ok = await updateKanban(updatedKanban)
-		if (ok) {
-			closeTaskModal()
-			await notifyAIKanbanEvent(oldKanban, updatedKanban)
-		}
-	}
-
-	const deleteComment = async (commentId: string) => {
-		if (!selectedTask || !activeProject) return
-		const updatedTask = {
-			...selectedTask,
-			comments: (selectedTask.comments || []).filter(c => c.id !== commentId)
-		}
-		const updatedKanban = (activeProject.kanban || []).map(t =>
-			t.id === selectedTask.id ? updatedTask : t
-		)
-		const ok = await updateKanban(updatedKanban)
-		if (ok) setSelectedTask(updatedTask)
-	}
-
-	const addComment = async (e: React.FormEvent) => {
-		e.preventDefault()
-		if (!selectedTask || !activeProject || !newComment.trim()) return
-
-		const comment: KanbanComment = {
-			id: Math.random().toString(36).substring(2, 9),
-			author: 'User',
-			text: newComment,
-			createdAt: Date.now()
-		}
-
-		const updatedTask = {
-			...selectedTask,
-			comments: [...(selectedTask.comments || []), comment]
-		}
-
-		const oldKanban = activeProject.kanban || []
-		const updatedKanban = oldKanban.map(t =>
-			t.id === selectedTask.id ? updatedTask : t
-		)
-		const ok = await updateKanban(updatedKanban)
-		if (ok) {
-			setNewComment('')
-			setSelectedTask(updatedTask)
-			// Notify AI of the new comment so it can respond
-			await notifyAIKanbanEvent(oldKanban, updatedKanban)
 		}
 	}
 
@@ -560,11 +248,11 @@ function ProjectsContent() {
 								</h2>
 								<div className="flex flex-wrap items-center gap-4 text-xs font-medium text-base-content/60">
 									<span className="flex items-center gap-1 font-mono bg-base-200 px-2 py-1 rounded-md border border-base-300">
-										<FolderOpen className="w-4 h-4 text-warning" /> ~/.tamias/workspace/{activeProject.path}
+										<FolderOpen className="w-4 h-4 text-warning" /> ~/.tamias/workspace/{activeProject.id}
 									</span>
 									{activeProject.discordChannelId && (
 										<span className="flex items-center gap-1 text-info bg-info/10 px-2 py-1 rounded-md border border-info/20">
-											<LinkIcon className="w-4 h-4" /> Discord Configured
+											<span className="w-4 h-4">🔗</span> Discord Configured
 										</span>
 									)}
 								</div>
@@ -648,183 +336,10 @@ function ProjectsContent() {
 						)}
 
 						{activeTab === 'kanban' && (
-							<div className="absolute inset-0 flex flex-col">
-								{/* AI Activity Panel */}
-								{aiStatus !== 'idle' && (
-									<div className={`shrink-0 mx-4 mt-3 rounded-xl border px-4 py-3 font-mono text-xs transition-all ${aiStatus === 'thinking' ? 'bg-primary/10 border-primary/30 text-primary' :
-											aiStatus === 'done' ? 'bg-success/10 border-success/30 text-success' :
-												'bg-error/10 border-error/30 text-error'
-										}`}>
-										<div className="flex items-center gap-3 mb-2">
-											{aiStatus === 'thinking' ? (
-												<span className="relative flex h-2.5 w-2.5 shrink-0">
-													<span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-													<span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
-												</span>
-											) : aiStatus === 'done' ? (
-												<span className="h-2.5 w-2.5 rounded-full bg-success shrink-0"></span>
-											) : (
-												<span className="h-2.5 w-2.5 rounded-full bg-error shrink-0"></span>
-											)}
-											<span className="font-bold uppercase tracking-wider text-[10px]">
-												{aiStatus === 'thinking' ? 'AI is thinking…' : aiStatus === 'done' ? 'AI done' : 'AI error'}
-											</span>
-											<button
-												className="ml-auto opacity-40 hover:opacity-80"
-												onClick={() => { setAiStatus('idle'); setAiLog([]); setAiTextPreview(''); if (aiDismissTimerRef.current) clearTimeout(aiDismissTimerRef.current) }}
-											>✕</button>
-										</div>
-										{/* Tool call log */}
-										{aiLog.length > 0 && (
-											<div className="flex flex-wrap gap-1.5 mb-2">
-												{aiLog.map((entry, i) => (
-													<span key={i} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${entry.type === 'tool' ? 'bg-warning/20 text-warning' :
-															entry.type === 'status' ? 'bg-base-300 text-base-content/70' : ''
-														}`}>
-														{entry.type === 'tool' && <span>🔧</span>}
-														{entry.text}
-													</span>
-												))}
-											</div>
-										)}
-										{/* Live text preview */}
-										{aiTextPreview && aiStatus === 'thinking' && (
-											<div className="text-[10px] opacity-60 leading-relaxed line-clamp-2 break-all">
-												{aiTextPreview}<span className="animate-pulse">▋</span>
-											</div>
-										)}
-									</div>
-								)}
-								<div className="flex-1 flex gap-4 p-6 pt-3 overflow-x-auto items-start min-h-0">
-									{KANBAN_COLUMNS.map(col => {
-										let colTasks = (activeProject.kanban || []).filter(t => t.status === col)
-										const totalInCol = colTasks.length
-
-										if (col === 'done') {
-											// Sort by createdAt desc and take 10
-											colTasks = [...colTasks].sort((a, b) => b.createdAt - a.createdAt).slice(0, 10)
-										}
-
-										return (
-											<div
-												key={col}
-												onDragOver={(e) => e.preventDefault()}
-												onDrop={(e) => {
-													e.preventDefault()
-													if (draggedTaskId) {
-														moveTask(draggedTaskId, col)
-														setDraggedTaskId(null)
-													}
-												}}
-												className="w-72 shrink-0 flex flex-col max-h-full bg-base-200/50 rounded-xl border border-base-300"
-											>
-												<div className="p-3 border-b border-base-300/50 flex justify-between items-center bg-base-300/30 rounded-t-xl">
-													<div className="flex flex-col">
-														<h3 className="font-bold text-sm uppercase tracking-wider text-base-content/70">{col.replace('-', ' ')}</h3>
-														{col === 'done' && totalInCol > 10 && (
-															<span className="text-[10px] opacity-50 font-medium">Showing last 10 tasks</span>
-														)}
-													</div>
-													<span className="text-xs font-mono bg-base-300 px-2 py-0.5 rounded-full">{totalInCol}</span>
-												</div>
-												<div className="p-3 flex-1 overflow-y-auto space-y-3">
-													{colTasks.map(task => (
-														<div
-															key={task.id}
-															draggable
-															onDragStart={() => setDraggedTaskId(task.id)}
-															onDragEnd={() => setDraggedTaskId(null)}
-															onClick={() => openTaskModal(task)}
-															className={`bg-base-100 p-3 rounded-lg border border-base-300 shadow-sm group cursor-pointer hover:border-primary/50 transition-colors relative ${draggedTaskId === task.id ? 'opacity-50' : ''}`}
-														>
-															<div className="text-sm font-medium pr-6">{task.title}</div>
-
-															{/* Badges */}
-															<div className="flex flex-wrap gap-2 mt-2">
-																{task.priority && task.priority !== 'medium' && (
-																	<span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${task.priority === 'urgent' ? 'bg-error/20 text-error' :
-																			task.priority === 'high' ? 'bg-warning/20 text-warning' :
-																				'bg-base-300 text-base-content/50'
-																		}`}>
-																		{task.priority}
-																	</span>
-																)}
-																{task.dueDate && (
-																	<span className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 ${task.dueDate < Date.now() ? 'bg-error/20 text-error' : 'bg-info/10 text-info'
-																		}`}>
-																		<Calendar className="w-3 h-3" />
-																		{new Date(task.dueDate).toLocaleDateString()}
-																	</span>
-																)}
-																{task.labels && task.labels.map(label => (
-																	<span key={label} className="text-[10px] px-2 py-0.5 bg-accent/10 text-accent rounded-full">
-																		{label}
-																	</span>
-																))}
-																{task.reaction && (
-																	<span className="text-[14px]">
-																		{task.reaction}
-																	</span>
-																)}
-																{task.assignee && (
-																	<span className="text-[10px] px-2 py-0.5 bg-secondary/10 text-secondary rounded-full font-medium">
-																		{task.assignee}
-																	</span>
-																)}
-																{task.comments && task.comments.length > 0 && (
-																	<span className="text-[10px] px-1.5 py-0.5 bg-base-200 text-base-content/70 rounded flex items-center gap-1">
-																		💬 {task.comments.length}
-																	</span>
-																)}
-															</div>
-
-															<div className="flex justify-between items-end mt-3 relative z-10">
-																<div className="flex gap-1">
-																	{KANBAN_COLUMNS.map(targetCol => targetCol !== col && (
-																		<button
-																			key={targetCol}
-																			onClick={(e) => { e.stopPropagation(); moveTask(task.id, targetCol) }}
-																			className="text-[10px] px-1.5 py-0.5 bg-base-200 hover:bg-primary/20 hover:text-primary rounded text-base-content/50 transition-colors"
-																		>
-																			{targetCol === 'done' ? '→ Done' : targetCol === 'todo' ? '← To Do' : '→ Doing'}
-																		</button>
-																	))}
-																</div>
-																<button onClick={(e) => { e.stopPropagation(); removeTask(task.id) }} className="text-error/50 hover:text-error opacity-0 group-hover:opacity-100 transition-opacity">
-																	<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-																</button>
-															</div>
-														</div>
-													))}
-
-													{newTaskCol === col ? (
-														<form onSubmit={addTask} className="bg-base-100 p-2 rounded-lg border border-primary/50 flex flex-col gap-2">
-															<input
-																autoFocus
-																value={newTaskTitle}
-																onChange={e => setNewTaskTitle(e.target.value)}
-																placeholder="Task title..."
-																className="input input-sm input-ghost w-full px-2"
-															/>
-															<div className="flex gap-2 justify-end">
-																<button type="button" onClick={() => setNewTaskCol('')} className="btn btn-ghost btn-xs">Cancel</button>
-																<button type="submit" className="btn btn-primary btn-xs">Add</button>
-															</div>
-														</form>
-													) : (
-														<button
-															onClick={() => { setNewTaskCol(col); setNewTaskTitle('') }}
-															className="w-full py-2 text-sm text-base-content/50 hover:text-base-content hover:bg-base-300/50 rounded-lg flex items-center justify-center gap-1 transition-colors"
-														>
-															<Plus className="w-4 h-4" /> Add Task
-														</button>
-													)}
-												</div>
-											</div>
-										)
-									})}
-								</div>
-							</div>
+							<KanbanBoard
+								project={activeProject}
+								onProjectUpdate={setActiveProject}
+							/>
 						)}
 
 						{activeTab === 'chat' && activeProject && (
@@ -837,10 +352,9 @@ function ProjectsContent() {
 							<ProjectSkillsPanel projectId={activeProject.id} />
 						)}
 
-						{activeTab === 'files' && activeProject?.path && (
+						{activeTab === 'files' && activeProject && (
 							<div className="absolute inset-0">
-								{/* basePath is 'workspace/<project.path>' since project.path is relative to ~/.tamias/workspace */}
-								<FileNavigator key={activeProject.id} basePath={`workspace/${activeProject.path}`} hideHeader={true} />
+								<FileNavigator key={activeProject.id} basePath={`workspace/${activeProject.id}`} hideHeader={true} />
 							</div>
 						)}
 
@@ -896,169 +410,6 @@ function ProjectsContent() {
 								</div>
 							</div>
 						)}
-					</div>
-				</div>
-			)}
-			{/* Task Detail Modal */}
-			{selectedTask && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-					<div className="bg-base-100 w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-base-300">
-						{/* Header */}
-						<div className="px-6 py-4 border-b border-base-200 flex justify-between items-center bg-base-200/50">
-							<h3 className="font-bold text-lg flex items-center gap-2">
-								Task Details
-								{selectedTask.reaction && <span>{selectedTask.reaction}</span>}
-							</h3>
-							<div className="flex items-center gap-2">
-								<button onClick={deleteTaskFromModal} className="btn btn-sm btn-ghost text-error hover:bg-error/10" title="Delete task">
-									<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
-									Delete
-								</button>
-								<button onClick={closeTaskModal} className="btn btn-sm btn-ghost btn-circle">✕</button>
-							</div>
-						</div>
-
-						{/* Body */}
-						<div className="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-6">
-							{/* Left Col: Details & Comments */}
-							<div className="flex-1 flex flex-col gap-6">
-								<div className="form-control">
-									<label className="label pt-0"><span className="label-text font-semibold">Title</span></label>
-									<textarea
-										className="textarea textarea-bordered w-full font-bold text-base resize-none"
-										rows={2}
-										value={modalTitle}
-										onChange={e => setModalTitle(e.target.value)}
-									/>
-								</div>
-
-								<div className="form-control">
-									<label className="label pt-0"><span className="label-text font-semibold">Details</span></label>
-									<textarea
-										className="textarea textarea-bordered h-32 w-full resize-y font-mono text-sm leading-relaxed"
-										placeholder="Add markdown details, task description, acceptance criteria..."
-										value={modalDetails}
-										onChange={e => setModalDetails(e.target.value)}
-									></textarea>
-								</div>
-
-								<div className="flex justify-end">
-									<button onClick={saveTaskDetails} className="btn btn-sm btn-primary gap-1">
-										<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-										Save & Notify AI
-									</button>
-								</div>
-
-								<div className="divider my-0">Comments</div>
-
-								<div className="flex flex-col gap-3">
-									{selectedTask.comments?.map(c => (
-										<div key={c.id} className="group bg-base-200/50 p-3 rounded-xl border border-base-300">
-											<div className="flex items-center justify-between mb-1">
-												<span className="font-bold text-sm text-primary flex items-center gap-2">
-													{c.author}
-													{c.reaction && <span className="text-base font-normal">{c.reaction}</span>}
-												</span>
-												<div className="flex items-center gap-2">
-													<span className="text-xs opacity-50">{new Date(c.createdAt).toLocaleString()}</span>
-													<button
-														onClick={() => deleteComment(c.id)}
-														className="opacity-0 group-hover:opacity-100 transition-opacity text-error hover:text-error text-xs btn btn-xs btn-ghost btn-circle"
-														title="Delete comment"
-													>✕</button>
-												</div>
-											</div>
-											<div className="text-sm whitespace-pre-wrap">{c.text}</div>
-										</div>
-									))}
-									{(!selectedTask.comments || selectedTask.comments.length === 0) && (
-										<div className="text-center opacity-50 text-sm py-4">No comments yet.</div>
-									)}
-
-									<form onSubmit={addComment} className="mt-2 flex gap-2">
-										<input
-											type="text"
-											className="input input-bordered input-sm flex-1"
-											placeholder="Write a comment..."
-											value={newComment}
-											onChange={e => setNewComment(e.target.value)}
-										/>
-										<button type="submit" className="btn btn-sm btn-primary">Send</button>
-									</form>
-								</div>
-							</div>
-
-							{/* Right Col: Metadata */}
-							<div className="w-full md:w-64 flex flex-col gap-4 shrink-0">
-								<div className="form-control">
-									<label className="label pt-0"><span className="label-text font-semibold">Status</span></label>
-									<select
-										className="select select-bordered select-sm w-full"
-										value={modalStatus}
-										onChange={e => setModalStatus(e.target.value)}
-									>
-										{KANBAN_COLUMNS.map(col => (
-											<option key={col} value={col}>{col.replace('-', ' ')}</option>
-										))}
-									</select>
-								</div>
-
-								<div className="form-control">
-									<label className="label pt-0"><span className="label-text font-semibold">Assignee</span></label>
-									<input
-										type="text"
-										className="input input-bordered input-sm w-full"
-										placeholder="e.g. AI or User"
-										value={modalAssignee}
-										onChange={e => setModalAssignee(e.target.value)}
-									/>
-									<div className="flex gap-2 mt-2">
-										<button onClick={() => setModalAssignee('AI')} className="badge badge-outline hover:bg-primary hover:text-primary-content cursor-pointer transition-colors">AI</button>
-										<button onClick={() => setModalAssignee('User')} className="badge badge-outline hover:bg-primary hover:text-primary-content cursor-pointer transition-colors">User</button>
-									</div>
-								</div>
-
-								<div className="form-control">
-									<label className="label pt-0"><span className="label-text font-semibold flex items-center gap-1"><Flag className="w-3 h-3" /> Priority</span></label>
-									<select
-										className="select select-bordered select-sm w-full"
-										value={modalPriority}
-										onChange={e => setModalPriority(e.target.value as any)}
-									>
-										<option value="">None</option>
-										<option value="low">Low</option>
-										<option value="medium">Medium</option>
-										<option value="high">High</option>
-										<option value="urgent">Urgent</option>
-									</select>
-								</div>
-
-								<div className="form-control">
-									<label className="label pt-0"><span className="label-text font-semibold flex items-center gap-1"><Calendar className="w-3 h-3" /> Due Date</span></label>
-									<input
-										type="date"
-										className="input input-bordered input-sm w-full"
-										value={modalDueDate}
-										onChange={e => setModalDueDate(e.target.value)}
-									/>
-								</div>
-
-								<div className="form-control">
-									<label className="label pt-0"><span className="label-text font-semibold">Labels</span></label>
-									<input
-										type="text"
-										className="input input-bordered input-sm w-full"
-										placeholder="bug, feature, docs (comma-separated)"
-										value={modalLabels}
-										onChange={e => setModalLabels(e.target.value)}
-									/>
-								</div>
-
-								<div className="text-xs opacity-50 mt-auto pt-4 border-t border-base-200">
-									Created: {new Date(selectedTask.createdAt).toLocaleString()}
-								</div>
-							</div>
-						</div>
 					</div>
 				</div>
 			)}

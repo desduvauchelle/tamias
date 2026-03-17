@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getProjects, addProject } from '../../../../../core/projects'
+import { getProjects, addProject, slugifyProject } from '../../../../../core/projects'
 
 export async function GET() {
 	try {
@@ -13,16 +13,19 @@ export async function GET() {
 export async function POST(req: Request) {
 	try {
 		const body = await req.json()
-		if (!body.name || !body.path) {
-			return NextResponse.json({ error: 'Name and path are required' }, { status: 400 })
+		if (!body.name) {
+			return NextResponse.json({ error: 'Name is required' }, { status: 400 })
 		}
 
-		// Reject if the path is already registered to another project
+		// Derive slug from path or name
+		const slug = body.path ? slugifyProject(body.path) : slugifyProject(body.name)
+
+		// Reject if the slug is already registered to another project
 		const existing = getProjects()
-		const duplicate = Object.values(existing).find(p => p.path === body.path)
+		const duplicate = Object.values(existing).find(p => p.id === slug)
 		if (duplicate) {
 			return NextResponse.json(
-				{ error: `Path "${body.path}" is already used by project "${duplicate.name}"` },
+				{ error: `Folder "${slug}" is already used by project "${duplicate.name}"` },
 				{ status: 409 }
 			)
 		}
@@ -30,7 +33,7 @@ export async function POST(req: Request) {
 		const newProject = addProject({
 			name: body.name,
 			description: body.description,
-			path: body.path,
+			path: slug,
 			discordServerId: body.discordServerId,
 			discordChannelId: body.discordChannelId,
 			contextFile: body.contextFile
