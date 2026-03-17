@@ -37,13 +37,13 @@ export async function GET() {
 export async function POST(request: Request) {
 	const port = await getDaemonPort()
 	if (!port) {
-		return NextResponse.json({ ok: false, message: 'Daemon is offline' }, 503)
+		return NextResponse.json({ ok: false, message: 'Daemon is offline' }, { status: 503 })
 	}
 	try {
 		const body = await request.json() as { action: 'launch' | 'close'; url?: string }
 		const { action, ...rest } = body
 		if (action !== 'launch' && action !== 'close') {
-			return NextResponse.json({ ok: false, message: 'Invalid action' }, 400)
+			return NextResponse.json({ ok: false, message: 'Invalid action' }, { status: 400 })
 		}
 		const res = await fetch(`http://127.0.0.1:${port}/browser/${action}`, {
 			method: 'POST',
@@ -53,6 +53,6 @@ export async function POST(request: Request) {
 		})
 		return NextResponse.json(await res.json())
 	} catch (err) {
-		return NextResponse.json({ ok: false, message: String(err) }, 502)
+		return NextResponse.json({ ok: false, message: String(err) }, { status: 502 })
 	}
 }

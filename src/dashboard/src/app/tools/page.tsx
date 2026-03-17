@@ -469,8 +469,6 @@ function GeminiToolCard({
 	)
 }
 
-}
-
 function BrowserToolCard({
 	config,
 	availableFunctions,

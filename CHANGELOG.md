@@ -1,8 +1,9 @@
 # Changelog
 
-## [Unreleased]
+## [v26.03.16.4] - 2026-03-16
 
 ### Features
+- add comprehensive tests for various pages and functionalities
 - add model tier selection for onboarding and AI service
 
 ## [v26.03.16.2] - 2026-03-16

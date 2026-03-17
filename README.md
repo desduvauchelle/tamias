@@ -238,7 +238,8 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.03.16.2)
+### Latest Version (v26.03.16.4)
 
 ### Features
-- add project creation and update APIs with validation
+- add comprehensive tests for various pages and functionalities
+- add model tier selection for onboarding and AI service
