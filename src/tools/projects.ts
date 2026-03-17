@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { getProject, getProjectByDiscordChannel, updateProject, addProject } from '../core/projects'
+import { getProject, getProjectByDiscordChannel, updateProject, addProject, getProjectAgents, addProjectAgent, getProjectCrons, addProjectCron } from '../core/projects'
 import type { KanbanTask, KanbanComment, ProjectConfig } from '../core/projects'
 
 export const project_create = {
@@ -218,5 +218,100 @@ export const project_update_comment = {
 
 		updateProject(project.id, { kanban: updatedKanban }, { source: 'ai' })
 		return { success: true, message: `Comment ${args.commentId} updated in task ${args.taskId}.` }
+	}
+}
+
+export const project_list_agents = {
+	description: 'List all agents scoped to a specific project.',
+	parameters: z.object({
+		projectId: z.string().describe('The project ID to list agents for.'),
+	}),
+	execute: async (args: { projectId: string }) => {
+		try {
+			const agents = getProjectAgents(args.projectId)
+			return {
+				agents: agents.map(a => ({
+					slug: a.slug,
+					name: a.name,
+					model: a.model,
+					enabled: a.enabled,
+				}))
+			}
+		} catch (error) {
+			return { error: String(error) }
+		}
+	}
+}
+
+export const project_add_agent = {
+	description: 'Add a new agent scoped to a specific project.',
+	parameters: z.object({
+		projectId: z.string().describe('The project ID to add the agent to.'),
+		name: z.string().describe('The name of the agent.'),
+		instructions: z.string().describe('The agent instructions/persona.'),
+		model: z.string().optional().describe('The model to use (e.g. "openai/gpt-4o").'),
+	}),
+	execute: async (args: { projectId: string, name: string, instructions: string, model?: string }) => {
+		try {
+			const agent = addProjectAgent(args.projectId, {
+				slug: '',
+				name: args.name,
+				instructions: args.instructions,
+				model: args.model,
+			})
+			return { success: true, agent: { slug: agent.slug, name: agent.name, id: agent.id } }
+		} catch (error) {
+			return { error: String(error) }
+		}
+	}
+}
+
+export const project_list_crons = {
+	description: 'List all cron jobs scoped to a specific project.',
+	parameters: z.object({
+		projectId: z.string().describe('The project ID to list crons for.'),
+	}),
+	execute: async (args: { projectId: string }) => {
+		try {
+			const crons = getProjectCrons(args.projectId)
+			return {
+				crons: crons.map(c => ({
+					id: c.id,
+					name: c.name,
+					schedule: c.schedule,
+					type: c.type,
+					enabled: c.enabled,
+					lastRun: c.lastRun,
+					lastStatus: c.lastStatus,
+				}))
+			}
+		} catch (error) {
+			return { error: String(error) }
+		}
+	}
+}
+
+export const project_add_cron = {
+	description: 'Add a new scheduled cron job scoped to a specific project.',
+	parameters: z.object({
+		projectId: z.string().describe('The project ID to add the cron to.'),
+		name: z.string().describe('The name of the cron job.'),
+		schedule: z.string().describe('The schedule (e.g. "30m", "1h", or a cron expression).'),
+		type: z.enum(['ai', 'message']).default('ai').describe('Type: "ai" sends to AI, "message" sends directly.'),
+		prompt: z.string().describe('The prompt or message text.'),
+	}),
+	execute: async (args: { projectId: string, name: string, schedule: string, type: 'ai' | 'message', prompt: string }) => {
+		try {
+			const cron = addProjectCron(args.projectId, {
+				name: args.name,
+				schedule: args.schedule,
+				type: args.type,
+				prompt: args.prompt,
+				target: 'last',
+			})
+			return { success: true, cron: { id: cron.id, name: cron.name, schedule: cron.schedule } }
+		} catch (error) {
+			return { error: String(error) }
+		}
 	}
 }

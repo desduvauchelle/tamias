@@ -2,6 +2,10 @@ import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, renameSync } from 'fs'
 import { EventEmitter } from 'events'
 import { TAMIAS_DIR } from '../utils/config'
+import type { AgentDefinition } from '../utils/agentsStore'
+import { slugify as slugifyAgent } from '../utils/agentsStore'
+import type { CronJob } from '../utils/cronStore'
+import { CronJobSchema } from '../utils/cronStore'
 
 export const projectEvents = new EventEmitter()
 
@@ -42,6 +46,12 @@ export interface ProjectConfig {
 	createdAt?: string
 	updatedAt?: string
 	kanban: KanbanTask[]
+	/** Global connection nicknames this project is allowed to use */
+	preferredConnections?: string[]
+	/** Model override for this project. Format: "nickname/modelId" */
+	preferredModel?: string
+	/** Model fallback chain for this project */
+	preferredModelFallbacks?: string[]
 }
 
 /** Stored in config.json (no kanban — that's in kanban.json) */
@@ -57,6 +67,9 @@ interface ProjectConfigFile {
 	techStack?: string
 	createdAt?: string
 	updatedAt?: string
+	preferredConnections?: string[]
+	preferredModel?: string
+	preferredModelFallbacks?: string[]
 }
 
 const PROJECTS_DIR = join(TAMIAS_DIR, 'workspace')
@@ -226,7 +239,7 @@ export function addProject(project: Omit<ProjectConfig, 'id' | 'kanban'>): Proje
 		id: finalId,
 		name: project.name,
 		description: project.description,
-		path: finalId,
+		path: project.path || finalId,
 		discordServerId: project.discordServerId,
 		discordChannelId: project.discordChannelId,
 		contextFile: project.contextFile,
@@ -238,6 +251,10 @@ export function addProject(project: Omit<ProjectConfig, 'id' | 'kanban'>): Proje
 
 	writeProjectConfig(projectDir, configData)
 	writeKanban(projectDir, [])
+
+	// Initialize agents and crons as empty arrays
+	writeFileSync(join(projectDir, 'agents.json'), '[]', 'utf-8')
+	writeFileSync(join(projectDir, 'cron.json'), '[]', 'utf-8')
 
 	// Create default context.md
 	writeFileSync(join(projectDir, 'context.md'), `# ${project.name}\n\n${project.description || ''}\n`, 'utf-8')
@@ -319,4 +336,125 @@ export function getProjectSkills(id: string): string[] {
 	} catch {
 		return []
 	}
+}
+
+// ─── Per-Project Agents ─────────────────────────────────────────────────────
+
+function getProjectAgentsFile(id: string): string {
+	return join(PROJECTS_DIR, id, 'agents.json')
+}
+
+/** Read all agents scoped to a project */
+export function getProjectAgents(id: string): AgentDefinition[] {
+	const file = getProjectAgentsFile(id)
+	if (!existsSync(file)) return []
+	try {
+		const raw = JSON.parse(readFileSync(file, 'utf-8'))
+		return (raw as AgentDefinition[]).map(a => ({
+			...a,
+			slug: a.slug || slugifyAgent(a.name),
+		}))
+	} catch {
+		return []
+	}
+}
+
+function saveProjectAgents(id: string, agents: AgentDefinition[]): void {
+	const file = getProjectAgentsFile(id)
+	writeFileSync(file, JSON.stringify(agents, null, 2), 'utf-8')
+}
+
+/** Add an agent to a project */
+export function addProjectAgent(id: string, agent: Omit<AgentDefinition, 'id' | 'enabled'>): AgentDefinition {
+	const projectDir = join(PROJECTS_DIR, id)
+	if (!existsSync(projectDir)) throw new Error(`Project ${id} not found`)
+
+	const agents = getProjectAgents(id)
+	const slug = agent.slug || slugifyAgent(agent.name)
+	const newAgent: AgentDefinition = {
+		...agent,
+		slug,
+		id: `agent_${Math.random().toString(36).slice(2, 6)}`,
+		enabled: true,
+	}
+	agents.push(newAgent)
+	saveProjectAgents(id, agents)
+	return newAgent
+}
+
+/** Update an agent in a project by slug */
+export function updateProjectAgent(id: string, agentSlug: string, updates: Partial<Omit<AgentDefinition, 'id'>>): AgentDefinition {
+	const agents = getProjectAgents(id)
+	const index = agents.findIndex(a => a.slug === agentSlug)
+	if (index === -1) throw new Error(`Agent "${agentSlug}" not found in project ${id}`)
+	agents[index] = { ...agents[index], ...updates }
+	saveProjectAgents(id, agents)
+	return agents[index]
+}
+
+/** Remove an agent from a project by slug */
+export function removeProjectAgent(id: string, agentSlug: string): void {
+	const agents = getProjectAgents(id)
+	const filtered = agents.filter(a => a.slug !== agentSlug)
+	if (agents.length === filtered.length) throw new Error(`Agent "${agentSlug}" not found in project ${id}`)
+	saveProjectAgents(id, filtered)
+}
+
+// ─── Per-Project Crons ──────────────────────────────────────────────────────
+
+function getProjectCronsFile(id: string): string {
+	return join(PROJECTS_DIR, id, 'cron.json')
+}
+
+/** Read all cron jobs scoped to a project */
+export function getProjectCrons(id: string): CronJob[] {
+	const file = getProjectCronsFile(id)
+	if (!existsSync(file)) return []
+	try {
+		const raw = JSON.parse(readFileSync(file, 'utf-8'))
+		return (raw as any[]).map(entry => CronJobSchema.parse(entry))
+	} catch {
+		return []
+	}
+}
+
+function saveProjectCrons(id: string, crons: CronJob[]): void {
+	const file = getProjectCronsFile(id)
+	writeFileSync(file, JSON.stringify(crons, null, 2), 'utf-8')
+}
+
+/** Add a cron job to a project */
+export function addProjectCron(id: string, job: Omit<CronJob, 'id' | 'createdAt' | 'enabled'>): CronJob {
+	const projectDir = join(PROJECTS_DIR, id)
+	if (!existsSync(projectDir)) throw new Error(`Project ${id} not found`)
+
+	const crons = getProjectCrons(id)
+	const newJob = CronJobSchema.parse({
+		...job,
+		id: `cron_${Math.random().toString(36).slice(2, 6)}`,
+		createdAt: new Date().toISOString(),
+		enabled: true,
+	})
+	crons.push(newJob)
+	saveProjectCrons(id, crons)
+	return newJob
+}
+
+/** Update a cron job in a project by jobId */
+export function updateProjectCron(id: string, jobId: string, updates: Partial<Omit<CronJob, 'id'>>): CronJob {
+	const crons = getProjectCrons(id)
+	const index = crons.findIndex(c => c.id === jobId)
+	if (index === -1) throw new Error(`Cron "${jobId}" not found in project ${id}`)
+	const updated = CronJobSchema.parse({ ...crons[index], ...updates })
+	crons[index] = updated
+	saveProjectCrons(id, crons)
+	return updated
+}
+
+/** Remove a cron job from a project by jobId */
+export function removeProjectCron(id: string, jobId: string): void {
+	const crons = getProjectCrons(id)
+	const filtered = crons.filter(c => c.id !== jobId)
+	if (crons.length === filtered.length) throw new Error(`Cron "${jobId}" not found in project ${id}`)
+	saveProjectCrons(id, filtered)
 }

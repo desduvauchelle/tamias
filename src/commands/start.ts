@@ -647,9 +647,21 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			if (method === 'POST' && url.pathname === '/cron-test') {
 				try {
 					const body = await req.json() as any
-					const { cronId, target } = body
-					const jobs = loadCronJobs()
-					const job = jobs.find(j => j.id === cronId)
+					const { cronId, target, projectId: cronProjectId } = body
+					let job: any
+					let isProjectCron = false
+
+					// Search project crons first if projectId provided, then global
+					if (cronProjectId) {
+						const { getProjectCrons } = await import('../core/projects.js')
+						const projectCrons = getProjectCrons(cronProjectId)
+						job = projectCrons.find((j: any) => j.id === cronId)
+						if (job) isProjectCron = true
+					}
+					if (!job) {
+						const jobs = loadCronJobs()
+						job = jobs.find(j => j.id === cronId)
+					}
 					if (!job) return json({ error: `Cron job '${cronId}' not found` }, 404)
 
 					// Override target for testing
@@ -701,6 +713,15 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 						}
 					}
 
+					// For project crons without explicit delivery, use the project session
+					if (isProjectCron && cronProjectId && !session) {
+						const projectSessionId = `project-${cronProjectId}`
+						session = aiService.getSession(projectSessionId)
+						if (!session) {
+							session = aiService.createSession({ channelId: 'terminal', projectSlug: cronProjectId })
+						}
+					}
+
 					if (testJob.type === 'message') {
 						session.emitter.emit('event', { type: 'start', sessionId: session.id })
 						session.emitter.emit('event', { type: 'chunk', text: promptBody })
@@ -713,7 +734,12 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 						} as any).catch(err => console.error('[cron-test] Error:', err))
 					}
 
-					recordCronJobRun(testJob.id, { status: 'success' })
+					if (isProjectCron && cronProjectId) {
+						const { updateProjectCron } = await import('../core/projects.js')
+						try { updateProjectCron(cronProjectId, testJob.id, { lastRun: new Date().toISOString(), lastStatus: 'success' }) } catch { /* ignore */ }
+					} else {
+						recordCronJobRun(testJob.id, { status: 'success' })
+					}
 					return json({ ok: true, jobName: job.name, target: testJob.target })
 				} catch (err) {
 					return json({ error: String(err) }, 500)

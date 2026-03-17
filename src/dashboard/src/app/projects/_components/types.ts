@@ -31,6 +31,9 @@ export interface Project {
 	discordChannelId?: string
 	contextFile?: string
 	kanban: KanbanTask[]
+	preferredConnections?: string[]
+	preferredModel?: string
+	preferredModelFallbacks?: string[]
 }
 
 export const KANBAN_COLUMNS = ['todo', 'in-progress', 'awaiting-review', 'done'] as const

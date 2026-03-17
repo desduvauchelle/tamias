@@ -3,7 +3,11 @@
 ## [Unreleased]
 
 ### Features
+- unify project directory into ~/.tamias/workspace/<slug>/
 - implement browser authentication functionality with launch and close endpoints
+
+### Maintenance
+- update changelog for version v26.03.16.4 and fix response status handling in browser route
 
 ## [v26.03.16.4] - 2026-03-16
 

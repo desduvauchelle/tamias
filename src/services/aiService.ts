@@ -586,8 +586,12 @@ Important: Post at least one progress comment before your final result so the us
 		const session = this.sessions.get(sessionId)
 		if (!session) throw new Error('Session not found')
 
-		const { findAgent, getAgentDir, resolveAgentModelChain } = await import('../utils/agentsStore.ts')
-		const targetAgent = findAgent(targetAgentId)
+		const { findAgent: findGlobalAgent, getAgentDir, resolveAgentModelChain } = await import('../utils/agentsStore.ts')
+		// Search project agents first, then global
+		let targetAgent = session.projectSlug
+			? (() => { try { const { getProjectAgents } = require('../core/projects'); return (getProjectAgents(session.projectSlug!) as any[]).find((a: any) => a.id === targetAgentId || a.slug === targetAgentId?.toLowerCase() || a.name.toLowerCase() === targetAgentId?.toLowerCase()) } catch { return undefined } })()
+			: undefined
+		if (!targetAgent) targetAgent = findGlobalAgent(targetAgentId)
 		if (!targetAgent) throw new Error(`Agent "${targetAgentId}" not found`)
 
 		const fromAgent = session.agentSlug || 'default'
@@ -717,12 +721,30 @@ Important: Post at least one progress comment before your final result so the us
 		debug(`processSession(${session.id}): currentDefaults=[${currentDefaults.join(', ') || 'NONE'}]`)
 		debug(`processSession(${session.id}): smartModels=[${currentSmartModels.join(', ') || 'NONE'}]`)
 		debug(`processSession(${session.id}): allConfiguredModels=[${allConfiguredModels.join(', ') || 'NONE'}]`)
+		// Resolve project model preferences if session is linked to a project
+		let projectModelChain: string[] = []
+		if (session.projectSlug) {
+			try {
+				const { getProject } = await import('../core/projects')
+				const proj = getProject(session.projectSlug)
+				if (proj?.preferredModel) {
+					projectModelChain = [proj.preferredModel, ...(proj.preferredModelFallbacks || [])]
+				}
+			} catch { /* ignore */ }
+		}
+
 		const modelsToTry = [
 			// Agent-specific models take highest priority
 			...(session.agentId ? (() => {
-				const agent = findAgent(session.agentId)
+				// Check project agents first, then global agents
+				let agent = session.projectSlug
+					? (() => { try { const { getProjectAgents } = require('../core/projects'); return (getProjectAgents(session.projectSlug!) as any[]).find((a: any) => a.id === session.agentId || a.slug === session.agentId) } catch { return undefined } })()
+					: undefined
+				if (!agent) agent = findAgent(session.agentId)
 				return agent ? resolveAgentModelChain(agent) : []
 			})() : []),
+			// Project-preferred models come after agent, before smart tier
+			...projectModelChain,
 			// Smart models take priority when tier is 'smart'
 			...(session.modelTier === 'smart' ? currentSmartModels : []),
 			...currentDefaults,
@@ -821,6 +843,23 @@ Important: Post at least one progress comment before your final result so the us
 										projText += `\n### Context File (${project.contextFile}):\n\`\`\`\n${content}\n\`\`\``
 									}
 								}
+
+								// Include project agents and crons for context awareness
+								try {
+									const { getProjectAgents, getProjectCrons } = await import('../core/projects')
+									const projectAgents = getProjectAgents(project.id)
+									if (projectAgents.length > 0) {
+										projText += `\n### Project Agents:\n${projectAgents.map(a => `- ${a.name} (${a.slug})${a.enabled ? '' : ' [disabled]'}`).join('\n')}\n`
+									}
+									const projectCrons = getProjectCrons(project.id)
+									if (projectCrons.length > 0) {
+										projText += `\n### Project Crons:\n${projectCrons.map(c => `- ${c.name} [${c.schedule}] ${c.enabled ? '' : '[disabled]'}`).join('\n')}\n`
+									}
+									if (project.preferredModel) {
+										projText += `\n### Project Preferred Model: ${project.preferredModel}\n`
+									}
+								} catch { /* ignore if not available */ }
+
 								parts.push(projText)
 							}
 						} catch (e) {

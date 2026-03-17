@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useToast } from "../_components/ToastProvider"
-import { KanbanSquare, FolderOpen, Settings, Plus, LayoutDashboard, Edit, Check, FileText, MessageSquare, Puzzle, Trash2 } from "lucide-react"
+import { KanbanSquare, FolderOpen, Settings, Plus, LayoutDashboard, Edit, Check, FileText, MessageSquare, Puzzle, Trash2, Bot, Clock, ToggleLeft, ToggleRight, Zap, ChevronUp, ChevronDown, X } from "lucide-react"
 import FileNavigator from '../_components/FileNavigator'
 import ChatTerminal from '../_components/ChatTerminal'
 import { marked } from 'marked'
@@ -48,15 +48,17 @@ function ProjectsContent() {
 	})
 
 	const [activeProject, setActiveProject] = useState<Project | null>(null)
-	const [activeTab, setActiveTab] = useState<'overview' | 'chat' | 'kanban' | 'skills' | 'files' | 'settings'>(
-		(['overview', 'chat', 'kanban', 'skills', 'files', 'settings'].includes(searchParams.get('tab') || '') ? searchParams.get('tab') : 'overview') as any
+	const validTabs = ['overview', 'chat', 'kanban', 'agents', 'crons', 'skills', 'files', 'settings'] as const
+	type TabType = typeof validTabs[number]
+	const [activeTab, setActiveTab] = useState<TabType>(
+		((validTabs as readonly string[]).includes(searchParams.get('tab') || '') ? searchParams.get('tab') : 'overview') as TabType
 	)
 
 	// Sync activeTab to URL and vice-versa
 	useEffect(() => {
 		const tabQuery = searchParams.get('tab')
-		if (tabQuery && ['overview', 'chat', 'kanban', 'skills', 'files', 'settings'].includes(tabQuery) && tabQuery !== activeTab) {
-			setActiveTab(tabQuery as any)
+		if (tabQuery && (validTabs as readonly string[]).includes(tabQuery) && tabQuery !== activeTab) {
+			setActiveTab(tabQuery as TabType)
 		}
 	}, [searchParams])
 
@@ -83,6 +85,15 @@ function ProjectsContent() {
 	const [isEditingContext, setIsEditingContext] = useState(false)
 	const [editedContext, setEditedContext] = useState("")
 
+	// Connection Preferences State
+	const [formPreferredConnections, setFormPreferredConnections] = useState<string[]>([])
+	const [formPreferredModel, setFormPreferredModel] = useState("")
+	const [formPreferredModelFallbacks, setFormPreferredModelFallbacks] = useState<string[]>([])
+
+	interface ConnectionInfo { nickname: string; provider: string; models?: string[] }
+	const [availableConnections, setAvailableConnections] = useState<ConnectionInfo[]>([])
+	const [connectionModels, setConnectionModels] = useState<Record<string, { id: string; name: string }[]>>({})
+
 	// Update active project when ID param changes or projects load
 	useEffect(() => {
 		if (projectId && projects.length > 0) {
@@ -96,6 +107,9 @@ function ProjectsContent() {
 				setFormPath(found.path)
 				setFormChannel(found.discordChannelId || "")
 				setFormContext(found.contextFile || "readme.md")
+				setFormPreferredConnections(found.preferredConnections || [])
+				setFormPreferredModel(found.preferredModel || "")
+				setFormPreferredModelFallbacks(found.preferredModelFallbacks || [])
 			} else {
 				setActiveProject(null)
 			}
@@ -103,6 +117,49 @@ function ProjectsContent() {
 			setActiveProject(null)
 		}
 	}, [projectId, projects])
+
+	// Load available connections for settings tab
+	useEffect(() => {
+		if (activeTab === 'settings') {
+			fetch('/api/models')
+				.then(r => r.ok ? r.json() : null)
+				.then(data => {
+					if (!data) return
+					const conns: ConnectionInfo[] = Object.values(data.connections || {}).map((c: any) => ({
+						nickname: c.nickname,
+						provider: c.provider || 'unknown',
+					}))
+					setAvailableConnections(conns)
+					// Fetch models for each connection
+					for (const conn of conns) {
+						fetch('/api/models/available', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ provider: conn.provider, nickname: conn.nickname }),
+						})
+							.then(r => r.ok ? r.json() : null)
+							.then(d => {
+								if (d?.models) {
+									setConnectionModels(prev => ({ ...prev, [conn.nickname]: d.models }))
+								}
+							})
+							.catch(() => { /* ignore */ })
+					}
+				})
+				.catch(() => { /* ignore */ })
+		}
+	}, [activeTab])
+
+	// All models from selected connections
+	const allAvailableModels = useMemo(() => {
+		const models: { id: string; name: string; connection: string }[] = []
+		for (const nickname of formPreferredConnections) {
+			for (const m of (connectionModels[nickname] || [])) {
+				models.push({ id: `${nickname}/${m.id}`, name: `${nickname} / ${m.name}`, connection: nickname })
+			}
+		}
+		return models
+	}, [formPreferredConnections, connectionModels])
 
 	// Load context markdown when switching to overview
 	useEffect(() => {
@@ -183,7 +240,10 @@ function ProjectsContent() {
 					path: normalizedPath,
 					discordChannelId: selectedChannel?.id || undefined,
 					discordServerId: selectedChannel?.guildId || undefined,
-					contextFile: formContext
+					contextFile: formContext,
+					preferredConnections: formPreferredConnections.length > 0 ? formPreferredConnections : undefined,
+					preferredModel: formPreferredModel || undefined,
+					preferredModelFallbacks: formPreferredModelFallbacks.length > 0 ? formPreferredModelFallbacks : undefined,
 				})
 			})
 
@@ -279,6 +339,18 @@ function ProjectsContent() {
 								<KanbanSquare className="w-4 h-4" /> Kanban Board
 							</button>
 							<button
+								className={`tab tab-lg gap-2 transition-all ${activeTab === 'agents' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
+								onClick={() => setActiveTab('agents')}
+							>
+								<Bot className="w-4 h-4" /> Agents
+							</button>
+							<button
+								className={`tab tab-lg gap-2 transition-all ${activeTab === 'crons' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
+								onClick={() => setActiveTab('crons')}
+							>
+								<Clock className="w-4 h-4" /> Crons
+							</button>
+							<button
 								className={`tab tab-lg gap-2 transition-all ${activeTab === 'skills' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
 								onClick={() => setActiveTab('skills')}
 							>
@@ -348,6 +420,14 @@ function ProjectsContent() {
 							</div>
 						)}
 
+						{activeTab === 'agents' && activeProject && (
+							<ProjectAgentsPanel projectId={activeProject.id} />
+						)}
+
+						{activeTab === 'crons' && activeProject && (
+							<ProjectCronsPanel projectId={activeProject.id} />
+						)}
+
 						{activeTab === 'skills' && activeProject && (
 							<ProjectSkillsPanel projectId={activeProject.id} />
 						)}
@@ -402,6 +482,112 @@ function ProjectsContent() {
 									</div>
 								)}
 
+								<div className="divider opacity-50">AI Connection Preferences</div>
+
+								<div className="form-control">
+									<label className="label pb-1"><span className="label-text font-bold text-base flex items-center gap-2"><Zap className="w-4 h-4 text-warning" /> Preferred Connections</span></label>
+									<p className="text-xs text-base-content/50 mb-3">Select which AI connections this project should use. Leave empty to use global defaults.</p>
+									{availableConnections.length === 0 ? (
+										<p className="text-sm text-base-content/40 italic">No connections configured. Set up connections in the Models page first.</p>
+									) : (
+										<div className="space-y-2">
+											{availableConnections.map(conn => (
+												<label key={conn.nickname} className="flex items-center gap-3 p-2 rounded-lg hover:bg-base-200 cursor-pointer">
+													<input
+														type="checkbox"
+														className="checkbox checkbox-sm checkbox-primary"
+														checked={formPreferredConnections.includes(conn.nickname)}
+														onChange={e => {
+															if (e.target.checked) {
+																setFormPreferredConnections(prev => [...prev, conn.nickname])
+															} else {
+																setFormPreferredConnections(prev => prev.filter(n => n !== conn.nickname))
+																setFormPreferredModel(prev => prev.startsWith(conn.nickname + '/') ? '' : prev)
+																setFormPreferredModelFallbacks(prev => prev.filter(m => !m.startsWith(conn.nickname + '/')))
+															}
+														}}
+													/>
+													<span className="font-medium">{conn.nickname}</span>
+													<span className="badge badge-sm badge-ghost">{conn.provider}</span>
+												</label>
+											))}
+										</div>
+									)}
+								</div>
+
+								{formPreferredConnections.length > 0 && (
+									<>
+										<div className="form-control">
+											<label className="label pb-1"><span className="label-text font-bold text-base">Preferred Model</span></label>
+											<select
+												value={formPreferredModel}
+												onChange={e => setFormPreferredModel(e.target.value)}
+												className="select select-bordered w-full"
+											>
+												<option value="">-- Use global default --</option>
+												{allAvailableModels.map(m => (
+													<option key={m.id} value={m.id}>{m.name}</option>
+												))}
+											</select>
+											<label className="label"><span className="label-text-alt text-base-content/50">Primary model for this project&apos;s AI sessions.</span></label>
+										</div>
+
+										<div className="form-control">
+											<label className="label pb-1"><span className="label-text font-bold text-base">Fallback Models</span></label>
+											<p className="text-xs text-base-content/50 mb-2">If the preferred model is unavailable, these models are tried in order.</p>
+											{formPreferredModelFallbacks.length > 0 && (
+												<div className="space-y-1 mb-3">
+													{formPreferredModelFallbacks.map((fb, idx) => (
+														<div key={fb} className="flex items-center gap-2 bg-base-200 rounded-lg px-3 py-2">
+															<span className="text-xs text-base-content/40 w-5">{idx + 1}.</span>
+															<span className="flex-1 font-mono text-sm">{fb}</span>
+															<button
+																onClick={() => {
+																	const arr = [...formPreferredModelFallbacks]
+																	if (idx > 0) { [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]] }
+																	setFormPreferredModelFallbacks(arr)
+																}}
+																className="btn btn-ghost btn-xs"
+																disabled={idx === 0}
+															><ChevronUp className="w-3 h-3" /></button>
+															<button
+																onClick={() => {
+																	const arr = [...formPreferredModelFallbacks]
+																	if (idx < arr.length - 1) { [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]] }
+																	setFormPreferredModelFallbacks(arr)
+																}}
+																className="btn btn-ghost btn-xs"
+																disabled={idx === formPreferredModelFallbacks.length - 1}
+															><ChevronDown className="w-3 h-3" /></button>
+															<button
+																onClick={() => setFormPreferredModelFallbacks(prev => prev.filter((_, i) => i !== idx))}
+																className="btn btn-ghost btn-xs text-error"
+															><X className="w-3 h-3" /></button>
+														</div>
+													))}
+												</div>
+											)}
+											<select
+												className="select select-bordered select-sm w-full"
+												value=""
+												onChange={e => {
+													if (e.target.value && !formPreferredModelFallbacks.includes(e.target.value)) {
+														setFormPreferredModelFallbacks(prev => [...prev, e.target.value])
+													}
+													e.target.value = ''
+												}}
+											>
+												<option value="">+ Add fallback model...</option>
+												{allAvailableModels
+													.filter(m => m.id !== formPreferredModel && !formPreferredModelFallbacks.includes(m.id))
+													.map(m => (
+														<option key={m.id} value={m.id}>{m.name}</option>
+													))}
+											</select>
+										</div>
+									</>
+								)}
+
 								<div className="flex justify-between items-center pt-8 mt-4 border-t border-base-300">
 									<button onClick={() => handleDelete(activeProject?.id || '')} className="btn btn-outline btn-error btn-sm">Delete Project</button>
 									<button onClick={handleSave} className="btn btn-primary gap-2">
@@ -413,6 +599,306 @@ function ProjectsContent() {
 					</div>
 				</div>
 			)}
+		</div>
+	)
+}
+
+interface ProjectAgent {
+	id: string
+	slug: string
+	name: string
+	model?: string
+	instructions: string
+	enabled: boolean
+	allowedTools?: string[]
+}
+
+function ProjectAgentsPanel({ projectId }: { projectId: string }) {
+	const [agents, setAgents] = useState<ProjectAgent[]>([])
+	const [loading, setLoading] = useState(true)
+	const [isAdding, setIsAdding] = useState(false)
+	const [formName, setFormName] = useState('')
+	const [formInstructions, setFormInstructions] = useState('')
+	const [formModel, setFormModel] = useState('')
+	const { success, error } = useToast()
+
+	const fetchAgents = useCallback(async () => {
+		try {
+			const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/agents`)
+			if (res.ok) setAgents(await res.json())
+		} catch { /* ignore */ } finally { setLoading(false) }
+	}, [projectId])
+
+	useEffect(() => { fetchAgents() }, [fetchAgents])
+
+	const handleAdd = async () => {
+		if (!formName.trim() || !formInstructions.trim()) {
+			error('Name and instructions are required')
+			return
+		}
+		try {
+			const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/agents`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: formName, instructions: formInstructions, model: formModel || undefined }),
+			})
+			if (res.ok) {
+				success('Agent added')
+				setFormName(''); setFormInstructions(''); setFormModel(''); setIsAdding(false)
+				fetchAgents()
+			} else {
+				const data = await res.json()
+				error(data.error || 'Failed to add agent')
+			}
+		} catch { error('Failed to add agent') }
+	}
+
+	const handleDelete = async (slug: string) => {
+		try {
+			const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/agents?slug=${encodeURIComponent(slug)}`, { method: 'DELETE' })
+			if (res.ok) { success('Agent deleted'); fetchAgents() }
+		} catch { error('Failed to delete agent') }
+	}
+
+	if (loading) return <div className="p-8 flex justify-center"><span className="loading loading-spinner loading-lg text-primary" /></div>
+
+	return (
+		<div className="h-full overflow-y-auto p-8 max-w-4xl mx-auto">
+			<div className="flex justify-between items-center mb-6">
+				<div>
+					<h3 className="text-lg font-bold">Project Agents</h3>
+					<p className="text-sm text-base-content/60">Agents scoped to this project. They override global agents with the same slug.</p>
+				</div>
+				<button onClick={() => setIsAdding(!isAdding)} className="btn btn-primary btn-sm gap-2">
+					<Plus className="w-4 h-4" /> Add Agent
+				</button>
+			</div>
+
+			{isAdding && (
+				<div className="card bg-base-200 border border-base-300 mb-6">
+					<div className="card-body gap-4">
+						<div className="form-control">
+							<label className="label"><span className="label-text font-medium">Agent Name</span></label>
+							<input value={formName} onChange={e => setFormName(e.target.value)} className="input input-bordered w-full" placeholder="e.g. Code Reviewer" />
+						</div>
+						<div className="form-control">
+							<label className="label"><span className="label-text font-medium">Model (optional)</span></label>
+							<input value={formModel} onChange={e => setFormModel(e.target.value)} className="input input-bordered w-full font-mono text-sm" placeholder="e.g. openai/gpt-4o" />
+						</div>
+						<div className="form-control">
+							<label className="label"><span className="label-text font-medium">Instructions</span></label>
+							<textarea value={formInstructions} onChange={e => setFormInstructions(e.target.value)} className="textarea textarea-bordered h-32 font-mono text-sm" placeholder="You are a code reviewer specialized in..." />
+						</div>
+						<div className="flex gap-2 justify-end">
+							<button onClick={() => setIsAdding(false)} className="btn btn-ghost btn-sm">Cancel</button>
+							<button onClick={handleAdd} className="btn btn-primary btn-sm">Save Agent</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{agents.length === 0 && !isAdding && (
+				<div className="text-center py-12 text-base-content/40">
+					<Bot className="w-12 h-12 mx-auto mb-4 opacity-30" />
+					<p className="text-lg">No project-specific agents yet</p>
+					<p className="text-sm mt-1">Add agents to customize AI personas for this project</p>
+				</div>
+			)}
+
+			<div className="space-y-3">
+				{agents.map(agent => (
+					<div key={agent.slug} className="card bg-base-200 border border-base-300">
+						<div className="card-body py-4 px-5">
+							<div className="flex justify-between items-start">
+								<div>
+									<h4 className="font-bold flex items-center gap-2">
+										{agent.name}
+										<span className="badge badge-sm badge-ghost font-mono">{agent.slug}</span>
+										{agent.enabled ? (
+											<span className="badge badge-sm badge-success">enabled</span>
+										) : (
+											<span className="badge badge-sm badge-error">disabled</span>
+										)}
+									</h4>
+									{agent.model && <p className="text-xs text-base-content/50 font-mono mt-1">{agent.model}</p>}
+								</div>
+								<button onClick={() => handleDelete(agent.slug)} className="btn btn-ghost btn-xs text-error">
+									<Trash2 className="w-4 h-4" />
+								</button>
+							</div>
+							<details className="mt-2">
+								<summary className="cursor-pointer text-sm text-base-content/50 hover:text-base-content/80">View instructions</summary>
+								<pre className="mt-2 p-3 bg-base-100 rounded text-xs font-mono overflow-x-auto max-h-60 overflow-y-auto whitespace-pre-wrap">{agent.instructions}</pre>
+							</details>
+						</div>
+					</div>
+				))}
+			</div>
+		</div>
+	)
+}
+
+interface ProjectCron {
+	id: string
+	name: string
+	schedule: string
+	type: 'ai' | 'message'
+	prompt: string
+	enabled: boolean
+	lastRun?: string
+	lastStatus?: 'success' | 'error'
+}
+
+function ProjectCronsPanel({ projectId }: { projectId: string }) {
+	const [crons, setCrons] = useState<ProjectCron[]>([])
+	const [loading, setLoading] = useState(true)
+	const [isAdding, setIsAdding] = useState(false)
+	const [formName, setFormName] = useState('')
+	const [formSchedule, setFormSchedule] = useState('')
+	const [formType, setFormType] = useState<'ai' | 'message'>('ai')
+	const [formPrompt, setFormPrompt] = useState('')
+	const { success, error } = useToast()
+
+	const fetchCrons = useCallback(async () => {
+		try {
+			const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/crons`)
+			if (res.ok) setCrons(await res.json())
+		} catch { /* ignore */ } finally { setLoading(false) }
+	}, [projectId])
+
+	useEffect(() => { fetchCrons() }, [fetchCrons])
+
+	const handleAdd = async () => {
+		if (!formName.trim() || !formSchedule.trim() || !formPrompt.trim()) {
+			error('Name, schedule, and prompt are required')
+			return
+		}
+		try {
+			const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/crons`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: formName, schedule: formSchedule, type: formType, prompt: formPrompt }),
+			})
+			if (res.ok) {
+				success('Cron added')
+				setFormName(''); setFormSchedule(''); setFormPrompt(''); setFormType('ai'); setIsAdding(false)
+				fetchCrons()
+			} else {
+				const data = await res.json()
+				error(data.error || 'Failed to add cron')
+			}
+		} catch { error('Failed to add cron') }
+	}
+
+	const handleToggle = async (cron: ProjectCron) => {
+		try {
+			const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/crons`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ jobId: cron.id, enabled: !cron.enabled }),
+			})
+			if (res.ok) fetchCrons()
+		} catch { error('Failed to toggle cron') }
+	}
+
+	const handleDelete = async (jobId: string) => {
+		try {
+			const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/crons?jobId=${encodeURIComponent(jobId)}`, { method: 'DELETE' })
+			if (res.ok) { success('Cron deleted'); fetchCrons() }
+		} catch { error('Failed to delete cron') }
+	}
+
+	if (loading) return <div className="p-8 flex justify-center"><span className="loading loading-spinner loading-lg text-primary" /></div>
+
+	return (
+		<div className="h-full overflow-y-auto p-8 max-w-4xl mx-auto">
+			<div className="flex justify-between items-center mb-6">
+				<div>
+					<h3 className="text-lg font-bold">Project Crons</h3>
+					<p className="text-sm text-base-content/60">Scheduled tasks scoped to this project. They automatically have project context.</p>
+				</div>
+				<button onClick={() => setIsAdding(!isAdding)} className="btn btn-primary btn-sm gap-2">
+					<Plus className="w-4 h-4" /> Add Cron
+				</button>
+			</div>
+
+			{isAdding && (
+				<div className="card bg-base-200 border border-base-300 mb-6">
+					<div className="card-body gap-4">
+						<div className="grid grid-cols-2 gap-4">
+							<div className="form-control">
+								<label className="label"><span className="label-text font-medium">Cron Name</span></label>
+								<input value={formName} onChange={e => setFormName(e.target.value)} className="input input-bordered w-full" placeholder="e.g. Daily Status Update" />
+							</div>
+							<div className="form-control">
+								<label className="label"><span className="label-text font-medium">Schedule</span></label>
+								<input value={formSchedule} onChange={e => setFormSchedule(e.target.value)} className="input input-bordered w-full font-mono" placeholder="e.g. 30m, 1h, 0 9 * * *" />
+							</div>
+						</div>
+						<div className="form-control">
+							<label className="label"><span className="label-text font-medium">Type</span></label>
+							<select value={formType} onChange={e => setFormType(e.target.value as 'ai' | 'message')} className="select select-bordered w-full">
+								<option value="ai">AI (send prompt to AI, deliver response)</option>
+								<option value="message">Message (send prompt text directly)</option>
+							</select>
+						</div>
+						<div className="form-control">
+							<label className="label"><span className="label-text font-medium">Prompt</span></label>
+							<textarea value={formPrompt} onChange={e => setFormPrompt(e.target.value)} className="textarea textarea-bordered h-24 font-mono text-sm" placeholder="Check the project kanban board and report any overdue tasks..." />
+						</div>
+						<div className="flex gap-2 justify-end">
+							<button onClick={() => setIsAdding(false)} className="btn btn-ghost btn-sm">Cancel</button>
+							<button onClick={handleAdd} className="btn btn-primary btn-sm">Save Cron</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{crons.length === 0 && !isAdding && (
+				<div className="text-center py-12 text-base-content/40">
+					<Clock className="w-12 h-12 mx-auto mb-4 opacity-30" />
+					<p className="text-lg">No project-specific crons yet</p>
+					<p className="text-sm mt-1">Add scheduled tasks that run with this project&apos;s context</p>
+				</div>
+			)}
+
+			<div className="space-y-3">
+				{crons.map(cron => (
+					<div key={cron.id} className="card bg-base-200 border border-base-300">
+						<div className="card-body py-4 px-5">
+							<div className="flex justify-between items-start">
+								<div className="flex items-center gap-3">
+									<button onClick={() => handleToggle(cron)} className="text-base-content/60 hover:text-base-content">
+										{cron.enabled ? <ToggleRight className="w-6 h-6 text-success" /> : <ToggleLeft className="w-6 h-6" />}
+									</button>
+									<div>
+										<h4 className="font-bold flex items-center gap-2">
+											{cron.name}
+											<span className="badge badge-sm badge-ghost font-mono">{cron.schedule}</span>
+											<span className={`badge badge-sm ${cron.type === 'ai' ? 'badge-primary' : 'badge-secondary'}`}>{cron.type}</span>
+										</h4>
+										{cron.lastRun && (
+											<p className="text-xs text-base-content/50 mt-1">
+												Last run: {new Date(cron.lastRun).toLocaleString()}
+												{cron.lastStatus && (
+													<span className={`ml-2 ${cron.lastStatus === 'success' ? 'text-success' : 'text-error'}`}>({cron.lastStatus})</span>
+												)}
+											</p>
+										)}
+									</div>
+								</div>
+								<button onClick={() => handleDelete(cron.id)} className="btn btn-ghost btn-xs text-error">
+									<Trash2 className="w-4 h-4" />
+								</button>
+							</div>
+							<details className="mt-2">
+								<summary className="cursor-pointer text-sm text-base-content/50 hover:text-base-content/80">View prompt</summary>
+								<pre className="mt-2 p-3 bg-base-100 rounded text-xs font-mono overflow-x-auto max-h-60 overflow-y-auto whitespace-pre-wrap">{cron.prompt}</pre>
+							</details>
+						</div>
+					</div>
+				))}
+			</div>
 		</div>
 	)
 }
