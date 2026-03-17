@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+- implement browser authentication functionality with launch and close endpoints
+
 ## [v26.03.16.4] - 2026-03-16
 
 ### Features
