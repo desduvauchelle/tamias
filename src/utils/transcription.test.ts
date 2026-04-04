@@ -1,20 +1,23 @@
 /**
- * Tests for src/utils/transcription.ts
+ * Tests for src/utils/transcription.ts (Parakeet / sherpa-onnx backend)
  *
- * @xenova/transformers and fluent-ffmpeg are mocked so tests run without
- * native binaries or model downloads.  The real wavefile package is used with
- * a valid WAV buffer returned by the ffmpeg mock, so WaveFile parses real data
- * without needing its own mock.
+ * Mocking strategy:
+ *   - fluent-ffmpeg / ffmpeg-static: mock.module (same as before)
+ *   - Bun.spawn: replace _bunSpawn.fn on the exported hook object
+ *   - fetch: replace _httpFetch.fn on the exported hook object
+ *   - Model files: created on disk in the TAMIAS_CONFIG_PATH temp dir
+ *   - Download state: reset via _downloadState.promise = null
  */
 
 import { describe, test, expect, mock, beforeEach } from 'bun:test'
 import { PassThrough } from 'stream'
+import { mkdirSync, writeFileSync, readdirSync } from 'fs'
+import { join, dirname } from 'path'
+import { tmpdir } from 'os'
+import { getConfigFilePath } from './config.ts'
 
-// ── WAV buffer factory ────────────────────────────────────────────────────────
+// ── WAV buffer factory (kept from old tests) ──────────────────────────────────
 
-/**
- * Build a minimal valid PCM WAV (16-bit, 16kHz, mono) from signed-16 samples.
- */
 function makeWavBuffer(samples: number[]): Buffer {
 	const numChannels = 1
 	const sampleRate = 16000
@@ -26,11 +29,11 @@ function makeWavBuffer(samples: number[]): Buffer {
 	buf.write('WAVE', 8)
 	buf.write('fmt ', 12)
 	buf.writeUInt32LE(16, 16)
-	buf.writeUInt16LE(1, 20)           // PCM
+	buf.writeUInt16LE(1, 20)
 	buf.writeUInt16LE(numChannels, 22)
 	buf.writeUInt32LE(sampleRate, 24)
-	buf.writeUInt32LE(sampleRate * numChannels * 2, 28) // ByteRate
-	buf.writeUInt16LE(numChannels * 2, 32)              // BlockAlign
+	buf.writeUInt32LE(sampleRate * numChannels * 2, 28)
+	buf.writeUInt16LE(numChannels * 2, 32)
 	buf.writeUInt16LE(bitsPerSample, 34)
 	buf.write('data', 36)
 	buf.writeUInt32LE(dataSize, 40)
@@ -38,18 +41,7 @@ function makeWavBuffer(samples: number[]): Buffer {
 	return buf
 }
 
-// ── Mock @xenova/transformers ─────────────────────────────────────────────────
-
-const mockTranscriber = mock(async (_data: Float32Array) => ({ text: 'hello world' })) as any
-const mockPipeline = mock(async (_task: string, _model: string) => mockTranscriber) as any
-
-mock.module('@xenova/transformers', () => ({
-	pipeline: mockPipeline,
-	env: { allowLocalModels: true },
-}))
-
-// ── Mock fluent-ffmpeg ────────────────────────────────────────────────────────
-// Returns a valid WAV buffer so the real WaveFile can parse it.
+// ── ffmpeg mock (unchanged from old tests) ────────────────────────────────────
 
 let wavBufToReturn: Buffer = makeWavBuffer([100, 200, -100, -200])
 
@@ -80,84 +72,134 @@ const ffmpegFactory = function (_input: any) {
 	mockFfmpegCommand._errHandler = null
 	return mockFfmpegCommand
 } as any
-ffmpegFactory.setFfmpegPath = () => { }
+ffmpegFactory.setFfmpegPath = () => {}
 
 mock.module('fluent-ffmpeg', () => ({ default: ffmpegFactory }))
 mock.module('ffmpeg-static', () => ({ default: '/usr/bin/ffmpeg' }))
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── Import module under test ──────────────────────────────────────────────────
 
-describe('transcription.ts', () => {
-	beforeEach(() => {
-		mockTranscriber.mockClear()
-		mockTranscriber.mockImplementation(async (_data: Float32Array) => ({ text: 'hello world' }))
-		wavBufToReturn = makeWavBuffer([100, 200, -100, -200])
-	})
+const {
+	transcribeAudioBuffer,
+	ensureModelReady,
+	_bunSpawn,
+	_httpFetch,
+	_downloadState,
+} = await import('./transcription.ts')
 
-	describe('transcribeAudioBuffer — happy path', () => {
-		test('returns transcript text from a normal audio buffer', async () => {
-			const { transcribeAudioBuffer } = await import('./transcription.ts')
-			const result = await transcribeAudioBuffer(Buffer.from('fake audio'))
-			expect(result).toBe('hello world')
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const REQUIRED_FILES = ['sherpa-onnx-offline', 'encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt']
+const enc = new TextEncoder()
+
+function getParakeetDir(): string {
+	return join(dirname(getConfigFilePath()), 'models', 'parakeet')
+}
+
+function createModelFiles(): void {
+	const dir = getParakeetDir()
+	mkdirSync(dir, { recursive: true })
+	for (const f of REQUIRED_FILES) writeFileSync(join(dir, f), '')
+}
+
+function makeMockProc(stdout: string, exitCode = 0, stderr = '') {
+	return {
+		stdout: new ReadableStream<Uint8Array>({
+			start(c) { if (stdout) c.enqueue(enc.encode(stdout)); c.close() },
+		}),
+		stderr: new ReadableStream<Uint8Array>({
+			start(c) { if (stderr) c.enqueue(enc.encode(stderr)); c.close() },
+		}),
+		exited: Promise.resolve(exitCode),
+	}
+}
+
+const originalSpawnFn = _bunSpawn.fn
+const originalFetchFn = _httpFetch.fn
+
+beforeEach(() => {
+	_bunSpawn.fn = originalSpawnFn
+	_httpFetch.fn = originalFetchFn
+	_downloadState.promise = null
+	wavBufToReturn = makeWavBuffer([100, 200, -100, -200])
+})
+
+// ── transcribeAudioBuffer ─────────────────────────────────────────────────────
+
+describe('transcribeAudioBuffer', () => {
+	describe('with model files present', () => {
+		beforeEach(() => {
+			createModelFiles()
 		})
 
-		test('trims leading/trailing whitespace from transcript', async () => {
-			mockTranscriber.mockImplementation(async () => ({ text: '  trimmed  ' }))
-			const { transcribeAudioBuffer } = await import('./transcription.ts')
-			const result = await transcribeAudioBuffer(Buffer.from('fake audio'))
-			expect(result).toBe('trimmed')
+		test('happy path: returns transcript stripped of timestamp lines', async () => {
+			_bunSpawn.fn = mock(() => makeMockProc('0:00:00.000 --> 0:00:03.000\n Hello world\n'))
+			const result = await transcribeAudioBuffer(Buffer.from('fake ogg'))
+			expect(result).toBe('Hello world')
 		})
 
-		test('handles array output from pipeline (joins with space)', async () => {
-			mockTranscriber.mockImplementation(async () => [{ text: 'part one' }, { text: 'part two' }])
-			const { transcribeAudioBuffer } = await import('./transcription.ts')
-			const result = await transcribeAudioBuffer(Buffer.from('fake audio'))
-			expect(result).toBe('part one part two')
+		test('multi-segment output: joins text lines with space', async () => {
+			_bunSpawn.fn = mock(() => makeMockProc(
+				'0:00:00.000 --> 0:00:02.000\n First part\n0:00:02.000 --> 0:00:05.000\n second part\n'
+			))
+			const result = await transcribeAudioBuffer(Buffer.from('fake ogg'))
+			expect(result).toBe('First part second part')
 		})
-	})
 
-	describe('transcribeAudioBuffer — silent audio', () => {
-		test('returns empty string for completely silent audio', async () => {
-			wavBufToReturn = makeWavBuffer([0, 0, 0, 0])
-			const { transcribeAudioBuffer } = await import('./transcription.ts')
-			const result = await transcribeAudioBuffer(Buffer.from('silent audio'))
+		test('empty stdout returns empty string', async () => {
+			_bunSpawn.fn = mock(() => makeMockProc(''))
+			const result = await transcribeAudioBuffer(Buffer.from('fake ogg'))
 			expect(result).toBe('')
 		})
 
-		test('returns empty string when pipeline returns empty text', async () => {
-			mockTranscriber.mockImplementation(async () => ({ text: '' }))
-			const { transcribeAudioBuffer } = await import('./transcription.ts')
-			const result = await transcribeAudioBuffer(Buffer.from('fake audio'))
-			expect(result).toBe('')
+		test('subprocess non-zero exit rejects with descriptive error', async () => {
+			_bunSpawn.fn = mock(() => makeMockProc('', 1, 'model file not found'))
+			await expect(transcribeAudioBuffer(Buffer.from('fake ogg')))
+				.rejects.toThrow('sherpa-onnx-offline failed')
+		})
+
+		test('temp wav file is deleted even when subprocess throws', async () => {
+			_bunSpawn.fn = mock(() => { throw new Error('spawn failed') })
+
+			const tmpFilesBefore = readdirSync(tmpdir()).filter(f => f.startsWith('tamias-audio-'))
+			await expect(transcribeAudioBuffer(Buffer.from('fake ogg'))).rejects.toThrow()
+			const tmpFilesAfter = readdirSync(tmpdir()).filter(f => f.startsWith('tamias-audio-'))
+
+			expect(tmpFilesAfter).toEqual(tmpFilesBefore)
 		})
 	})
+})
 
-	describe('transcribeAudioBuffer — error paths', () => {
-		test('propagates ffmpeg error as a rejected promise', async () => {
-			const originalPipe = mockFfmpegCommand.pipe
-			mockFfmpegCommand.pipe = function (this: any) {
-				const pt = new PassThrough()
-				setImmediate(() => {
-					if (this._errHandler) this._errHandler(new Error('FFmpeg error: codec not found'))
-					else pt.destroy(new Error('FFmpeg error: codec not found'))
-				})
-				return pt
-			}
+// ── ensureModelReady ──────────────────────────────────────────────────────────
 
-			const { transcribeAudioBuffer } = await import('./transcription.ts')
-			await expect(transcribeAudioBuffer(Buffer.from('bad audio'))).rejects.toThrow('FFmpeg error')
+describe('ensureModelReady', () => {
+	test('returns immediately and skips fetch when all 5 files are present', async () => {
+		createModelFiles()
+		const mockFetchFn = mock(async () => new Response('{}'))
+		_httpFetch.fn = mockFetchFn
 
-			mockFfmpegCommand.pipe = originalPipe
-		})
+		await ensureModelReady()
+		await ensureModelReady()
+
+		expect(mockFetchFn).not.toHaveBeenCalled()
 	})
 
-	describe('initTranscriptionModel — idempotent', () => {
-		test('model is loaded only once across multiple calls', async () => {
-			const { initTranscriptionModel } = await import('./transcription.ts')
-			const callsBefore = mockPipeline.mock.calls.length
-			await initTranscriptionModel()
-			await initTranscriptionModel()
-			expect(mockPipeline.mock.calls.length).toBe(callsBefore)
+	test('concurrent calls before model ready trigger only one download', () => {
+		_downloadState.promise = null
+
+		let fetchCallCount = 0
+		_httpFetch.fn = mock(async () => {
+			fetchCallCount++
+			return new Promise<Response>(() => {}) // never resolves — holds download open
 		})
+
+		// Start two concurrent calls (no await — we're inspecting mid-flight state)
+		void ensureModelReady()
+		void ensureModelReady()
+
+		// Only one fetch should have been initiated
+		expect(fetchCallCount).toBe(1)
+		// Both calls share the same pending promise
+		expect(_downloadState.promise).not.toBeNull()
 	})
 })
