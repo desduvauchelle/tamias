@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- update changelog for version v26.04.04.42; enhance LiveLogsPage with pagination and live toggle functionality
 - Implement list and filter functionality in VectorStore
 
 ## [v26.04.04.42] - 2026-04-04

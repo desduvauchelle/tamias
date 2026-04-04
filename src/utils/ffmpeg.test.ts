@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { _ffmpegLaunchRuntime, ensureFfmpegAvailableOnLaunch } from './ffmpeg.ts'
 
 const originalGetCommandPath = _ffmpegLaunchRuntime.getCommandPath
@@ -11,6 +11,17 @@ beforeEach(() => {
 	_ffmpegLaunchRuntime.getPlatform = originalGetPlatform
 	_ffmpegLaunchRuntime.installWithBrew = originalInstallWithBrew
 	delete process.env.FFMPEG_PATH
+})
+
+afterAll(() => {
+	_ffmpegLaunchRuntime.getCommandPath = originalGetCommandPath
+	_ffmpegLaunchRuntime.getPlatform = originalGetPlatform
+	_ffmpegLaunchRuntime.installWithBrew = originalInstallWithBrew
+	if (originalFfmpegEnv === undefined) {
+		delete process.env.FFMPEG_PATH
+	} else {
+		process.env.FFMPEG_PATH = originalFfmpegEnv
+	}
 })
 
 describe('ensureFfmpegAvailableOnLaunch', () => {
@@ -65,5 +76,3 @@ describe('ensureFfmpegAvailableOnLaunch', () => {
 		expect(process.env.FFMPEG_PATH).toBe('/opt/homebrew/bin/ffmpeg')
 	})
 })
-
-process.env.FFMPEG_PATH = originalFfmpegEnv
