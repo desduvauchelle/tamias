@@ -169,7 +169,7 @@ function HistoryContent() {
 						<div className="flex-1 overflow-auto">
 							<div className="min-w-[700px]">
 								{/* Table Header */}
-								<div className="grid grid-cols-[180px_120px_1fr_100px_80px] px-6 py-3 border-b border-base-300 bg-base-300/30 text-[10px] uppercase font-bold tracking-widest text-base-content/50 font-mono items-center shrink-0 sticky top-0">
+								<div className="grid grid-cols-[180px_120px_1fr_100px_80px] px-6 py-3 border-b border-base-300 bg-base-200 text-[10px] uppercase font-bold tracking-widest text-base-content/50 font-mono items-center shrink-0 sticky top-0">
 									<div className="flex items-center gap-2"><Clock className="w-3 h-3" /> Timestamp</div>
 									<div className="flex items-center gap-2"><Cpu className="w-3 h-3" /> Model / Action</div>
 									<div className="flex items-center gap-2"><Terminal className="w-3 h-3" /> Input Prompt Snippet</div>
