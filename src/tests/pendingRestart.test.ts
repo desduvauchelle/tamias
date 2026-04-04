@@ -1,6 +1,6 @@
 // src/tests/pendingRestart.test.ts
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -45,7 +45,6 @@ describe('writePendingRestart / readPendingRestart', () => {
 	})
 
 	test('readPendingRestart returns null when file is corrupt JSON', () => {
-		const { writeFileSync } = require('fs')
 		writeFileSync(join(tmpDir, 'pending-restart.json'), 'not-json', 'utf-8')
 		expect(readPendingRestart()).toBeNull()
 	})

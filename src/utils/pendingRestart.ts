@@ -26,7 +26,19 @@ export function readPendingRestart(): PendingRestart | null {
 	const path = getPendingRestartPath()
 	if (!existsSync(path)) return null
 	try {
-		return JSON.parse(readFileSync(path, 'utf-8')) as PendingRestart
+		const parsed: unknown = JSON.parse(readFileSync(path, 'utf-8'))
+		if (
+			typeof parsed !== 'object' ||
+			parsed === null ||
+			!('channelId' in parsed) ||
+			!('fromVersion' in parsed) ||
+			!('toVersion' in parsed) ||
+			!('changelog' in parsed) ||
+			!('requestedAt' in parsed)
+		) {
+			return null
+		}
+		return parsed as PendingRestart
 	} catch {
 		return null
 	}
