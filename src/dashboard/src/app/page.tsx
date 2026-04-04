@@ -56,6 +56,7 @@ export default function ChatPage() {
 	const [availableModels, setAvailableModels] = useState<string[]>([])
 	const [tokenRequired, setTokenRequired] = useState(false)
 	const [tokenInput, setTokenInput] = useState('')
+	const [sessionsOpen, setSessionsOpen] = useState(false)
 
 	// Fetch sessions list
 	useEffect(() => {
@@ -190,6 +191,7 @@ export default function ChatPage() {
 		if (!newSessionName.trim()) return
 		const sid = newSessionName.trim()
 		setSelectedSession(sid)
+		setSessionsOpen(false)
 		setShowNewSessionModal(false)
 		setNewSessionName('')
 	}
@@ -237,19 +239,30 @@ export default function ChatPage() {
 
 	return (
 		<div className="h-full flex flex-col p-6 gap-4">
-			<div className="flex items-center justify-between shrink-0">
+			<div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
 				<h1 className="text-2xl font-bold text-success font-mono">TamiasOS Terminal</h1>
 				<div className="badge badge-outline gap-2 font-mono text-xs uppercase opacity-60">
 					Session: {selectedSession}
 				</div>
 			</div>
 
-			<div className="flex flex-1 gap-4 min-h-0">
+			<div className="flex flex-col md:flex-row flex-1 gap-4 min-h-0">
 				{/* Sessions Sidebar */}
-				<div className="card w-60 bg-base-200 border border-base-300 flex flex-col shrink-0 overflow-hidden shadow-xl">
+				<div className="card w-full md:w-60 bg-base-200 border border-base-300 flex flex-col md:shrink-0 overflow-hidden shadow-xl">
 					<div className="card-body p-0 flex flex-col min-h-0">
 						<div className="px-5 py-3 border-b border-base-300 flex items-center justify-between shrink-0 bg-base-300/30">
-							<h2 className="text-xs text-base-content/50 uppercase tracking-wider font-mono font-bold">Sessions</h2>
+							<button
+								className="md:hidden flex items-center gap-2 min-w-0 flex-1 text-left"
+								onClick={() => setSessionsOpen(o => !o)}
+							>
+								<h2 className="text-xs text-base-content/50 uppercase tracking-wider font-mono font-bold">
+									{selectedSession
+										? <span className="truncate text-base-content/80">{sessions.find(s => s.id === selectedSession)?.name || selectedSession}</span>
+										: 'Sessions'}
+								</h2>
+								<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`ml-1 transition-transform ${sessionsOpen ? 'rotate-180' : ''}`}><path d="m6 9 6 6 6-6"/></svg>
+							</button>
+							<h2 className="hidden md:block text-xs text-base-content/50 uppercase tracking-wider font-mono font-bold">Sessions</h2>
 							<button
 								className="btn btn-ghost btn-xs btn-square hover:text-success"
 								onClick={() => setShowNewSessionModal(true)}
@@ -258,7 +271,7 @@ export default function ChatPage() {
 								<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
 							</button>
 						</div>
-						<div className="px-3 py-2 border-b border-base-300 shrink-0 bg-base-300/10">
+						<div className={`px-3 py-2 border-b border-base-300 shrink-0 bg-base-300/10 ${sessionsOpen ? 'block' : 'hidden'} md:block`}>
 							<input
 								type="text"
 								placeholder="Search sessions & mentions..."
@@ -267,7 +280,7 @@ export default function ChatPage() {
 								onChange={e => setSessionSearch(e.target.value)}
 							/>
 						</div>
-						<div className="flex-1 overflow-y-auto p-2">
+						<div className={`flex-1 overflow-y-auto p-2 ${sessionsOpen ? 'block' : 'hidden'} md:block`}>
 							<ul className="menu menu-sm gap-1">
 								{/* Ensure selected session is visible if not in list yet */}
 								{selectedSession && !filteredSessions.find(s => s.id === selectedSession) && (
@@ -285,7 +298,7 @@ export default function ChatPage() {
 									<li key={s.id}>
 										<button
 											className={`${selectedSession === s.id ? 'active' : ''} flex items-center justify-between transition-all gap-2`}
-											onClick={() => setSelectedSession(s.id)}
+											onClick={() => { setSelectedSession(s.id); setSessionsOpen(false) }}
 										>
 											<div className="min-w-0 text-left">
 												<div className="truncate max-w-32 font-medium">{getSessionPrimaryLabel(s)}</div>
