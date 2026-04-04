@@ -41,6 +41,17 @@ export const _httpFetch: { fn: (input: string | URL | Request, init?: RequestIni
 
 export const _downloadState: { promise: Promise<void> | null } = { promise: null }
 
+function pickMacArm64BinaryAsset(
+	assets: Array<{ name: string; browser_download_url: string }>
+): { name: string; browser_download_url: string } | undefined {
+	const isTarBz2 = (name: string) => /\.tar\.bz2$/i.test(name)
+	const hasArm64 = (name: string) => /(arm64|aarch64)/i.test(name)
+	const hasDarwinTag = (name: string) => /(darwin|macos|osx)/i.test(name)
+
+	return assets.find(a => isTarBz2(a.name) && hasArm64(a.name) && hasDarwinTag(a.name))
+		?? assets.find(a => isTarBz2(a.name) && hasArm64(a.name))
+}
+
 // ── Path helper ───────────────────────────────────────────────────────────────
 
 function getParakeetDir(): string {
@@ -75,8 +86,11 @@ async function _downloadParakeet(dir: string): Promise<void> {
 	const release = await releaseRes.json() as {
 		assets: Array<{ name: string; browser_download_url: string }>
 	}
-	const binaryAsset = release.assets.find(a => /osx-arm64\.tar\.bz2$/.test(a.name))
-	if (!binaryAsset) throw new Error('No macOS arm64 binary found in latest sherpa-onnx release')
+	const binaryAsset = pickMacArm64BinaryAsset(release.assets)
+	if (!binaryAsset) {
+		const assetNames = release.assets.map(a => a.name).join(', ') || '(none)'
+		throw new Error(`No macOS arm64 sherpa-onnx binary found in latest release assets: ${assetNames}`)
+	}
 
 	// 2. Download and extract binary
 	console.log(`[Transcription] Downloading binary (${binaryAsset.name})...`)

@@ -1,8 +1,9 @@
 # Changelog
 
-## [Unreleased]
+## [v26.04.04.33] - 2026-04-04
 
 ### Features
+- update tests to improve config handling and add environment setup
 - enhance test structure by adding afterEach cleanup and improving config mocking
 - update tests to import real config modules for improved mocking
 - unify project directory structure and enhance test cleanup with afterAll

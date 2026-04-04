@@ -396,6 +396,42 @@ describe('DiscordBridge audio attachment handling', () => {
 		const bridgeMsg = (onMessage.mock.calls[0] as any)[0]
 		expect(bridgeMsg.attachments).toHaveLength(0)
 	})
+
+	test('audio transcription failure is surfaced back to Discord channel', async () => {
+		mockFetchWithAudio()
+		const channelSend = mock(async (_msg: string) => ({ id: 'chan-msg-1' }))
+		let bridgeRef: DiscordBridge | undefined
+		const onMessage = mock(async (bridgeMsg: any) => {
+			const bridge = bridgeRef!
+			await bridge.handleDaemonEvent(
+				{ type: 'start', sessionId: 'sess-audio-1' } as any,
+				{ channelUserId: bridgeMsg.channelUserId, sessionId: 'sess-audio-1' }
+			)
+			await bridge.handleDaemonEvent(
+				{ type: 'error', message: '⚠️ Audio transcription failed for "voice-message.ogg". Please send your message as text instead.' } as any,
+				{ channelUserId: bridgeMsg.channelUserId, sessionId: 'sess-audio-1' }
+			)
+			return true
+		})
+		const bridge = new DiscordBridge('default')
+		bridgeRef = bridge
+
+		await bridge.initialize({
+			bridges: { discords: { default: { enabled: true, allowedChannels: [] } } },
+		} as any, onMessage)
+
+		const client = createdClients[0]
+		const msg = makeVoiceMessage({ contentType: 'audio/ogg', filename: 'voice-message.ogg' }) as any
+		msg.channel = { ...msg.channel, send: channelSend }
+
+		await client.emit('messageCreate', msg)
+
+		expect(onMessage).toHaveBeenCalledTimes(1)
+		expect(channelSend).toHaveBeenCalledTimes(1)
+		const sentText = (channelSend.mock.calls[0] as any)[0] as string
+		expect(sentText).toContain('Audio transcription failed')
+		expect(sentText).toContain('voice-message.ogg')
+	})
 })
 
 // ── Thread-per-turn messaging model ──────────────────────────────────────────
@@ -652,6 +688,33 @@ describe('DiscordBridge one-thread-per-turn model', () => {
 
 		// Falls back to main channel
 		expect(msg._channelSend).toHaveBeenCalledTimes(1)
+	})
+
+	test('error event still reaches channel when state exists but currentMessage is unset', async () => {
+		const { bridge } = await initBridge()
+		const fakeChannelSend = mock(async (_msg: any) => ({ id: 'chan-err-1' }))
+		const fakeChannel = { send: fakeChannelSend }
+		const fakeClient = createdClients[0] as any
+		fakeClient.channels.fetch = mock(async () => fakeChannel)
+
+		const bridgeAny = bridge as any
+		bridgeAny.channelStates.set('22222222222222222', {
+			queue: [],
+			buffer: '',
+			currentMessage: undefined,
+			currentThread: undefined,
+			pendingSubagents: 0,
+			typingInterval: undefined,
+		})
+
+		await bridge.handleDaemonEvent(
+			{ type: 'error', message: 'Audio transcription failed for "voice-message.ogg"' } as any,
+			{ channelUserId: '22222222222222222', sessionId: 'sess-1' }
+		)
+
+		expect(fakeClient.channels.fetch).toHaveBeenCalledTimes(1)
+		expect(fakeChannelSend).toHaveBeenCalledTimes(1)
+		expect((fakeChannelSend.mock.calls[0] as any)[0]).toContain('Audio transcription failed')
 	})
 })
 

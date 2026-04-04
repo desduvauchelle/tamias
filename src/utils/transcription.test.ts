@@ -237,4 +237,31 @@ describe('ensureModelReady', () => {
 
 		expect(calledUrls[0]).toContain('api.github.com')
 	})
+
+	test('accepts modern darwin-arm64 asset names from sherpa releases', async () => {
+		let calledUrls: string[] = []
+
+		_httpFetch.fn = mock(async (url: string | URL | Request) => {
+			calledUrls.push(typeof url === 'string' ? url : url.toString())
+
+			if (typeof url === 'string' && url.includes('api.github.com')) {
+				return new Response(JSON.stringify({
+					assets: [{ name: 'sherpa-onnx-v1.0.0-darwin-arm64.tar.bz2', browser_download_url: 'https://example.com/bin.tar.bz2' }]
+				}), { status: 200 })
+			}
+
+			return new Response(new Uint8Array(0), { status: 200 })
+		})
+
+		_bunSpawn.fn = mock(() => makeMockProc('some/path/sherpa-onnx-offline'))
+
+		try {
+			await ensureModelReady()
+		} catch {
+			// Expected — mocked extraction path does not exist on disk.
+		}
+
+		expect(calledUrls[0]).toContain('api.github.com')
+		expect(calledUrls).toContain('https://example.com/bin.tar.bz2')
+	})
 })

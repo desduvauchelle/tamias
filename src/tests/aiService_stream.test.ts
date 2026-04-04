@@ -59,4 +59,5 @@ describe("AIService Streaming", () => {
 		const errorEvent = events[errorIdx] as Extract<DaemonEvent, { type: 'error' }>
 		expect(errorEvent.message).toContain("No AI connections configured")
 	})
+
 })

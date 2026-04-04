@@ -402,10 +402,20 @@ export class DiscordBridge implements IBridge {
 						clearInterval(state.typingInterval)
 						state.typingInterval = undefined
 					}
-					if (!state.currentMessage) break
+					const errorMsg = `⚠️ Error [v${VERSION}]: ${event.message}`
+					if (!state.currentMessage) {
+						try {
+							const channel = await this.client.channels.fetch(channelId)
+							if (channel && 'send' in channel) {
+								await (channel as any).send(errorMsg)
+							}
+						} catch (err) {
+							console.error(`[Discord Bridge] Failed to send fallback error notification to channel ${channelId}:`, err)
+						}
+						break
+					}
 					const ctxMessage = state.currentMessage
 					await this.clearStatusReactions(ctxMessage)
-					const errorMsg = `⚠️ Error [v${VERSION}]: ${event.message}`
 					try {
 						// Always send error to main channel so user sees it;
 						// also post to thread if one is open for context

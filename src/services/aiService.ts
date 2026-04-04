@@ -638,6 +638,7 @@ Important: Post at least one progress comment before your final result so the us
 	private async processSession(session: Session) {
 		if (session.processing || session.queue.length === 0) return
 		session.processing = true
+		let startedEventSent = false
 		console.log(`[AIService] processSession: id=${session.id} channelId=${session.channelId} channelUserId=${session.channelUserId} queueLen=${session.queue.length}`)
 
 		const job = session.queue.shift()!
@@ -674,6 +675,10 @@ Important: Post at least one progress comment before your final result so the us
 							}
 						} catch (err) {
 							console.error('[AIService] Failed to transcribe audio attachment:', err)
+							if (!startedEventSent) {
+								session.emitter.emit('event', { type: 'start', sessionId: session.id } as DaemonEvent)
+								startedEventSent = true
+							}
 							// Surface the failure to the user rather than silently dropping the audio
 							session.emitter.emit('event', {
 								type: 'error',
@@ -782,7 +787,10 @@ Important: Post at least one progress comment before your final result so the us
 		// Emitting inside the loop caused a second 'start' on retry, which
 		// popped the next queued Discord message prematurely, resulting in
 		// that message receiving two responses.
-		session.emitter.emit('event', { type: 'start', sessionId: session.id } as DaemonEvent)
+		if (!startedEventSent) {
+			session.emitter.emit('event', { type: 'start', sessionId: session.id } as DaemonEvent)
+			startedEventSent = true
+		}
 
 		for (const currentModelStr of modelsToTry) {
 			const [nickname, ...rest] = currentModelStr.split('/')
