@@ -301,7 +301,7 @@ function ProjectsContent() {
 				<div className="flex flex-col h-full w-full overflow-hidden bg-base-100">
 					{/* Header & Tabs */}
 					<div className="p-0 border-b border-base-200/50 bg-base-100/50 backdrop-blur z-10 shrink-0">
-						<div className="p-6 pb-4 flex justify-between items-start">
+						<div className="p-6 pb-4 flex flex-wrap justify-between items-start gap-3">
 							<div>
 								<h2 className="text-3xl font-bold flex items-center gap-3 mb-2 text-primary">
 									{activeProject.name}
@@ -319,51 +319,51 @@ function ProjectsContent() {
 							</div>
 						</div>
 
-						<div className="tabs tabs-bordered px-6 border-b-0">
+						<div className="tabs tabs-bordered px-6 border-b-0 overflow-x-auto flex-nowrap">
 							<button
-								className={`tab tab-lg gap-2 transition-all ${activeTab === 'overview' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
+								className={`tab tab-lg gap-2 transition-all shrink-0 whitespace-nowrap ${activeTab === 'overview' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
 								onClick={() => setActiveTab('overview')}
 							>
 								<FileText className="w-4 h-4" /> Overview
 							</button>
 							<button
-								className={`tab tab-lg gap-2 transition-all ${activeTab === 'chat' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
+								className={`tab tab-lg gap-2 transition-all shrink-0 whitespace-nowrap ${activeTab === 'chat' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
 								onClick={() => setActiveTab('chat')}
 							>
 								<MessageSquare className="w-4 h-4" /> Chat
 							</button>
 							<button
-								className={`tab tab-lg gap-2 transition-all ${activeTab === 'kanban' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
+								className={`tab tab-lg gap-2 transition-all shrink-0 whitespace-nowrap ${activeTab === 'kanban' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
 								onClick={() => setActiveTab('kanban')}
 							>
 								<KanbanSquare className="w-4 h-4" /> Kanban Board
 							</button>
 							<button
-								className={`tab tab-lg gap-2 transition-all ${activeTab === 'agents' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
+								className={`tab tab-lg gap-2 transition-all shrink-0 whitespace-nowrap ${activeTab === 'agents' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
 								onClick={() => setActiveTab('agents')}
 							>
 								<Bot className="w-4 h-4" /> Agents
 							</button>
 							<button
-								className={`tab tab-lg gap-2 transition-all ${activeTab === 'crons' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
+								className={`tab tab-lg gap-2 transition-all shrink-0 whitespace-nowrap ${activeTab === 'crons' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
 								onClick={() => setActiveTab('crons')}
 							>
 								<Clock className="w-4 h-4" /> Crons
 							</button>
 							<button
-								className={`tab tab-lg gap-2 transition-all ${activeTab === 'skills' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
+								className={`tab tab-lg gap-2 transition-all shrink-0 whitespace-nowrap ${activeTab === 'skills' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
 								onClick={() => setActiveTab('skills')}
 							>
 								<Puzzle className="w-4 h-4" /> Skills
 							</button>
 							<button
-								className={`tab tab-lg gap-2 transition-all ${activeTab === 'files' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
+								className={`tab tab-lg gap-2 transition-all shrink-0 whitespace-nowrap ${activeTab === 'files' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
 								onClick={() => setActiveTab('files')}
 							>
 								<FolderOpen className="w-4 h-4" /> Files
 							</button>
 							<button
-								className={`tab tab-lg gap-2 transition-all ml-auto ${activeTab === 'settings' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
+								className={`tab tab-lg gap-2 transition-all shrink-0 whitespace-nowrap ml-auto ${activeTab === 'settings' ? 'tab-active font-bold text-base-content border-base-content' : 'text-base-content/50 hover:text-base-content/80'}`}
 								onClick={() => setActiveTab('settings')}
 							>
 								<Settings className="w-4 h-4" /> Config
