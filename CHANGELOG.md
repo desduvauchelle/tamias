@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+- Implement list and filter functionality in VectorStore
+
 ## [v26.04.04.42] - 2026-04-04
 
 ### Features

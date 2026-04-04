@@ -39,11 +39,10 @@ export function configureFfmpegPathForRuntime(): void {
 	const resolvedPath = uniqueCandidates.find(path => _ffmpegRuntime.pathExists(path))
 	if (resolvedPath) {
 		_ffmpegRuntime.setPath(resolvedPath)
+		_ffmpegRuntime.configured = true
 	} else {
 		console.warn('[Transcription] ffmpeg binary not found in ffmpeg-static, FFMPEG_PATH, PATH, or common system locations.')
 	}
-
-	_ffmpegRuntime.configured = true
 }
 
 configureFfmpegPathForRuntime()

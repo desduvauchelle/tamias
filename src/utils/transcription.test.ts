@@ -222,7 +222,7 @@ describe('configureFfmpegPathForRuntime', () => {
 		expect(setPathMock).not.toHaveBeenCalled()
 		expect(warnSpy).toHaveBeenCalledTimes(1)
 		expect(warnSpy.mock.calls[0][0]).toContain('ffmpeg binary not found')
-		expect(_ffmpegRuntime.configured).toBe(true)
+		expect(_ffmpegRuntime.configured).toBe(false)
 	})
 
 	test('is idempotent after first configuration', () => {
@@ -236,6 +236,28 @@ describe('configureFfmpegPathForRuntime', () => {
 		configureFfmpegPathForRuntime()
 
 		expect(setPathMock).toHaveBeenCalledTimes(1)
+	})
+
+	test('retries configuration later when ffmpeg becomes available after an initial miss', () => {
+		const setPathMock = mock(() => { })
+		let ffmpegPresent = false
+		_ffmpegRuntime.staticPath = null
+		_ffmpegRuntime.envPathLookup = () => ffmpegPresent ? '/opt/homebrew/bin/ffmpeg' : undefined
+		_ffmpegRuntime.pathLookup = () => null
+		_ffmpegRuntime.commonPaths = []
+		_ffmpegRuntime.pathExists = (path: string) => path === '/opt/homebrew/bin/ffmpeg' && ffmpegPresent
+		_ffmpegRuntime.setPath = setPathMock
+		_ffmpegRuntime.configured = false
+
+		configureFfmpegPathForRuntime()
+		expect(setPathMock).toHaveBeenCalledTimes(0)
+		expect(_ffmpegRuntime.configured).toBe(false)
+
+		ffmpegPresent = true
+		configureFfmpegPathForRuntime()
+		expect(setPathMock).toHaveBeenCalledTimes(1)
+		expect(setPathMock).toHaveBeenCalledWith('/opt/homebrew/bin/ffmpeg')
+		expect(_ffmpegRuntime.configured).toBe(true)
 	})
 })
 
