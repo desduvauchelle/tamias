@@ -428,6 +428,9 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 		return true // Message accepted for AI processing
 	}
 	await bridgeManager.initializeAll(config, onBridgeMessage).catch(console.error)
+	// Check if restarted after an update — notify the requesting channel
+	const { checkPendingRestart } = await import('../utils/pendingRestart.ts')
+	await checkPendingRestart(bridgeManager).catch(console.error)
 
 	// Background update loop
 	setInterval(() => autoUpdateDaemon(bridgeManager).catch(console.error), 24 * 60 * 60 * 1000)
