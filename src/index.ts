@@ -4,6 +4,7 @@ import { runStopCommand } from './commands/stop.ts'
 import { runStatusCommand } from './commands/status.ts'
 import { runDoctorCommand } from './commands/doctor.ts'
 import { runUpdateCommand } from './commands/update.ts'
+import { cronCommand } from './commands/cron.ts'
 import { VERSION } from './utils/version.ts'
 
 export const program = new Command()
@@ -12,6 +13,8 @@ program
 	.name('tamias')
 	.description('A secure, agentic AI chat interface powered by the Vercel AI SDK')
 	.version(VERSION, '-v, --version')
+
+program.addCommand(cronCommand)
 
 // ─── tamias start ─────────────────────────────────────────────────────────────
 program

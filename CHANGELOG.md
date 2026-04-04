@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- implement browser authentication functionality with launch and close endpoints
 - unify project directory into ~/.tamias/workspace/<slug>/
 - implement browser authentication functionality with launch and close endpoints
 
