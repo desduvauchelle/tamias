@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- enhance project management features and documentation, add default project routing
 - replace Whisper/ONNX transcription with Parakeet via sherpa-onnx subprocess
 - fix usage page header badge alignment on mobile
 - make channels page cards and labels mobile responsive
