@@ -29,3 +29,18 @@ describe('generateInspectReport', () => {
     expect(report).toContain('### Bridges')
   })
 })
+
+import { writeInspectReport } from '../utils/inspectReport.ts'
+import { existsSync, unlinkSync } from 'fs'
+import { tmpdir } from 'os'
+
+describe('writeInspectReport', () => {
+  it('writes a file and returns the path', () => {
+    const content = '# test report'
+    const dir = tmpdir()
+    const filePath = writeInspectReport(content, dir)
+    expect(filePath).toMatch(/inspect-.*\.md$/)
+    expect(existsSync(filePath)).toBe(true)
+    unlinkSync(filePath)
+  })
+})

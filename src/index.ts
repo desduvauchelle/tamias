@@ -5,6 +5,7 @@ import { runStatusCommand } from './commands/status.ts'
 import { runDoctorCommand } from './commands/doctor.ts'
 import { runUpdateCommand } from './commands/update.ts'
 import { cronCommand } from './commands/cron.ts'
+import { runInspectCommand } from './commands/inspect.ts'
 import { VERSION } from './utils/version.ts'
 
 export const program = new Command()
@@ -15,6 +16,13 @@ program
 	.version(VERSION, '-v, --version')
 
 program.addCommand(cronCommand)
+
+// ─── tamias inspect ───────────────────────────────────────────────────────────
+program
+	.command('inspect')
+	.description('Generate a debug report of the current system prompt, tools, and config')
+	.option('--print', 'Print the report to terminal instead of writing a file')
+	.action((opts: { print?: boolean }) => runInspectCommand(opts))
 
 // ─── tamias start ─────────────────────────────────────────────────────────────
 program
