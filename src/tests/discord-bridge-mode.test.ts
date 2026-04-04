@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, afterEach, mock, spyOn } from 'bun:test'
+import { describe, expect, test, beforeEach, afterEach, afterAll, mock, spyOn } from 'bun:test'
 import { join } from 'path'
 
 const SRC_ROOT = join(import.meta.dir, '..')
@@ -652,3 +652,5 @@ describe('DiscordBridge one-thread-per-turn model', () => {
 		expect(msg._channelSend).toHaveBeenCalledTimes(1)
 	})
 })
+
+afterAll(() => mock.restore())

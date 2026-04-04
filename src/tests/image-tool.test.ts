@@ -123,6 +123,6 @@ describe('Image Tool', () => {
 		expect(result.filePath).toBe(join(TEMP_FALLBACK, result.fileName))
 		expect(existsSync(result.filePath)).toBe(true)
 	})
-
-
 })
+
+afterAll(() => mock.restore())

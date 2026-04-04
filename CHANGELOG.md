@@ -18,6 +18,7 @@
 - add tamias inspect CLI command
 - add generateInspectReport utility and tests
 - add cron command for managing recurring jobs and heartbeats
+- unify project directory into ~/.tamias/workspace/<slug>/
 
 ### Bug Fixes
 - apply code quality improvements to transcription.ts
@@ -43,6 +44,7 @@
 - add inspect context design spec
 
 ### Other Changes
+- Merge commit 'a5be9c590332a22860d4bded2d1c5c11369cf661'
 - test: add coverage for _fetchToFile download trigger in ensureModelReady
 
 ## [v26.03.17.2] - 2026-03-17

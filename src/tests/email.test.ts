@@ -1,4 +1,4 @@
-import { expect, test, describe, mock, beforeEach } from "bun:test"
+import { expect, test, describe, mock, beforeEach, afterAll } from "bun:test"
 import { join } from "path"
 
 const SRC_ROOT = join(import.meta.dir, "..")
@@ -173,3 +173,5 @@ describe("Email Tool", () => {
 		expect(callArgs[0]).toMatch(/himalaya message send --account denis-growth < .*/)
 	})
 })
+
+afterAll(() => mock.restore())
