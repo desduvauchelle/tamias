@@ -29,7 +29,7 @@ const mockVectorStore = {
 
 mock.module('../utils/vectors', () => ({
 	getVectorStore: async () => mockVectorStore,
-	resetVectorStore: () => {},
+	resetVectorStore: () => { },
 }))
 
 mock.module('../utils/config', () => ({

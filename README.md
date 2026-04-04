@@ -284,8 +284,7 @@ Runtime logs are centralized under `~/.tamias/logs/` (for example `daemon.log`, 
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.04.41)
+### Latest Version (v26.04.04.42)
 
 ### Features
-- enhance WhatsAppUnofficialBridge with mention-only mode and regex support
-- coding CLI delegation system
+- enhance LiveLogsPage with pagination and live toggle functionality; update changelog

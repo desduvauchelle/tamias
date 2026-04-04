@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.04.04.42] - 2026-04-04
+
+### Features
+- enhance LiveLogsPage with pagination and live toggle functionality; update changelog
+
 ## [v26.04.04.41] - 2026-04-04
 
 ### Features
