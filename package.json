@@ -1,6 +1,6 @@
 {
 	"name": "tamias",
-	"version": "26.04.04.25",
+	"version": "26.04.04.26",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
@@ -71,7 +71,6 @@
 		"playwright": "^1.58.2",
 		"qr-image": "^3.2.0",
 		"qrcode-terminal": "^0.12.0",
-		"wavefile": "^11.0.0",
 		"zod": "^4.3.6"
 	}
 }
