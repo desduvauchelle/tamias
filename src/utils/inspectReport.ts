@@ -1,5 +1,5 @@
 import { join } from 'path'
-import { writeFileSync } from 'fs'
+import { writeFileSync, mkdirSync } from 'fs'
 import { buildSystemPrompt } from './memory.ts'
 import {
 	loadConfig,
@@ -96,29 +96,35 @@ async function buildStaticToolCatalog(): Promise<Map<string, { description: stri
 		import('../tools/projects.ts'),
 	])
 
-	const internalCatalog: Record<string, Record<string, any>> = {
-		terminal: terminalTools as any,
-		tamias: createTamiasTools(stubService, 'inspect'),
-		cron: createCronTools(stubService, 'inspect'),
-		email: emailTools as any,
-		github: githubTools as any,
-		workspace: createWorkspaceTools(undefined),
-		gemini: geminiTools as any,
-		subagent: createSubagentTools(stubService, 'inspect'),
-		image: createImageTools(stubService, 'inspect', undefined),
-		browser: createBrowserTools(stubService, 'inspect'),
-		pdf: createPdfTools(stubService, 'inspect'),
-		memory: memoryTools as any,
-		swarm: createSwarmTools(stubService, 'inspect'),
-		session: createSessionTools(stubService, 'inspect'),
-		skills: skillsTools as any,
-		websearch: createWebsearchTools(stubService, 'inspect'),
-		projects: projectsModule as any,
+	const factories: Record<string, () => Record<string, any>> = {
+		terminal: () => terminalTools as any,
+		tamias: () => createTamiasTools(stubService, 'inspect'),
+		cron: () => createCronTools(stubService, 'inspect'),
+		email: () => emailTools as any,
+		github: () => githubTools as any,
+		workspace: () => createWorkspaceTools(undefined),
+		gemini: () => geminiTools as any,
+		subagent: () => createSubagentTools(stubService, 'inspect'),
+		image: () => createImageTools(stubService, 'inspect', undefined),
+		browser: () => createBrowserTools(stubService, 'inspect'),
+		pdf: () => createPdfTools(stubService, 'inspect'),
+		memory: () => memoryTools as any,
+		swarm: () => createSwarmTools(stubService, 'inspect'),
+		session: () => createSessionTools(stubService, 'inspect'),
+		skills: () => skillsTools as any,
+		websearch: () => createWebsearchTools(stubService, 'inspect'),
+		projects: () => projectsModule as any,
 	}
 
-	for (const [ns, toolSet] of Object.entries(internalCatalog)) {
+	for (const [ns, buildToolSet] of Object.entries(factories)) {
 		const cfg = getInternalToolConfig(ns)
 		if (!cfg.enabled) continue
+		let toolSet: Record<string, any>
+		try {
+			toolSet = buildToolSet()
+		} catch {
+			continue // skip this namespace if factory fails
+		}
 		for (const [fnName, t] of Object.entries(toolSet)) {
 			if (typeof (t as any)?.execute !== 'function') continue
 			const fullName = `${ns}__${fnName}`
@@ -174,9 +180,9 @@ function buildConfigSection(): string {
 	for (const [key, tg] of Object.entries(telegrams)) {
 		lines.push(`- telegram/${key}: ${tg.enabled ? '**enabled**' : 'disabled'}`)
 	}
-	const waUnofficial = (bridges as any).whatsappUnofficials ?? {}
-	for (const [key, wa] of Object.entries(waUnofficial as any)) {
-		lines.push(`- whatsapp-unofficial/${key}: ${(wa as any).enabled ? '**enabled**' : 'disabled'}`)
+	const waUnofficial = bridges.whatsappUnofficials ?? {}
+	for (const [key, wa] of Object.entries(waUnofficial)) {
+		lines.push(`- whatsapp-unofficial/${key}: ${wa.enabled ? '**enabled**' : 'disabled'}`)
 	}
 
 	lines.push('', '### MCP Servers', '')
@@ -295,6 +301,7 @@ export function writeInspectReport(content: string, dir: string = TAMIAS_DIR): s
 	const stamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19)
 	const fileName = `inspect-${stamp}.md`
 	const filePath = join(dir, fileName)
+	mkdirSync(dir, { recursive: true })
 	writeFileSync(filePath, content, 'utf-8')
 	return filePath
 }

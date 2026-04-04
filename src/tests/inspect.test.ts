@@ -12,7 +12,7 @@ describe('generateInspectReport', () => {
 
   it('includes "terminal" in channel metadata when no session provided', async () => {
     const report = await generateInspectReport()
-    expect(report).toContain('terminal')
+    expect(report).toContain('terminal (synthetic — CLI mode)')
   })
 
   it('includes at least one internal tool namespace', async () => {
