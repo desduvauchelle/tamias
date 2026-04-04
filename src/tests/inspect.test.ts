@@ -44,3 +44,14 @@ describe('writeInspectReport', () => {
     unlinkSync(filePath)
   })
 })
+
+import { createTamiasTools } from '../tools/tamias.ts'
+
+describe('tamias__inspect_context tool', () => {
+  it('is exported from createTamiasTools', () => {
+    const stubService = { getSession: () => undefined, getAllSessions: () => [], emit: () => {} } as any
+    const tools = createTamiasTools(stubService, 'test-session')
+    expect(typeof tools.inspect_context).toBe('object')
+    expect(typeof tools.inspect_context.execute).toBe('function')
+  })
+})

@@ -774,5 +774,59 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 				}
 			},
 		}),
+
+		inspect_context: tool({
+			description: 'Generate a debug report showing the current system prompt, all available tools with descriptions and input schemas, session metadata, and configuration snapshot. Sends the report as a downloadable .md file attachment.',
+			inputSchema: z.object({}),
+			execute: async () => {
+				const session = aiService.getSession(sessionId)
+				if (!session) return { success: false, error: 'Session not found' }
+
+				try {
+					const { generateInspectReport, writeInspectReport } = await import('../utils/inspectReport.ts')
+					const { buildActiveTools } = await import('../utils/toolRegistry.ts')
+
+					// Build live tool catalog with real descriptions
+					let liveCatalog: Map<string, { description: string; paramsMd: string }> | undefined
+					try {
+						const { tools: activeTools, mcpClients } = await buildActiveTools(aiService, sessionId)
+						liveCatalog = new Map()
+						for (const [fullName, t] of Object.entries(activeTools)) {
+							const anyT = t as any
+							const description = anyT.description ?? ''
+							const shape = anyT.inputSchema?._def?.shape ?? anyT.inputSchema?.def?.shape ?? {}
+							const paramLines: string[] = []
+							for (const [pName, field] of Object.entries(shape)) {
+								const anyF = field as any
+								const isOpt = (anyF.def ?? anyF._def)?.type === 'optional'
+								const inner = isOpt ? (anyF.def ?? anyF._def).innerType : anyF
+								const type = inner?.type ?? (inner?.def ?? inner?._def)?.type ?? 'unknown'
+								const desc = anyF.meta?.()?.description ?? inner?.meta?.()?.description ?? ''
+								paramLines.push(`  - \`${pName}\` (${type}${isOpt ? '?' : ''})${desc ? ` — ${desc}` : ''}`)
+							}
+							liveCatalog.set(fullName, { description, paramsMd: paramLines.join('\n') })
+						}
+						await Promise.all(mcpClients.map(c => c.close()))
+					} catch {
+						// Falls back to static catalog inside generateInspectReport
+					}
+
+					const report = await generateInspectReport(session, liveCatalog)
+					const filePath = writeInspectReport(report, session.workspacePath)
+
+					const buffer = Buffer.from(report, 'utf-8')
+					session.emitter.emit('event', {
+						type: 'file',
+						name: 'inspect-context.md',
+						buffer,
+						mimeType: 'text/markdown',
+					} as DaemonEvent)
+
+					return { success: true, filePath, message: 'Inspection report generated and sent as a file attachment.' }
+				} catch (err: unknown) {
+					return { success: false, error: err instanceof Error ? err.message : String(err) }
+				}
+			},
+		}),
 	}
 }
