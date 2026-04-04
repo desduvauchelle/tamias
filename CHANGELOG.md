@@ -3,13 +3,43 @@
 ## [Unreleased]
 
 ### Features
+- replace Whisper/ONNX transcription with Parakeet via sherpa-onnx subprocess
+- fix usage page header badge alignment on mobile
+- make channels page cards and labels mobile responsive
+- make projects page tabs scrollable and header wrapping on mobile
+- make history page table horizontally scrollable on mobile
+- make chat page mobile responsive with collapsible sessions panel
+- check for pending restart notification on daemon boot
+- update_tamias tool now schedules restart and sends post-boot notification
+- add performUpdateAndRestart to update.ts with pending-restart tracking
+- add tamias__inspect_context AI tool
+- add pendingRestart utility for post-boot channel notification
+- add tamias inspect CLI command
+- add generateInspectReport utility and tests
 - add cron command for managing recurring jobs and heartbeats
 
+### Bug Fixes
+- apply code quality improvements to transcription.ts
+- replace _downloadState Proxy with plain object to prevent model dir deletion on retry
+- use solid background on sticky history table header
+- add aria-expanded and aria-label to sessions panel toggle
+- warn when session not found in update_tamias tool
+- align isCompiled detection, remove unnecessary dynamic imports in performUpdateAndRestart
+- add shape validation and fix ESM import in pendingRestart
+- improve error isolation and safety in inspectReport
+
 ### Documentation
+- add Parakeet transcription implementation plan
+- add mobile responsive dashboard implementation plan
+- add mobile responsive dashboard design spec
+- add Parakeet transcription design spec
 - add self-update restart implementation plan
 - add inspect context implementation plan
 - add self-update restart design spec
 - add inspect context design spec
+
+### Other Changes
+- test: add coverage for _fetchToFile download trigger in ensureModelReady
 
 ## [v26.03.17.2] - 2026-03-17
 

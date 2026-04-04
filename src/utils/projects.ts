@@ -228,7 +228,17 @@ export function buildProjectContext(tenantId?: string): string {
 	const projects = listProjects(tenantId)
 	if (projects.length === 0) return ''
 
-	const lines = ['## Your Active Projects\n']
+	// Surface the configured default project so the AI knows where to route unattributed messages
+	let defaultProjectNote = ''
+	try {
+		const { loadConfig } = require('./config')
+		const cfg = loadConfig()
+		if (cfg.defaultProject) {
+			defaultProjectNote = ` (default project for unattributed messages: **${cfg.defaultProject}**)`
+		}
+	} catch { /* config not available */ }
+
+	const lines = [`## Your Active Projects${defaultProjectNote}\n`]
 	for (const p of projects) {
 		if (p.status === 'archived') continue
 		const statusBadge = p.status === 'paused' ? ' (paused)' : ''

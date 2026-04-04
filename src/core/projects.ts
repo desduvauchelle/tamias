@@ -259,6 +259,37 @@ export function addProject(project: Omit<ProjectConfig, 'id' | 'kanban'>): Proje
 	// Create default context.md
 	writeFileSync(join(projectDir, 'context.md'), `# ${project.name}\n\n${project.description || ''}\n`, 'utf-8')
 
+	// Initialize README.md with a structured template the AI can follow
+	const readmePath = join(projectDir, 'README.md')
+	if (!existsSync(readmePath)) {
+		const readmeContent = `# ${project.name}
+
+${project.description || 'A Tamias project.'}
+
+## Overview
+
+<!-- Describe the purpose and goals of this project -->
+
+## Tasks & Reminders
+
+<!-- Tasks, action items, and reminders go here -->
+
+## Notes
+
+<!-- Freeform notes, links, and reference material -->
+
+## Activity
+
+<!-- Recent updates are logged here automatically -->
+`
+		writeFileSync(readmePath, readmeContent, 'utf-8')
+	}
+
+	// Initialize NOTES.md and ACTIVITY.md
+	writeFileSync(join(projectDir, 'NOTES.md'), `# ${project.name} — Notes\n\n`, 'utf-8')
+	const nowLabel = now.slice(0, 16).replace('T', ' ')
+	writeFileSync(join(projectDir, 'ACTIVITY.md'), `# ${project.name} — Activity Log\n\n[${nowLabel}] Project created.\n`, 'utf-8')
+
 	// Create skills directory
 	mkdirSync(join(projectDir, 'skills'), { recursive: true })
 

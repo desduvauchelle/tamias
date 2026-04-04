@@ -35,6 +35,14 @@ Manage recurring cron jobs and heartbeats
 | `tamias cron install` | Install the system crontab entry to run cron jobs every minute |
 | `tamias cron uninstall` | Remove the system crontab entry |
 
+### `tamias inspect`
+
+Generate a debug report of the current system prompt, tools, and config
+
+| Command | Description |
+|---|---|
+| `tamias inspect` | Generate a debug report of the current system prompt, tools, and config (`--print`) |
+
 ### `tamias start`
 
 Start the Tamias daemon (central AI brain)

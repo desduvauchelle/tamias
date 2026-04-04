@@ -155,6 +155,8 @@ export const TamiasConfigSchema = z.object({
 	mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
 	bridges: BridgesConfigSchema.default({ terminal: { enabled: true } }),
 	workspacePath: z.string().optional(),
+	/** Default project slug. Messages not linked to any project are routed here. Use "inbox" for a catch-all. */
+	defaultProject: z.string().optional(),
 	debug: z.boolean().default(false),
 	emails: z.record(z.string(), z.object({
 		nickname: z.string(),
