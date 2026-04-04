@@ -534,6 +534,9 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 				}
 
 				const session = aiService.getSession(sessionId)
+				if (!session) {
+					console.warn('[UpdateRestart] Session not found — post-restart notification will not be delivered')
+				}
 				const channelId = session?.channelId ?? 'unknown'
 				const channelUserId = session?.channelUserId
 
