@@ -74,6 +74,8 @@ bunx playwright test test/e2e/foo.spec.ts   # Single E2E test
 
 **Mocking**: `mock.module()` for external SDKs, `mock()` for simple functions, `mkdtempSync` for temp filesystem. Avoid `as any` casts — prefer constructor injection or `mock.module()`.
 
+**Mock/spy cleanup is mandatory**: if a test uses `spyOn` or temporary mocks, restore them in `afterEach` (for example `afterEach(() => mock.restore())`) to prevent cross-test and cross-file contamination in CI.
+
 **Bad tests** assert only existence (`typeof`), non-throwing, or return type. **Good tests** exercise real logic and assert real values.
 
 ## Important Notes

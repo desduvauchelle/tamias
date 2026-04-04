@@ -1,9 +1,10 @@
-import { expect, test, describe, spyOn, beforeEach } from "bun:test"
+import { expect, test, describe, spyOn, beforeEach, afterEach, mock } from "bun:test"
 import { AIService } from "../services/aiService"
 import { BridgeManager } from "../bridge"
 import { EventEmitter } from "events"
 import type { DaemonEvent } from "../bridge/types"
 import * as configUtils from "../utils/config"
+import type { TamiasConfig } from "../utils/config"
 
 describe("AIService Streaming", () => {
 	let aiService: AIService
@@ -14,7 +15,17 @@ describe("AIService Streaming", () => {
 		aiService = new AIService(bridgeManager)
 
 		// Mock config to have no connections so we trigger the error path
-		spyOn(configUtils, 'loadConfig').mockReturnValue({ connections: {} } as any)
+		const emptyConfig: TamiasConfig = {
+			version: "1.0",
+			connections: {},
+			bridges: { terminal: { enabled: true } },
+			debug: false,
+		}
+		spyOn(configUtils, 'loadConfig').mockReturnValue(emptyConfig)
+	})
+
+	afterEach(() => {
+		mock.restore()
 	})
 
 	test("emits 'done' after 'error' when no models are configured", async () => {

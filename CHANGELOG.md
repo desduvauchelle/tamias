@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- unify project directory structure and enhance test cleanup with afterAll
 - add project management features and documentation to changelog
 - enhance project management features and documentation, add default project routing
 - replace Whisper/ONNX transcription with Parakeet via sherpa-onnx subprocess
