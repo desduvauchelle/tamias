@@ -137,19 +137,19 @@ function HistoryContent() {
 
 	return (
 		<div className="h-full flex flex-col p-6 gap-6 overflow-hidden">
-			<div className="flex items-center justify-between shrink-0">
+			<div className="flex flex-col items-start justify-between shrink-0 gap-4 sm:flex-row sm:items-center">
 				<div>
 					<h1 className="text-2xl font-bold text-success font-mono">Episodic History</h1>
 					<p className="text-xs text-base-content/50 font-mono mt-1 uppercase tracking-tighter">Audit trail of AI interactions and tool usage</p>
 				</div>
-				<div className="flex items-center gap-3">
-					<div className="relative">
+				<div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+					<div className="relative flex-1 min-w-[200px] sm:flex-none">
 						<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/30" />
 						<input
 							data-testid="history-filter-input"
 							type="text"
 							placeholder="Filter by prompt, model, session..."
-							className="input input-bordered input-sm pl-9 w-64 font-mono text-xs focus:input-success transition-all"
+							className="input input-bordered input-sm pl-9 w-full sm:w-64 font-mono text-xs focus:input-success transition-all"
 							value={filter}
 							onChange={e => setFilter(e.target.value)}
 						/>
@@ -165,53 +165,57 @@ function HistoryContent() {
 			<div className="flex-1 overflow-hidden">
 				<div className="card h-full bg-base-200 border border-base-300 flex flex-col overflow-hidden">
 					<div className="card-body p-0 flex flex-col min-h-0">
-						{/* Table Header */}
-						<div className="grid grid-cols-[180px_120px_1fr_100px_80px] px-6 py-3 border-b border-base-300 bg-base-300/30 text-[10px] uppercase font-bold tracking-widest text-base-content/50 font-mono items-center shrink-0">
-							<div className="flex items-center gap-2"><Clock className="w-3 h-3" /> Timestamp</div>
-							<div className="flex items-center gap-2"><Cpu className="w-3 h-3" /> Model / Action</div>
-							<div className="flex items-center gap-2"><Terminal className="w-3 h-3" /> Input Prompt Snippet</div>
-							<div className="flex items-center gap-2 justify-end text-right"><Database className="w-3 h-3" /> Tokens</div>
-							<div className="text-right pr-2">Dur. / Cost</div>
-						</div>
-
-						{/* Table Content */}
-						<div className="flex-1 overflow-y-auto">
-							{loading ? (
-								<div className="h-64 flex items-center justify-center">
-									<span className="loading loading-spinner text-success loading-lg" />
+						{/* Scrollable Table */}
+						<div className="flex-1 overflow-auto">
+							<div className="min-w-[700px]">
+								{/* Table Header */}
+								<div className="grid grid-cols-[180px_120px_1fr_100px_80px] px-6 py-3 border-b border-base-300 bg-base-300/30 text-[10px] uppercase font-bold tracking-widest text-base-content/50 font-mono items-center shrink-0 sticky top-0">
+									<div className="flex items-center gap-2"><Clock className="w-3 h-3" /> Timestamp</div>
+									<div className="flex items-center gap-2"><Cpu className="w-3 h-3" /> Model / Action</div>
+									<div className="flex items-center gap-2"><Terminal className="w-3 h-3" /> Input Prompt Snippet</div>
+									<div className="flex items-center gap-2 justify-end text-right"><Database className="w-3 h-3" /> Tokens</div>
+									<div className="text-right pr-2">Dur. / Cost</div>
 								</div>
-							) : filteredLogs.length === 0 ? (
-								<div className="h-64 flex flex-col items-center justify-center text-center opacity-30">
-									<p className="font-mono text-sm uppercase">No history matching criteria</p>
-								</div>
-							) : (
-								filteredLogs.map((log, idx) => (
-									<div key={idx} className="border-b border-base-300/50 last:border-0">
-										<div
-											className={`grid grid-cols-[180px_120px_1fr_100px_80px] px-6 py-4 text-[11px] font-mono hover:bg-base-300/20 cursor-pointer transition-colors items-center`}
-											onClick={() => openModal(log)}
-										>
-											<div className="text-base-content/60">{new Date(log.timestamp).toLocaleString()}</div>
-											<div className="flex flex-col gap-1">
-												<span className="px-1.5 py-0.5 rounded bg-base-300 text-[9px] uppercase font-bold text-base-content/70 w-fit">
-													{log.model.split('/').pop()}
-												</span>
-												<span className="text-[9px] uppercase text-base-content/50">{log.provider} / {log.action}</span>
-											</div>
-											<div className="truncate pr-4 text-success/80">
-												{extractText(log.prompt as unknown) || <span className="opacity-30 italic">No prompt</span>}
-											</div>
-											<div className="text-right text-base-content/40 tabular-nums">
-												{log.tokens.total || 0}
-											</div>
-											<div className="text-right text-base-content/40 tabular-nums pr-2 flex flex-col gap-1">
-												<span>{log.durationMs}ms</span>
-												<span className="text-[9px]">${(log.finalCostUsd ?? log.providerCostUsd ?? log.estimatedCostUsd ?? 0).toFixed(6)}</span>
-											</div>
+								{/* Table Content */}
+								<div>
+									{loading ? (
+										<div className="h-64 flex items-center justify-center">
+											<span className="loading loading-spinner text-success loading-lg" />
 										</div>
-									</div>
-								))
-							)}
+									) : filteredLogs.length === 0 ? (
+										<div className="h-64 flex flex-col items-center justify-center text-center opacity-30">
+											<p className="font-mono text-sm uppercase">No history matching criteria</p>
+										</div>
+									) : (
+										filteredLogs.map((log, idx) => (
+											<div key={idx} className="border-b border-base-300/50 last:border-0">
+												<div
+													className={`grid grid-cols-[180px_120px_1fr_100px_80px] px-6 py-4 text-[11px] font-mono hover:bg-base-300/20 cursor-pointer transition-colors items-center`}
+													onClick={() => openModal(log)}
+												>
+													<div className="text-base-content/60">{new Date(log.timestamp).toLocaleString()}</div>
+													<div className="flex flex-col gap-1">
+														<span className="px-1.5 py-0.5 rounded bg-base-300 text-[9px] uppercase font-bold text-base-content/70 w-fit">
+															{log.model.split('/').pop()}
+														</span>
+														<span className="text-[9px] uppercase text-base-content/50">{log.provider} / {log.action}</span>
+													</div>
+													<div className="truncate pr-4 text-success/80">
+														{extractText(log.prompt as unknown) || <span className="opacity-30 italic">No prompt</span>}
+													</div>
+													<div className="text-right text-base-content/40 tabular-nums">
+														{log.tokens.total || 0}
+													</div>
+													<div className="text-right text-base-content/40 tabular-nums pr-2 flex flex-col gap-1">
+														<span>{log.durationMs}ms</span>
+														<span className="text-[9px]">${(log.finalCostUsd ?? log.providerCostUsd ?? log.estimatedCostUsd ?? 0).toFixed(6)}</span>
+													</div>
+												</div>
+											</div>
+										))
+									)}
+								</div>
+							</div>
 						</div>
 
 						{/* Table Footer */}
