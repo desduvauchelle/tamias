@@ -73,7 +73,7 @@ const navGroups = {
 		},
 		{
 			href: '/live-logs',
-			label: 'Live logs',
+			label: 'Logs',
 			icon: <Activity className="w-4 h-4" />,
 		},
 	],

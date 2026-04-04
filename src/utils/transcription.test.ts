@@ -83,9 +83,11 @@ const {
 	transcribeAudioBuffer,
 	ensureModelReady,
 	prefetchModelInBackground,
+	configureFfmpegPathForRuntime,
 	_bunSpawn,
 	_httpFetch,
 	_downloadState,
+	_ffmpegRuntime,
 } = await import('./transcription.ts')
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -122,10 +124,65 @@ beforeEach(() => {
 	_bunSpawn.fn = originalSpawnFn
 	_httpFetch.fn = originalFetchFn
 	_downloadState.promise = null
+	_ffmpegRuntime.staticPath = '/usr/bin/ffmpeg'
+	_ffmpegRuntime.pathExists = (path: string) => path === '/usr/bin/ffmpeg'
+	_ffmpegRuntime.setPath = () => { }
+	_ffmpegRuntime.configured = false
 	wavBufToReturn = makeWavBuffer([100, 200, -100, -200])
 	// Clean up any model files created by previous tests so ensureModelReady
 	// correctly triggers a download in the concurrent-calls test
 	rmSync(getParakeetDir(), { recursive: true, force: true })
+})
+
+describe('configureFfmpegPathForRuntime', () => {
+	test('uses ffmpeg-static path when binary exists', () => {
+		const setPathMock = mock(() => { })
+		_ffmpegRuntime.staticPath = '/opt/ffmpeg-static/ffmpeg'
+		_ffmpegRuntime.pathExists = (path: string) => path === '/opt/ffmpeg-static/ffmpeg'
+		_ffmpegRuntime.setPath = setPathMock
+		_ffmpegRuntime.configured = false
+
+		configureFfmpegPathForRuntime()
+
+		expect(setPathMock).toHaveBeenCalledTimes(1)
+		expect(setPathMock).toHaveBeenCalledWith('/opt/ffmpeg-static/ffmpeg')
+		expect(_ffmpegRuntime.configured).toBe(true)
+	})
+
+	test('falls back to PATH when ffmpeg-static path is missing', () => {
+		const setPathMock = mock(() => { })
+		const warnSpy = mock((_message?: unknown, ..._args: unknown[]) => { })
+		const originalWarn = console.warn
+		console.warn = warnSpy as unknown as typeof console.warn
+		_ffmpegRuntime.staticPath = '/missing/ffmpeg'
+		_ffmpegRuntime.pathExists = () => false
+		_ffmpegRuntime.setPath = setPathMock
+		_ffmpegRuntime.configured = false
+
+		try {
+			configureFfmpegPathForRuntime()
+		} finally {
+			console.warn = originalWarn
+		}
+
+		expect(setPathMock).not.toHaveBeenCalled()
+		expect(warnSpy).toHaveBeenCalledTimes(1)
+		expect(warnSpy.mock.calls[0][0]).toContain('ffmpeg-static binary not found')
+		expect(_ffmpegRuntime.configured).toBe(true)
+	})
+
+	test('is idempotent after first configuration', () => {
+		const setPathMock = mock(() => { })
+		_ffmpegRuntime.staticPath = '/opt/ffmpeg-static/ffmpeg'
+		_ffmpegRuntime.pathExists = (path: string) => path === '/opt/ffmpeg-static/ffmpeg'
+		_ffmpegRuntime.setPath = setPathMock
+		_ffmpegRuntime.configured = false
+
+		configureFfmpegPathForRuntime()
+		configureFfmpegPathForRuntime()
+
+		expect(setPathMock).toHaveBeenCalledTimes(1)
+	})
 })
 
 // ── transcribeAudioBuffer ─────────────────────────────────────────────────────

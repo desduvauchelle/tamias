@@ -14,4 +14,13 @@ describe('Live logs timestamp formatting', () => {
 		const invalid = 'not-a-timestamp'
 		expect(formatLiveLogTimestamp(invalid)).toBe(invalid)
 	})
+
+	test('format helper remains stable for logs page naming change', () => {
+		const iso = '2026-02-01T00:00:00.000Z'
+		expect(typeof formatLiveLogTimestamp(iso)).toBe('string')
+	})
+
+	test('format helper keeps deterministic fallback for malformed values', () => {
+		expect(formatLiveLogTimestamp('')).toBe('')
+	})
 })

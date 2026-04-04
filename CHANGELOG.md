@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+- coding CLI delegation system
+
 ## [v26.04.04.39] - 2026-04-04
 
 ### Features

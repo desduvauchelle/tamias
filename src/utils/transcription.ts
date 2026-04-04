@@ -7,7 +7,32 @@ import { tmpdir } from 'os'
 import { randomBytes } from 'crypto'
 import { getConfigFilePath } from './config.ts'
 
-if (ffmpegStatic) ffmpeg.setFfmpegPath(ffmpegStatic)
+export const _ffmpegRuntime: {
+	staticPath: string | null
+	setPath: (path: string) => void
+	pathExists: (path: string) => boolean
+	configured: boolean
+} = {
+	staticPath: ffmpegStatic,
+	setPath: (path: string) => { ffmpeg.setFfmpegPath(path) },
+	pathExists: (path: string) => existsSync(path),
+	configured: false,
+}
+
+export function configureFfmpegPathForRuntime(): void {
+	if (_ffmpegRuntime.configured) return
+
+	const candidate = _ffmpegRuntime.staticPath
+	if (candidate && _ffmpegRuntime.pathExists(candidate)) {
+		_ffmpegRuntime.setPath(candidate)
+	} else if (candidate) {
+		console.warn(`[Transcription] ffmpeg-static binary not found at ${candidate}; falling back to system ffmpeg in PATH`)
+	}
+
+	_ffmpegRuntime.configured = true
+}
+
+configureFfmpegPathForRuntime()
 
 const REQUIRED_FILES = [
 	'sherpa-onnx-offline',
@@ -250,6 +275,8 @@ async function _extractModelFiles(tarPath: string, dir: string): Promise<void> {
 
 function convertToWav(inputBuffer: Buffer): Promise<Buffer> {
 	return new Promise((resolve, reject) => {
+		// Re-run once per process if tests reset runtime hooks; otherwise this is a no-op.
+		configureFfmpegPathForRuntime()
 		const inputStream = new Readable()
 		inputStream.push(inputBuffer)
 		inputStream.push(null)
