@@ -511,19 +511,49 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 		}),
 
 		update_tamias: tool({
-			description: 'Check for and install updates for Tamias CLI and dashboard.',
+			description: 'Check for and install Tamias updates. Downloads the latest binary and dashboard, then restarts the daemon automatically. After restart, sends a confirmation message with the version and changelog to the channel that requested the update.',
 			inputSchema: z.object({}),
 			execute: async () => {
-				const { performUpdate } = await import('../utils/update.ts')
-				const result = await performUpdate()
-				if (result.success) {
-					if (result.latestVersion && result.currentVersion !== result.latestVersion) {
-						return { success: true, message: `Update complete to v${result.latestVersion}`, version: result.latestVersion }
-					} else {
-						return { success: true, message: `Already up to date (v${result.currentVersion})`, version: result.currentVersion }
-					}
-				} else {
-					return { success: false, error: result.error || 'Update failed' }
+				const { checkForUpdate, performUpdateAndRestart } = await import('../utils/update.ts')
+
+				let updateInfo: Awaited<ReturnType<typeof checkForUpdate>>
+				try {
+					updateInfo = await checkForUpdate()
+				} catch (err) {
+					return { success: false, error: `Failed to check for updates: ${err}` }
+				}
+
+				if (!updateInfo) {
+					return { success: false, error: 'Could not reach GitHub releases.' }
+				}
+
+				const { currentVersion, latestVersion, release } = updateInfo
+
+				if (currentVersion === latestVersion) {
+					return { success: true, message: `Already up to date (v${currentVersion})` }
+				}
+
+				const session = aiService.getSession(sessionId)
+				const channelId = session?.channelId ?? 'unknown'
+				const channelUserId = session?.channelUserId
+
+				const rawChangelog = (release.body as string | undefined) ?? ''
+				const changelog = rawChangelog.length > 800 ? rawChangelog.slice(0, 797) + '…' : rawChangelog
+
+				// Schedule update+restart 4 seconds from now so the AI has time to deliver this response
+				setTimeout(() => {
+					performUpdateAndRestart({
+						channelId,
+						channelUserId,
+						fromVersion: currentVersion,
+						toVersion: latestVersion,
+						changelog,
+					}).catch((err: unknown) => console.error('[UpdateRestart] Error:', err))
+				}, 4000)
+
+				return {
+					success: true,
+					message: `Updating from v${currentVersion} to v${latestVersion} — restarting in ~5 seconds. I'll send you a message in this channel when I'm back online.`,
 				}
 			},
 		}),
