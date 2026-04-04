@@ -17,7 +17,9 @@ mock.module(DEPENDENCIES_PATH, () => ({
 	hasDependency: mockHasDependency
 }))
 
+const realConfigModule = await import(CONFIG_PATH)
 mock.module(CONFIG_PATH, () => ({
+	...realConfigModule,
 	getEmailConfig: mockGetEmailConfig,
 	getEmailPassword: mockGetEmailPassword,
 	getAllEmailConfigs: mock(() => ({}))

@@ -38,7 +38,9 @@ class FakeClient {
 
 const createdClients: FakeClient[] = []
 
+const realConfigModule = await import(CONFIG_PATH)
 mock.module(CONFIG_PATH, () => ({
+	...realConfigModule,
 	getBotTokenForInstance: mockGetBotTokenForInstance,
 }))
 

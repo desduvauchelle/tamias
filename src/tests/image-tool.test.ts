@@ -21,10 +21,12 @@ mock.module('ai', () => {
 	}
 })
 
-// Mock config utilities
+// Mock config utilities — spread real module so unmocked exports survive cross-file worker reuse
+const realConfig = await import('../utils/config')
 mock.module('../utils/config', () => {
 	let models = ['test-openai/dall-e-3']
 	return {
+		...realConfig,
 		getDefaultImageModels: () => models,
 		getApiKeyForConnection: () => 'sk-test',
 		loadConfig: () => ({
