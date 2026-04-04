@@ -254,13 +254,15 @@ export default function ChatPage() {
 							<button
 								className="md:hidden flex items-center gap-2 min-w-0 flex-1 text-left"
 								onClick={() => setSessionsOpen(o => !o)}
+								aria-label={sessionsOpen ? 'Collapse sessions panel' : 'Expand sessions panel'}
+								aria-expanded={sessionsOpen}
 							>
 								<h2 className="text-xs text-base-content/50 uppercase tracking-wider font-mono font-bold">
 									{selectedSession
 										? <span className="truncate text-base-content/80">{sessions.find(s => s.id === selectedSession)?.name || selectedSession}</span>
 										: 'Sessions'}
 								</h2>
-								<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`ml-1 transition-transform ${sessionsOpen ? 'rotate-180' : ''}`}><path d="m6 9 6 6 6-6"/></svg>
+								<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`ml-1 transition-transform ${sessionsOpen ? 'rotate-180' : ''}`} aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
 							</button>
 							<h2 className="hidden md:block text-xs text-base-content/50 uppercase tracking-wider font-mono font-bold">Sessions</h2>
 							<button
