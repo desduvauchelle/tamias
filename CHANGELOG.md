@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- enhance test structure by adding afterEach cleanup and improving config mocking
 - update tests to import real config modules for improved mocking
 - unify project directory structure and enhance test cleanup with afterAll
 - add project management features and documentation to changelog

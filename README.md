@@ -217,6 +217,27 @@ AI image generation. Requires at least one image model to be configured via `tam
 |---|---|
 | `generate` | Generate an image from a text prompt and send it back to the channel |
 
+### `firecrawl`
+
+Scrape web pages with a **local Firecrawl** instance (`/v1/scrape`).
+
+> [!NOTE]
+> This tool is gated by config. Enable it in `~/.tamias/config.json`:
+>
+> ```json
+> {
+>   "firecrawl": {
+>     "enabled": true,
+>     "baseUrl": "http://localhost:3002",
+>     "timeoutMs": 30000
+>   }
+> }
+> ```
+
+| Function | Description |
+|---|---|
+| `scrape` | POSTs `{ "url": "..." }` to `<baseUrl>/v1/scrape` and returns extracted content |
+
 ---
 
 ## Multi-Agent System

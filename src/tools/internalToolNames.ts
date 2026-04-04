@@ -25,6 +25,7 @@ export const INTERNAL_TOOL_NAMES = [
 	'swarm',
 	'skills',
 	'websearch',
+	'firecrawl',
 	'projects',
 ] as const
 

@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { loadConfig, getInternalToolConfig, type ToolFunctionConfig, type McpServerConfig } from './config.ts'
+import { loadConfig, getInternalToolConfig, getFirecrawlConfig, type ToolFunctionConfig, type McpServerConfig } from './config.ts'
 import { terminalTools, TERMINAL_TOOL_NAME } from '../tools/terminal.ts'
 import { createTamiasTools, TAMIAS_TOOL_NAME } from '../tools/tamias.ts'
 import { createCronTools, CRON_TOOL_NAME } from '../tools/cron.ts'
@@ -18,6 +18,7 @@ import { createSwarmTools, SWARM_TOOL_NAME } from '../tools/swarm.ts'
 import { createSessionTools, SESSION_TOOL_NAME } from '../tools/session.ts'
 import { skillsTools, SKILLS_TOOL_NAME } from '../tools/skills.ts'
 import { createWebsearchTools, WEBSEARCH_TOOL_NAME } from '../tools/websearch.ts'
+import { createFirecrawlTools, FIRECRAWL_TOOL_NAME } from '../tools/firecrawl.ts'
 import * as projectsTools from '../tools/projects.ts'
 import { INTERNAL_TOOL_NAMES, getAllInternalToolNames } from '../tools/internalToolNames.ts'
 import { buildToolsForDomain } from '../core/adapters/ai-tools.ts'
@@ -102,6 +103,7 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 		[SESSION_TOOL_NAME]: createSessionTools(aiService, sessionId) as ToolSet,
 		[SKILLS_TOOL_NAME]: skillsTools as ToolSet,
 		[WEBSEARCH_TOOL_NAME]: createWebsearchTools(aiService, sessionId) as ToolSet,
+		[FIRECRAWL_TOOL_NAME]: createFirecrawlTools(aiService, sessionId) as ToolSet,
 		'projects': projectsTools as ToolSet,
 	}
 
@@ -123,6 +125,8 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 	}
 
 	for (const [toolName, allFunctions] of Object.entries(internalCatalog)) {
+		if (toolName === FIRECRAWL_TOOL_NAME && !getFirecrawlConfig().enabled) continue
+
 		const toolCfg = getInternalToolConfig(toolName)
 		if (!toolCfg.enabled) continue
 

@@ -138,6 +138,15 @@ export const BridgesConfigSchema = z.object({
 export type BridgesConfig = z.infer<typeof BridgesConfigSchema>
 
 // ─── Main Config Schema ───────────────────────────────────────────────────────
+export const FirecrawlConfigSchema = z.object({
+	enabled: z.boolean().default(false),
+	/** Base URL for Firecrawl local API (no trailing /v1/scrape) */
+	baseUrl: z.string().url().default('http://localhost:3002'),
+	/** HTTP timeout for scrape requests (milliseconds) */
+	timeoutMs: z.number().int().positive().default(30000),
+})
+
+export type FirecrawlConfig = z.infer<typeof FirecrawlConfigSchema>
 
 export const TamiasConfigSchema = z.object({
 	version: z.literal('1.0'),
@@ -209,6 +218,7 @@ export const TamiasConfigSchema = z.object({
 		autoIndexCompaction: true,
 		embeddingModel: 'Xenova/all-MiniLM-L6-v2',
 	}).optional(),
+	firecrawl: FirecrawlConfigSchema.optional(),
 })
 
 export type TamiasConfig = z.infer<typeof TamiasConfigSchema>
@@ -472,6 +482,16 @@ export const getVectorStoreConfig = () => {
 		maxEntries: 5000,
 		autoIndexCompaction: true,
 		embeddingModel: 'Xenova/all-MiniLM-L6-v2',
+	}
+}
+
+/** Return Firecrawl local configuration with defaults */
+export const getFirecrawlConfig = (): FirecrawlConfig => {
+	const config = loadConfig()
+	return config.firecrawl ?? {
+		enabled: false,
+		baseUrl: 'http://localhost:3002',
+		timeoutMs: 30000,
 	}
 }
 
