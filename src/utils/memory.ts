@@ -89,16 +89,39 @@ function stripFrontmatter(content: string): string {
 	return content.slice(end + 3).trimStart()
 }
 
-/** Read all persona files and return their contents */
-export function readAllPersonaFiles(): Record<string, string> {
+/**
+ * Read all persona files and return their contents.
+ * Merge order (highest priority wins): agent-dir → project-level → global.
+ * Project-level files live at ~/.tamias/workspace/<projectSlug>/memory/.
+ */
+export function readAllPersonaFiles(agentDir?: string, projectSlug?: string): Record<string, string> {
 	const result: Record<string, string> = {}
-	for (const file of PERSONA_FILES) {
-		const content = readPersonaFile(file)
-		if (content) result[file] = content
+	const filesToRead = [...PERSONA_FILES, 'MEMORY.md'] as string[]
+
+	for (const file of filesToRead) {
+		// 1. Global fallback
+		const global = readPersonaFile(file)
+		if (global) result[file] = global
+
+		// 2. Project-level overlay (replaces global when present)
+		if (projectSlug) {
+			const projectMemDir = join(getWorkspacePath(), projectSlug, 'memory')
+			const projectPath = join(projectMemDir, file)
+			if (existsSync(projectPath)) {
+				try { result[file] = readFileSync(projectPath, 'utf-8') } catch { /* skip */ }
+			}
+		}
+
+		// 3. Agent-level overlay (highest priority, replaces project and global)
+		if (agentDir) {
+			const agentPath = join(agentDir, file)
+			if (existsSync(agentPath)) {
+				try { result[file] = readFileSync(agentPath, 'utf-8') } catch { /* skip */ }
+			}
+		}
+
+		if (!result[file]) delete result[file]
 	}
-	// Also read MEMORY.md if it exists
-	const memory = readPersonaFile('MEMORY.md')
-	if (memory) result['MEMORY.md'] = memory
 	return result
 }
 
@@ -183,6 +206,7 @@ function buildEnvironmentSection(
 	cwd?: string,
 	activeProjectDir?: string,
 	sessionWorkspacePath?: string,
+	activeProjectSlug?: string,
 ): string {
 	const now = new Date()
 	const datePart = now.toISOString().slice(0, 10)
@@ -205,6 +229,11 @@ function buildEnvironmentSection(
 		let idLine = `- **Channel ID (for tools):** \`${channel.id}\``
 		if (channel.userId) idLine += ` | **User ID:** \`${channel.userId}\``
 		lines.push(idLine)
+	}
+
+	// ── Active project binding ────────────────────────────────────────────
+	if (activeProjectSlug) {
+		lines.push(`- **Active Project:** \`${activeProjectSlug}\` (linked to this channel) — use this slug in all project tool calls unless the user explicitly names a different project.`)
 	}
 
 	// ── Helper: read immediate children of a directory ────────────────────
@@ -339,7 +368,11 @@ function buildEnvironmentSection(
 					)
 					if (visible.length > 0) {
 						lines.push('')
-						lines.push(`#### Active Project: ${matchedProject.name}/ (matched channel #${channel.name})`)
+						// Emit binding instruction only if a project wasn't already set via config link
+						if (!activeProjectSlug) {
+							lines.push(`**Inferred Active Project:** \`${matchedProject.name}\` (channel name matched workspace folder). Use this slug in project tool calls unless the user says otherwise.`)
+						}
+						lines.push(`#### ${matchedProject.name}/ workspace`)
 						lines.push('```')
 						for (const e of visible) lines.push(e.isDir ? `${e.name}/` : e.name)
 						lines.push('```')
@@ -366,14 +399,23 @@ export function buildSystemPrompt(
 	summary?: string,
 	channel?: { id: string, userId?: string, name?: string, authorName?: string, isSubagent?: boolean },
 	agentDir?: string,
-	opts?: { modelContextWindow?: number; projectContext?: string; cwd?: string; sessionWorkspacePath?: string },
+	opts?: { modelContextWindow?: number; projectContext?: string; cwd?: string; sessionWorkspacePath?: string; activeProjectSlug?: string },
 ): string {
-	// Helper: read from agentDir (if supplied) first, then global MEMORY_DIR
+	// Helper: layered read — agent-dir → project-level → global MEMORY_DIR
 	const readLayered = (name: string): string | null => {
+		// Highest: agent-specific file
 		if (agentDir) {
 			const agentPath = join(agentDir, name)
 			if (existsSync(agentPath)) return readFileSync(agentPath, 'utf-8')
 		}
+		// Mid: project-scoped file
+		if (opts?.activeProjectSlug) {
+			const projectPath = join(getWorkspacePath(), opts.activeProjectSlug, 'memory', name)
+			if (existsSync(projectPath)) {
+				try { return readFileSync(projectPath, 'utf-8') } catch { /* fall through */ }
+			}
+		}
+		// Fallback: global MEMORY_DIR
 		return readPersonaFile(name)
 	}
 
@@ -418,7 +460,7 @@ export function buildSystemPrompt(
 		}
 	} catch { /* ignore */ }
 
-	const envSection = buildEnvironmentSection(channel, opts?.cwd, activeProjectDir, opts?.sessionWorkspacePath)
+	const envSection = buildEnvironmentSection(channel, opts?.cwd, activeProjectDir, opts?.sessionWorkspacePath, opts?.activeProjectSlug)
 
 	const effectiveWorkspace = opts?.sessionWorkspacePath ?? getWorkspacePath()
 	const workspacePolicy =
@@ -583,12 +625,20 @@ export function buildSystemPromptWithTiers(
 /**
  * Update persona files with new insights discovered during conversation.
  * insights: Map of filename to new markdown block to append or merge.
+ * When projectSlug is provided, MEMORY.md is written to the project's memory dir
+ * instead of the global dir so multi-project context doesn't pollute each other.
  */
-export function updatePersonaFiles(insights: Record<string, string>, date?: string): void {
+export function updatePersonaFiles(insights: Record<string, string>, date?: string, projectSlug?: string): void {
 	ensureMemoryDir()
 	const label = date ? `## Update (${date})` : '## New Insights'
 	for (const [file, block] of Object.entries(insights)) {
-		const path = join(MEMORY_DIR, file)
+		// Route MEMORY.md to project-scoped dir when a project is active
+		let targetDir = MEMORY_DIR
+		if (projectSlug && file === 'MEMORY.md') {
+			targetDir = join(getWorkspacePath(), projectSlug, 'memory')
+			try { mkdirSync(targetDir, { recursive: true }) } catch { /* ignore */ }
+		}
+		const path = join(targetDir, file)
 		const existing = existsSync(path) ? readFileSync(path, 'utf-8') : ''
 		const separator = existing.endsWith('\n') ? '' : '\n'
 		const newContent = existing + separator + '\n' + label + '\n\n' + block.trim() + '\n'

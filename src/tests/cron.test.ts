@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
-import { CronJobSchema, type CronJob, migrateLegacyTarget, migrateRawCronEntry, isJobDue, parseInterval, isInterval } from '../utils/cronStore'
+import { CronJobSchema, type CronJob, migrateLegacyTarget, migrateRawCronEntry, isJobDue, parseInterval, isInterval, normalizeSchedule } from '../utils/cronStore'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -22,6 +22,43 @@ function makeJob(overrides: Partial<CronJob> = {}): CronJob {
 // ─── CronJobSchema ─────────────────────────────────────────────────────────────
 
 describe('CronJobSchema', () => {
+	test('normalizes natural-language schedule "in 3 minutes" to interval', () => {
+		const job = CronJobSchema.parse({
+			id: '1',
+			name: 'test',
+			schedule: 'in 3 minutes',
+			prompt: 'do stuff',
+			enabled: true,
+			createdAt: new Date().toISOString(),
+		})
+		expect(job.schedule).toBe('3m')
+	})
+
+	test('normalizes natural-language schedule "every 2 hours" to interval', () => {
+		const job = CronJobSchema.parse({
+			id: '1',
+			name: 'test',
+			schedule: 'every 2 hours',
+			prompt: 'do stuff',
+			enabled: true,
+			createdAt: new Date().toISOString(),
+		})
+		expect(job.schedule).toBe('2h')
+	})
+
+	test('rejects invalid schedule strings', () => {
+		expect(() =>
+			CronJobSchema.parse({
+				id: '1',
+				name: 'test',
+				schedule: 'sometime soon',
+				prompt: 'x',
+				enabled: true,
+				createdAt: new Date().toISOString(),
+			})
+		).toThrow()
+	})
+
 	test('defaults type to "ai" when omitted', () => {
 		const job = CronJobSchema.parse({
 			id: '1',
@@ -84,6 +121,16 @@ describe('CronJobSchema', () => {
 	test('parses discord:channelId target', () => {
 		const job = makeJob({ target: 'discord:1474669130736205865' })
 		expect(job.target).toBe('discord:1474669130736205865')
+	})
+})
+
+describe('normalizeSchedule', () => {
+	test('keeps cron expressions unchanged', () => {
+		expect(normalizeSchedule('* * * * *')).toBe('* * * * *')
+	})
+
+	test('normalizes "three minutes" to 3m', () => {
+		expect(normalizeSchedule('three minutes')).toBe('3m')
 	})
 })
 
@@ -166,13 +213,21 @@ describe('isJobDue', () => {
 	})
 
 	test('invalid cron expression returns false', () => {
-		const job = makeJob({ schedule: 'invalid expression', lastRun: undefined })
+		const job = {
+			...makeJob(),
+			schedule: 'invalid expression',
+			lastRun: undefined,
+		} as CronJob
 		// isInterval returns false, so it falls to cron parser which should fail
 		expect(isJobDue(job)).toBe(false)
 	})
 
 	test('invalid interval returns false', () => {
-		const job = makeJob({ schedule: '0x', lastRun: undefined })
+		const job = {
+			...makeJob(),
+			schedule: '0x',
+			lastRun: undefined,
+		} as CronJob
 		expect(isJobDue(job)).toBe(false)
 	})
 })

@@ -5,25 +5,36 @@ import { getProject, getProjectByDiscordChannel, updateProject, addProject, getP
 import { listProjects, buildActiveProjectContext, logProjectActivity, getProjectDir } from '../utils/projects.ts'
 import type { KanbanTask, KanbanComment, ProjectConfig } from '../core/projects.ts'
 
+/** Session context injected by the tool factory. */
+export interface ProjectSessionCtx {
+	/** projectSlug bound to the session (e.g. from a Dashboard project chat or linked channel). */
+	sessionProjectSlug?: string
+	/** Actual channel identifier (Discord channel snowflake, Telegram chat ID, etc.).
+	 *  Used to look up a project by discordChannelId config field. */
+	channelUserId?: string
+}
+
 /**
- * Resolve a project from either an explicit slug or Discord channel ID.
- * Returns `{ project }` on success or `{ error }` on failure.
+ * Resolve a project from either an explicit slug or session context.
+ * Priority: explicit slug → session-bound project → channel-linked project.
+ *
+ * `ctx` is a plain `ProjectSessionCtx` (not the Vercel AI tool context).
  */
-function resolveProject(context: any, projectSlug?: string): { project: ProjectConfig } | { error: string } {
+function resolveProject(ctx: ProjectSessionCtx, projectSlug?: string): { project: ProjectConfig } | { error: string } {
 	// 1. Explicit slug passed by the AI (preferred)
 	if (projectSlug) {
 		const p = getProject(projectSlug)
 		if (!p) return { error: `Project "${projectSlug}" not found. Use project_list to see available projects.` }
 		return { project: p }
 	}
-	// 2. Session bound to a project (e.g. dashboard project chat)
-	if (context.sessionProjectSlug) {
-		const p = getProject(context.sessionProjectSlug)
+	// 2. Session bound to a project (e.g. dashboard project chat or linked channel session)
+	if (ctx.sessionProjectSlug) {
+		const p = getProject(ctx.sessionProjectSlug)
 		if (p) return { project: p }
 	}
-	// 3. Discord channel linked to a project
-	if (context.id) {
-		const p = getProjectByDiscordChannel(context.id)
+	// 3. Channel linked to a project via discordChannelId config (matched on actual channel ID)
+	if (ctx.channelUserId) {
+		const p = getProjectByDiscordChannel(ctx.channelUserId)
 		if (p) return { project: p }
 	}
 	return { error: 'No project identified. Provide a projectSlug, or use project_list to find the right project.' }
@@ -125,8 +136,8 @@ export const project_get_tasks = {
 		projectSlug: z.string().optional().describe('The project slug. If omitted, inferred from Discord channel or session context.'),
 		status: z.enum(['todo', 'in-progress', 'done', 'all']).optional().describe('Filter by task status. Default is all.')
 	}),
-	execute: async ({ projectSlug, status }: { projectSlug?: string; status?: string }, context: any) => {
-		const result = resolveProject(context, projectSlug)
+	execute: async ({ projectSlug, status }: { projectSlug?: string; status?: string }, ctx: ProjectSessionCtx) => {
+		const result = resolveProject(ctx, projectSlug)
 		if ('error' in result) return { error: result.error }
 		const project = result.project
 
@@ -166,8 +177,8 @@ export const project_add_task = {
 		dueDate: z.string().optional().describe('Due date in ISO format (e.g. "2025-01-15").'),
 		labels: z.array(z.string()).optional().describe('Labels/tags for the task (e.g. ["bug", "frontend"]).'),
 	}),
-	execute: async (args: { projectSlug?: string; title: string; details?: string; assignee?: string; status?: string; priority?: string; dueDate?: string; labels?: string[] }, context: any) => {
-		const result = resolveProject(context, args.projectSlug)
+	execute: async (args: { projectSlug?: string; title: string; details?: string; assignee?: string; status?: string; priority?: string; dueDate?: string; labels?: string[] }, ctx: ProjectSessionCtx) => {
+		const result = resolveProject(ctx, args.projectSlug)
 		if ('error' in result) return { error: result.error }
 		const project = result.project
 
@@ -206,8 +217,8 @@ export const project_update_task = {
 		dueDate: z.string().optional().describe('Due date in ISO format (e.g. "2025-01-15").'),
 		labels: z.array(z.string()).optional().describe('Labels/tags for the task.'),
 	}),
-	execute: async (args: { projectSlug?: string; taskId: string; status?: string; assignee?: string; details?: string; reaction?: string; priority?: string; dueDate?: string; labels?: string[] }, context: any) => {
-		const result = resolveProject(context, args.projectSlug)
+	execute: async (args: { projectSlug?: string; taskId: string; status?: string; assignee?: string; details?: string; reaction?: string; priority?: string; dueDate?: string; labels?: string[] }, ctx: ProjectSessionCtx) => {
+		const result = resolveProject(ctx, args.projectSlug)
 		if ('error' in result) return { error: result.error }
 		const project = result.project
 
@@ -245,8 +256,8 @@ export const project_add_comment = {
 		taskId: z.string(),
 		text: z.string().describe('The content of the comment in Markdown.')
 	}),
-	execute: async (args: { projectSlug?: string; taskId: string; text: string }, context: any) => {
-		const result = resolveProject(context, args.projectSlug)
+	execute: async (args: { projectSlug?: string; taskId: string; text: string }, ctx: ProjectSessionCtx) => {
+		const result = resolveProject(ctx, args.projectSlug)
 		if ('error' in result) return { error: result.error }
 		const project = result.project
 
@@ -284,8 +295,8 @@ export const project_update_comment = {
 		text: z.string().optional().describe('The new content of the comment in Markdown.'),
 		reaction: z.string().optional().describe('An emoji reaction to set for the comment.')
 	}),
-	execute: async (args: { projectSlug?: string; taskId: string; commentId: string; text?: string; reaction?: string }, context: any) => {
-		const result = resolveProject(context, args.projectSlug)
+	execute: async (args: { projectSlug?: string; taskId: string; commentId: string; text?: string; reaction?: string }, ctx: ProjectSessionCtx) => {
+		const result = resolveProject(ctx, args.projectSlug)
 		if ('error' in result) return { error: result.error }
 		const project = result.project
 
@@ -394,6 +405,8 @@ export const project_list_crons = {
 	}
 }
 
+export const PROJECTS_TOOL_NAME = 'projects'
+
 // ─── project_add_cron ─────────────────────────────────────────────────────────
 
 export const project_add_cron = {
@@ -418,5 +431,37 @@ export const project_add_cron = {
 		} catch (error) {
 			return { error: String(error) }
 		}
+	}
+}
+
+// ─── Factory ──────────────────────────────────────────────────────────────────
+// Returns all project tools with session context baked into the 5 tools that
+// use resolveProject.  Call this from toolRegistry instead of importing the
+// bare tool objects so that the AI can auto-infer the active project.
+
+/** All project tools with session context wired in. */
+export function createProjectTools(sessionCtx: ProjectSessionCtx) {
+	/** Wrap a tool so its execute receives sessionCtx as the options argument. */
+	function withCtx<T extends { description: string; parameters: unknown; execute: (...args: any[]) => any }>(tool: T): T {
+		return {
+			...tool,
+			execute: (args: any) => tool.execute(args, sessionCtx),
+		} as T
+	}
+
+	return {
+		project_list,
+		project_get_context,
+		project_add_note,
+		project_create,
+		project_get_tasks: withCtx(project_get_tasks),
+		project_add_task: withCtx(project_add_task),
+		project_update_task: withCtx(project_update_task),
+		project_add_comment: withCtx(project_add_comment),
+		project_update_comment: withCtx(project_update_comment),
+		project_list_agents,
+		project_add_agent,
+		project_list_crons,
+		project_add_cron,
 	}
 }

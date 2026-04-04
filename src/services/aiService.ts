@@ -342,6 +342,7 @@ Important: Post at least one progress comment before your final result so the us
 					parentSessionId: (full as any).parentSessionId,
 					isSubagent: (full as any).isSubagent || false,
 					workspacePath: restoredWorkspacePath,
+					projectSlug: (full as any).projectSlug,
 				}
 				this.sessions.set(full.id, session)
 				if (session.channelId && session.channelUserId) {
@@ -875,10 +876,11 @@ Important: Post at least one progress comment before your final result so the us
 						}
 					}
 
-					// Priority B: Session comes from a linked Discord channel (and isn't already the active project)
+					// Priority B: Session comes from a linked channel (match on channelUserId — the actual
+					// Discord/Telegram channel snowflake — not channelId which is just the bridge name)
 					try {
 						const { getProjectByDiscordChannel } = await import('../core/projects')
-						const linkedProject = getProjectByDiscordChannel(session.channelId)
+						const linkedProject = getProjectByDiscordChannel(session.channelUserId ?? session.channelId)
 						if (linkedProject && linkedProject.id !== session.projectSlug) {
 							let projText = `## Linked Project Context (${linkedProject.name})\n`
 							if (linkedProject.description) projText += `**Description**: ${linkedProject.description}\n`
@@ -924,13 +926,43 @@ Important: Post at least one progress comment before your final result so the us
 					console.error('[AIService] Critical error building project context', err)
 				}
 
+				// ── Auto-inject relevant vector memories on first message ─────
+				// On the first message of a new session, run a quick semantic
+				// search and prepend the top results to the project context so
+				// the AI has relevant past context without needing to call the
+				// memory tool explicitly.
+				if (session.messages.length <= 1) {
+					try {
+						const { getVectorStore } = await import('../utils/vectors')
+						const { getVectorStoreConfig } = await import('../utils/config')
+						const vsCfg = getVectorStoreConfig()
+						if (vsCfg.enabled) {
+							const firstMsg = session.messages[0]
+							const query = typeof firstMsg?.content === 'string' ? firstMsg.content : ''
+							if (query.trim().length > 10) {
+								const vs = await getVectorStore()
+								const hits = await vs.search(query, 3, 0.4)
+								if (hits.length > 0) {
+									const recalledBlock = [
+										'## Recalled Memories (from past sessions)',
+										...hits.map(h => `- ${h.entry.text}`)
+									].join('\n')
+									projectContext = projectContext
+										? recalledBlock + '\n\n---\n\n' + projectContext
+										: recalledBlock
+								}
+							}
+						}
+					} catch { /* non-fatal: vector store may not be initialized yet */ }
+				}
+
 				const systemPrompt = buildSystemPrompt(session.summary, {
 					id: session.channelId,
 					userId: session.channelUserId,
 					name: session.channelName,
 					authorName: job.authorName,
 					isSubagent: session.isSubagent
-				}, session.agentDir, { projectContext, modelContextWindow: connection.contextWindow ?? 128000, sessionWorkspacePath: session.workspacePath })
+				}, session.agentDir, { projectContext, modelContextWindow: connection.contextWindow ?? 128000, sessionWorkspacePath: session.workspacePath, activeProjectSlug: session.projectSlug ?? undefined })
 
 				// ── Token-budgeted message trimming ──────────────────────────
 				const ctxWindow = connection.contextWindow ?? 128000
@@ -1233,7 +1265,7 @@ Important: Post at least one progress comment before your final result so the us
 		const msgRatio = cfg?.messageTokenRatio ?? 0.30
 		const responseReserve = cfg?.responseTokenReserve ?? 8192
 		const msgTokens = estimateMessageTokens(session.messages as any)
-		if (msgTokens <= ctxWindow * msgRatio * 0.5) return // not worth compacting yet
+		if (msgTokens <= ctxWindow * msgRatio * 0.8) return // not worth compacting yet
 
 		// ── Use cheap compaction model if configured ──────────────────────
 		let compactionModel = model
@@ -1260,7 +1292,7 @@ Important: Post at least one progress comment before your final result so the us
 			const { kept: messagesToKeep } = trimMessagesToTokenBudget(session.messages as any, postBudget)
 			const messagesToCompact = (session.messages as any[]).slice(0, session.messages.length - messagesToKeep.length)
 
-			const personaFiles = readAllPersonaFiles()
+			const personaFiles = readAllPersonaFiles(session.agentDir, session.projectSlug)
 			const existingContext = Object.entries(personaFiles)
 				.map(([file, content]) => `### ${file}\n${content}`)
 				.join('\n\n')
@@ -1385,7 +1417,7 @@ ${keptHistoryText}`
 				for (const item of object.insights) {
 					insightsRecord[item.filename] = item.content
 				}
-				updatePersonaFiles(insightsRecord, today)
+				updatePersonaFiles(insightsRecord, today, session.projectSlug)
 			}
 			// Write PROJECT-README.md if project context was updated
 			if (object.projectReadmeUpdate?.trim() && session.projectSlug) {

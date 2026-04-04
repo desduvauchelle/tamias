@@ -32,10 +32,67 @@ export const CronDeliverySchema = z.object({
 
 export type CronDelivery = z.infer<typeof CronDeliverySchema>
 
+const NUMBER_WORDS: Record<string, number> = {
+	one: 1,
+	two: 2,
+	three: 3,
+	four: 4,
+	five: 5,
+	six: 6,
+	seven: 7,
+	eight: 8,
+	nine: 9,
+	ten: 10,
+}
+
+function parseNaturalInterval(raw: string): string | undefined {
+	const s = raw.trim().toLowerCase().replace(/\s+/g, ' ')
+	const match = s.match(/^(?:in|every)?\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(second|seconds|sec|secs|minute|minutes|min|mins|hour|hours|hr|hrs|day|days)\s*(?:from now)?$/)
+	if (!match) return undefined
+	const valueToken = match[1]
+	const unitToken = match[2]
+	const value = /^\d+$/.test(valueToken) ? Number(valueToken) : NUMBER_WORDS[valueToken]
+	if (!value || value <= 0) return undefined
+	let suffix: 's' | 'm' | 'h' | 'd'
+	if (unitToken.startsWith('sec')) suffix = 's'
+	else if (unitToken.startsWith('min')) suffix = 'm'
+	else if (unitToken.startsWith('h')) suffix = 'h'
+	else suffix = 'd'
+	return `${value}${suffix}`
+}
+
+export function normalizeSchedule(schedule: string): string {
+	const trimmed = schedule.trim()
+	if (!trimmed) return trimmed
+	if (isInterval(trimmed)) return trimmed
+	const natural = parseNaturalInterval(trimmed)
+	if (natural) return natural
+	return trimmed
+}
+
+function isCronExpression(schedule: string): boolean {
+	const parts = schedule.trim().split(/\s+/)
+	return parts.length === 5 || parts.length === 6
+}
+
+function isValidSchedule(schedule: string): boolean {
+	const normalized = normalizeSchedule(schedule)
+	if (isInterval(normalized)) return true
+	if (!isCronExpression(normalized)) return false
+	try {
+		new Cron(normalized)
+		return true
+	} catch {
+		return false
+	}
+}
+
 export const CronJobSchema = z.object({
 	id: z.string(),
 	name: z.string(),
-	schedule: z.string(), // "30m", "1h", or cron expression
+	schedule: z.string()
+		.transform((v) => normalizeSchedule(v))
+		.refine((v) => isValidSchedule(v), 'Schedule must be a valid interval (e.g. "30m") or cron expression'),
 	/**
 	 * 'ai'      – send prompt to AI, deliver generated response to target channel
 	 * 'message' – send the prompt text directly to the target channel, no AI involved

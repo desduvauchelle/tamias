@@ -2,7 +2,7 @@ import * as p from '@clack/prompts'
 import pc from 'picocolors'
 import { join } from 'path'
 import { homedir } from 'os'
-import { findFreePort, writeDaemonInfo, clearDaemonInfo } from '../utils/daemon.ts'
+import { findFreePort, writeDaemonInfo, clearDaemonInfo, readDaemonInfo } from '../utils/daemon.ts'
 import { loadConfig, getDefaultModel, getAllModelOptions } from '../utils/config.ts'
 import { autoUpdateDaemon } from '../utils/update.ts'
 import { VERSION } from '../utils/version.ts'
@@ -10,6 +10,8 @@ import { AIService, type Session } from '../services/aiService.ts'
 import { BridgeManager } from '../bridge/index.ts'
 import { watchSkills } from '../utils/skills.ts'
 import { loadCronJobs, recordCronJobRun } from '../utils/cronStore.ts'
+import { runCronJobsOnce } from './cron.ts'
+import { getProjects, getProjectCrons, updateProjectCron, getProjectByDiscordChannel } from '../core/projects.ts'
 import { scaffoldFromTemplates, isOnboarded } from '../utils/memory.ts'
 import { loadAgents } from '../utils/agentsStore.ts'
 import { db } from '../utils/db.ts'
@@ -300,9 +302,59 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	// Ensure memory files (HEARTBEAT.md, AGENTS.md, etc.) exist before cron starts
 	scaffoldFromTemplates()
 
-	// Cron is now managed externally via system crontab (`tamias cron install`)
-	// The `tamias cron run` command handles scheduling checks and job execution.
-	console.log(`[Daemon] Cron scheduling is managed by system crontab. Run \`tamias cron install\` to enable.`)
+	const runProjectCronsOnce = async (options: { dryRun?: boolean } = {}): Promise<{ dueCount: number; executedCount: number; failedCount: number }> => {
+		const daemonInfo = readDaemonInfo()
+		const daemonUrl = daemonInfo ? `http://127.0.0.1:${daemonInfo.port}` : null
+		const daemonToken = daemonInfo?.token ?? ''
+		const projects = Object.values(getProjects())
+		let dueCount = 0
+		let executedCount = 0
+		let failedCount = 0
+
+		for (const project of projects) {
+			const projectJobs = getProjectCrons(project.id)
+			if (projectJobs.length === 0) continue
+			const result = await runCronJobsOnce({
+				dryRun: options.dryRun,
+				daemonUrl,
+				daemonToken,
+				loadJobsFn: () => projectJobs,
+				recordRunFn: (id, runResult) => {
+					const updated = updateProjectCron(project.id, id, {
+						lastRun: new Date().toISOString(),
+						lastStatus: runResult.status,
+						lastError: runResult.status === 'error' ? (runResult.error ?? 'Unknown cron execution error') : undefined,
+					})
+					return updated
+				},
+				logPrefix: `[cron run][project:${project.id}]`,
+			})
+			dueCount += result.dueCount
+			executedCount += result.executedCount
+			failedCount += result.failedCount
+		}
+
+		return { dueCount, executedCount, failedCount }
+	}
+
+	const runAllCronsOnce = async (options: { dryRun?: boolean } = {}): Promise<void> => {
+		const daemonInfo = readDaemonInfo()
+		const daemonUrl = daemonInfo ? `http://127.0.0.1:${daemonInfo.port}` : null
+		const daemonToken = daemonInfo?.token ?? ''
+
+		await runCronJobsOnce({
+			dryRun: options.dryRun,
+			daemonUrl,
+			daemonToken,
+		})
+		await runProjectCronsOnce(options)
+	}
+
+	console.log(`[Daemon] Internal cron scheduler enabled (checks every minute).`)
+	runAllCronsOnce({ dryRun: false }).catch(err => console.error('[cron scheduler] Initial run failed:', err))
+	const cronSchedulerTimer = setInterval(() => {
+		runAllCronsOnce({ dryRun: false }).catch(err => console.error('[cron scheduler] Run failed:', err))
+	}, 60_000)
 
 	const onBridgeMessage = async (msg: BridgeMessage): Promise<boolean> => {
 		console.log(`[Bridge] Message from ${msg.channelId}:${msg.channelUserId} (${msg.channelName}) - "${msg.content.slice(0, 80)}"`)
@@ -412,10 +464,13 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 
 		if (!session) {
 			console.log(`[Bridge] Creating new session for ${msg.channelId}:${msg.channelUserId}`)
+			// Resolve project from channel ID (actual channel snowflake / chat ID)
+			const linkedProject = msg.channelUserId ? getProjectByDiscordChannel(msg.channelUserId) : undefined
 			session = aiService.createSession({
 				channelId: msg.channelId,
 				channelUserId: msg.channelUserId,
-				channelName: msg.channelName
+				channelName: msg.channelName,
+				projectSlug: linkedProject?.id,
 			})
 		} else {
 			console.log(`[Bridge] Reusing existing session ${session.id} for ${msg.channelId}:${msg.channelUserId}`)
@@ -816,6 +871,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			}
 
 			if (method === 'DELETE' && url.pathname === '/daemon') {
+				clearInterval(cronSchedulerTimer)
 				await bridgeManager.destroyAll()
 				await aiService.shutdown()
 				if (dashboardProc) {
@@ -1035,11 +1091,13 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	})
 
 	process.on('SIGTERM', () => {
+		clearInterval(cronSchedulerTimer)
 		if (dashboardProc) { try { dashboardProc.kill() } catch { /* ignore */ } }
 		clearDaemonInfo()
 		process.exit(0)
 	})
 	process.on('SIGINT', () => {
+		clearInterval(cronSchedulerTimer)
 		if (dashboardProc) { try { dashboardProc.kill() } catch { /* ignore */ } }
 		clearDaemonInfo()
 		process.exit(0)

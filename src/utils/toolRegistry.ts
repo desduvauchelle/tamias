@@ -19,7 +19,7 @@ import { createSessionTools, SESSION_TOOL_NAME } from '../tools/session.ts'
 import { skillsTools, SKILLS_TOOL_NAME } from '../tools/skills.ts'
 import { createWebsearchTools, WEBSEARCH_TOOL_NAME } from '../tools/websearch.ts'
 import { createFirecrawlTools, FIRECRAWL_TOOL_NAME } from '../tools/firecrawl.ts'
-import * as projectsTools from '../tools/projects.ts'
+import { createProjectTools, PROJECTS_TOOL_NAME } from '../tools/projects.ts'
 import { INTERNAL_TOOL_NAMES, getAllInternalToolNames } from '../tools/internalToolNames.ts'
 import { buildToolsForDomain } from '../core/adapters/ai-tools.ts'
 import { getDomains } from '../core/registry.ts'
@@ -104,7 +104,10 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 		[SKILLS_TOOL_NAME]: skillsTools as ToolSet,
 		[WEBSEARCH_TOOL_NAME]: createWebsearchTools(aiService, sessionId) as ToolSet,
 		[FIRECRAWL_TOOL_NAME]: createFirecrawlTools(aiService, sessionId) as ToolSet,
-		'projects': projectsTools as ToolSet,
+		[PROJECTS_TOOL_NAME]: createProjectTools({
+			sessionProjectSlug: session?.projectSlug,
+			channelUserId: session?.channelUserId,
+		}) as ToolSet,
 	}
 
 	// ── Auto-wire registry-backed domains ────────────────────────────────────

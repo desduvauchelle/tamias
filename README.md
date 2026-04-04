@@ -87,7 +87,7 @@ Manage recurring cron jobs and heartbeats
 | `tamias cron add` | Add a new cron job (`-n, --name <name>`, `-s, --schedule <schedule>`, `-p, --prompt <prompt>`, `-T, --type <type>`, `--skills <skills>`, `--session-key <key>`, `--context <context>`, `--target-channel <target>`, `--target-email <email>`, `--target-file <path>`, `-t, --target <target>`, `--heartbeat`) |
 | `tamias cron rm <id>` | Remove a cron job by ID |
 | `tamias cron edit <id>` | Edit an existing cron job (`-n, --name <name>`, `-s, --schedule <schedule>`, `-p, --prompt <prompt>`, `-T, --type <type>`, `--skills <skills>`, `--session-key <key>`, `--context <context>`, `-t, --target <target>`, `--disable`, `--enable`) |
-| `tamias cron run` | Run all due cron jobs (called by system crontab every minute) (`--job <id>`, `--dry-run`) |
+| `tamias cron run` | Run all due cron jobs once (manual or external scheduler) (`--job <id>`, `--dry-run`) |
 | `tamias cron install` | Install the system crontab entry to run cron jobs every minute |
 | `tamias cron uninstall` | Remove the system crontab entry |
 
@@ -282,54 +282,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.04.33)
+### Latest Version (v26.04.04.34)
 
 ### Features
-- update tests to improve config handling and add environment setup
-- enhance test structure by adding afterEach cleanup and improving config mocking
-- update tests to import real config modules for improved mocking
-- unify project directory structure and enhance test cleanup with afterAll
-- add project management features and documentation to changelog
-- enhance project management features and documentation, add default project routing
-- replace Whisper/ONNX transcription with Parakeet via sherpa-onnx subprocess
-- fix usage page header badge alignment on mobile
-- make channels page cards and labels mobile responsive
-- make projects page tabs scrollable and header wrapping on mobile
-- make history page table horizontally scrollable on mobile
-- make chat page mobile responsive with collapsible sessions panel
-- check for pending restart notification on daemon boot
-- update_tamias tool now schedules restart and sends post-boot notification
-- add performUpdateAndRestart to update.ts with pending-restart tracking
-- add tamias__inspect_context AI tool
-- add pendingRestart utility for post-boot channel notification
-- add tamias inspect CLI command
-- add generateInspectReport utility and tests
-- add cron command for managing recurring jobs and heartbeats
-- unify project directory into ~/.tamias/workspace/<slug>/
-
-### Bug Fixes
-- apply code quality improvements to transcription.ts
-- replace _downloadState Proxy with plain object to prevent model dir deletion on retry
-- use solid background on sticky history table header
-- add aria-expanded and aria-label to sessions panel toggle
-- warn when session not found in update_tamias tool
-- align isCompiled detection, remove unnecessary dynamic imports in performUpdateAndRestart
-- add shape validation and fix ESM import in pendingRestart
-- improve error isolation and safety in inspectReport
-
-### Maintenance
-- remove unused wavefile dependency
-
-### Documentation
-- add Parakeet transcription implementation plan
-- add mobile responsive dashboard implementation plan
-- add mobile responsive dashboard design spec
-- add Parakeet transcription design spec
-- add self-update restart implementation plan
-- add inspect context implementation plan
-- add self-update restart design spec
-- add inspect context design spec
-
-### Other Changes
-- Merge commit 'a5be9c590332a22860d4bded2d1c5c11369cf661'
-- test: add coverage for _fetchToFile download trigger in ensureModelReady
+- add Firecrawl tool with configuration and tests for web scraping functionality

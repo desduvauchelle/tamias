@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.04.04.34] - 2026-04-04
+
+### Features
+- add Firecrawl tool with configuration and tests for web scraping functionality
+
 ## [v26.04.04.33] - 2026-04-04
 
 ### Features

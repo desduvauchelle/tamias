@@ -14,6 +14,75 @@ import { readDaemonInfo } from '../utils/daemon.ts'
 export const cronCommand = new Command('cron')
 	.description('Manage recurring cron jobs and heartbeats')
 
+export interface RunCronJobsOnceOptions {
+	jobId?: string
+	dryRun?: boolean
+	daemonUrl: string | null
+	daemonToken: string
+	loadJobsFn?: () => CronJob[]
+	isJobDueFn?: (job: CronJob) => boolean
+	executeJobFn?: (job: CronJob, daemonUrl: string | null, token: string) => Promise<void>
+	recordRunFn?: (id: string, result: { status: 'success' | 'error'; error?: string }) => CronJob | undefined
+	logFn?: (...args: unknown[]) => void
+	errorFn?: (...args: unknown[]) => void
+	logPrefix?: string
+}
+
+export async function runCronJobsOnce(opts: RunCronJobsOnceOptions): Promise<{ dueCount: number; executedCount: number; failedCount: number }> {
+	const log = opts.logFn ?? console.log
+	const error = opts.errorFn ?? console.error
+	const logPrefix = opts.logPrefix ?? '[cron run]'
+	const loadJobsFn = opts.loadJobsFn ?? loadCronJobs
+	const isJobDueFn = opts.isJobDueFn ?? isJobDue
+	const executeJobFn = opts.executeJobFn ?? executeCronJob
+	const recordRunFn = opts.recordRunFn ?? recordCronJobRun
+
+	const allJobs = loadJobsFn()
+	const enabledJobs = allJobs.filter(j => j.enabled)
+
+	let dueJobs: CronJob[]
+	if (opts.jobId) {
+		const job = allJobs.find(j => j.id === opts.jobId)
+		if (!job) throw new Error(`Job '${opts.jobId}' not found`)
+		dueJobs = [job]
+	} else {
+		dueJobs = enabledJobs.filter(j => isJobDueFn(j))
+	}
+
+	if (dueJobs.length === 0) {
+		return { dueCount: 0, executedCount: 0, failedCount: 0 }
+	}
+
+	if (opts.dryRun) {
+		log(`${logPrefix} ${dueJobs.length} job(s) due:`)
+		for (const job of dueJobs) {
+			log(`  - ${job.name} (${job.id}) schedule=${job.schedule}`)
+		}
+		return { dueCount: dueJobs.length, executedCount: 0, failedCount: 0 }
+	}
+
+	let executedCount = 0
+	let failedCount = 0
+	for (const job of dueJobs) {
+		const now = new Date().toISOString()
+		log(`${logPrefix} ${now} Executing job: "${job.name}" (id=${job.id}, type=${job.type ?? 'ai'})`)
+
+		try {
+			await executeJobFn(job, opts.daemonUrl, opts.daemonToken)
+			recordRunFn(job.id, { status: 'success' })
+			executedCount += 1
+			log(`${logPrefix} ${now} ✓ Job "${job.name}" completed successfully`)
+		} catch (err) {
+			const errorMsg = err instanceof Error ? err.message : String(err)
+			recordRunFn(job.id, { status: 'error', error: errorMsg })
+			failedCount += 1
+			error(`${logPrefix} ${now} ✗ Job "${job.name}" failed: ${errorMsg}`)
+		}
+	}
+
+	return { dueCount: dueJobs.length, executedCount, failedCount }
+}
+
 // ─── tamias cron list ─────────────────────────────────────────────────────────
 
 cronCommand
@@ -138,7 +207,7 @@ cronCommand
 				target: target || 'last',
 			})
 			p.outro(pc.green(`✅ Cron job added: ${job.name} (${job.id})`))
-			p.note('Run `tamias cron install` to enable the system crontab for automatic execution.', 'Tip')
+			p.note('If the daemon is running, this cron will run automatically every minute. `tamias cron install` remains available as an external fallback.', 'Tip')
 		} catch (err) {
 			p.log.error(`Failed to add cron job: ${err}`)
 		}
@@ -200,55 +269,23 @@ cronCommand
 
 cronCommand
 	.command('run')
-	.description('Run all due cron jobs (called by system crontab every minute)')
+	.description('Run all due cron jobs once (manual or external scheduler)')
 	.option('--job <id>', 'Run a specific job by ID regardless of schedule')
 	.option('--dry-run', 'Check which jobs would run without executing them')
 	.action(async (opts) => {
-		const allJobs = loadCronJobs()
-		const enabledJobs = allJobs.filter(j => j.enabled)
-
-		let dueJobs: CronJob[]
-		if (opts.job) {
-			const job = allJobs.find(j => j.id === opts.job)
-			if (!job) {
-				console.error(`[cron run] Job '${opts.job}' not found`)
-				process.exit(1)
-			}
-			dueJobs = [job]
-		} else {
-			dueJobs = enabledJobs.filter(j => isJobDue(j))
-		}
-
-		if (dueJobs.length === 0) {
-			// Nothing to do — silent exit (crontab runs every minute)
-			return
-		}
-
-		if (opts.dryRun) {
-			console.log(`[cron run] ${dueJobs.length} job(s) due:`)
-			for (const job of dueJobs) {
-				console.log(`  - ${job.name} (${job.id}) schedule=${job.schedule}`)
-			}
-			return
-		}
-
 		const daemonInfo = readDaemonInfo()
 		const daemonUrl = daemonInfo ? `http://127.0.0.1:${daemonInfo.port}` : null
 		const daemonToken = daemonInfo?.token ?? ''
-
-		for (const job of dueJobs) {
-			const now = new Date().toISOString()
-			console.log(`[cron run] ${now} Executing job: "${job.name}" (id=${job.id}, type=${job.type ?? 'ai'})`)
-
-			try {
-				await executeCronJob(job, daemonUrl, daemonToken)
-				recordCronJobRun(job.id, { status: 'success' })
-				console.log(`[cron run] ${now} ✓ Job "${job.name}" completed successfully`)
-			} catch (err) {
-				const errorMsg = err instanceof Error ? err.message : String(err)
-				recordCronJobRun(job.id, { status: 'error', error: errorMsg })
-				console.error(`[cron run] ${now} ✗ Job "${job.name}" failed: ${errorMsg}`)
-			}
+		try {
+			await runCronJobsOnce({
+				jobId: opts.job,
+				dryRun: opts.dryRun,
+				daemonUrl,
+				daemonToken,
+			})
+		} catch (err) {
+			console.error(`[cron run] ${err instanceof Error ? err.message : String(err)}`)
+			process.exit(1)
 		}
 	})
 
