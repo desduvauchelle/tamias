@@ -113,7 +113,7 @@ export default function UsagePage() {
 						Real-time tracking of your AI consumption and spending patterns.
 					</p>
 				</div>
-				<div className="bg-base-200 border border-base-300 px-4 py-2 rounded-xl flex items-center gap-3 shadow-sm">
+				<div className="bg-base-200 border border-base-300 px-4 py-2 rounded-xl flex items-center gap-3 shadow-sm self-start md:self-auto">
 					<div className="text-right">
 						<div className="text-[10px] uppercase font-bold text-base-content/40 tracking-tighter">Total Spend</div>
 						<div className="font-mono font-black text-xl leading-none">${data.total.toFixed(2)}</div>
