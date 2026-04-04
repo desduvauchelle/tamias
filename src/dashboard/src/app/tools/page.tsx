@@ -72,6 +72,10 @@ export type McpServerConfig = {
 	headers?: Record<string, string>
 }
 
+type NgrokConfig = {
+	enabled: boolean
+}
+
 function ToolFunctionRow({
 	name,
 	config,
@@ -1052,6 +1056,7 @@ export default function ToolsPage() {
 	const [defaultImageModels, setDefaultImageModels] = useState<string[]>([])
 	const [emails, setEmails] = useState<Record<string, EmailAccountConfig>>({})
 	const [mcpServers, setMcpServers] = useState<Record<string, McpServerConfig>>({})
+	const [ngrok, setNgrok] = useState<NgrokConfig>({ enabled: false })
 	const [saving, setSaving] = useState(false)
 	const [saved, setSaved] = useState(false)
 
@@ -1065,6 +1070,7 @@ export default function ToolsPage() {
 				setDefaultImageModels(d.defaultImageModels || [])
 				setEmails(d.emails || {})
 				setMcpServers(d.mcpServers || {})
+				setNgrok(d.ngrok || { enabled: false })
 			})
 	}, [])
 
@@ -1073,6 +1079,7 @@ export default function ToolsPage() {
 		mcpServers?: Record<string, McpServerConfig>
 		emails?: Record<string, EmailAccountConfig>
 		defaultImageModels?: string[]
+		ngrok?: NgrokConfig
 	}) => {
 		setSaving(true)
 		await fetch('/api/tools', {
@@ -1083,6 +1090,7 @@ export default function ToolsPage() {
 				mcpServers: overrides?.mcpServers ?? mcpServers,
 				emails: overrides?.emails ?? emails,
 				defaultImageModels: overrides?.defaultImageModels ?? defaultImageModels,
+				ngrok: overrides?.ngrok ?? ngrok,
 			}),
 		})
 		setSaving(false)
@@ -1239,6 +1247,33 @@ export default function ToolsPage() {
 							onChange={(u) => updateInternalTool(id, u)}
 						/>
 					))}
+				</div>
+			</section>
+
+			<section className="space-y-6">
+				<div className="border-b-2 border-warning/20 pb-4 flex justify-between items-end">
+					<h2 className="text-2xl font-black flex items-center gap-3 uppercase text-warning">Public Tunnel</h2>
+					<p className="text-xs text-base-content/50 font-bold uppercase tracking-widest hidden md:block">ngrok dashboard exposure</p>
+				</div>
+				<div className="card bg-base-200 border border-warning/30">
+					<div className="card-body p-4 space-y-3">
+						<div className="flex items-center gap-4">
+							<span className="text-3xl w-10 text-center shrink-0">🌍</span>
+							<div className="flex-1">
+								<div className="font-mono font-bold text-sm text-warning uppercase">ngrok Tunnel</div>
+								<div className="text-[10px] text-base-content/50">Runs <code>ngrok http &lt;dashboard-port&gt;</code> when daemon starts</div>
+							</div>
+							<input
+								type="checkbox"
+								className="toggle toggle-warning toggle-sm shrink-0"
+								checked={ngrok.enabled}
+								onChange={e => setNgrok({ enabled: e.target.checked })}
+							/>
+						</div>
+						<div className="text-[10px] text-base-content/50 pt-1 border-t border-base-content/5">
+							Install ngrok locally and authenticate it first if needed. This applies on the next daemon start.
+						</div>
+					</div>
 				</div>
 			</section>
 

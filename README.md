@@ -105,7 +105,7 @@ Start the Tamias daemon (central AI brain)
 
 | Command | Description |
 |---|---|
-| `tamias start` | Start the Tamias daemon (central AI brain) (`--daemon`, `--verbose`) |
+| `tamias start` | Start the Tamias daemon (central AI brain) (`--daemon`, `--verbose`, `--ngrok`, `--no-ngrok`) |
 
 ### `tamias stop`
 
@@ -282,7 +282,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.04.34)
+### Latest Version (v26.04.04.35)
 
 ### Features
-- add Firecrawl tool with configuration and tests for web scraping functionality
+- update changelog and README for version v26.04.04.33; enhance DiscordBridge error handling and add tests for audio transcription failures

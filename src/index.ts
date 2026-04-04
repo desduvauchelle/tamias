@@ -30,7 +30,9 @@ program
 	.description('Start the Tamias daemon (central AI brain)')
 	.option('--daemon', 'Run in background/daemon mode (no interactive output)')
 	.option('--verbose', 'Enable verbose debug logging (sets TAMIAS_DEBUG=1, restarts daemon if running)')
-	.action((opts: { daemon?: boolean; verbose?: boolean }) => runStartCommand(opts))
+	.option('--ngrok', 'Enable ngrok tunnel for the dashboard for this start')
+	.option('--no-ngrok', 'Disable ngrok tunnel for this start')
+	.action((opts: { daemon?: boolean; verbose?: boolean; ngrok?: boolean }) => runStartCommand(opts))
 
 // ─── tamias stop ──────────────────────────────────────────────────────────────
 program

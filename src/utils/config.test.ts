@@ -22,4 +22,20 @@ describe("Config Utils", () => {
 		expect(getDefaultWorkspacePath()).toBe(join(TAMIAS_DIR, "workspace"))
 	})
 
+	test("loadConfig defaults ngrok to disabled when config file is missing", () => {
+		if (existsSync(configPath)) unlinkSync(configPath)
+		invalidateConfigCache()
+		const cfg = loadConfig()
+		expect(cfg.ngrok?.enabled ?? false).toBe(false)
+	})
+
+	test("saveConfig and loadConfig persist ngrok enabled setting", () => {
+		const cfg = loadConfig()
+		const next: TamiasConfig = { ...cfg, ngrok: { enabled: true } }
+		saveConfig(next)
+		invalidateConfigCache()
+		const reloaded = loadConfig()
+		expect(reloaded.ngrok?.enabled).toBe(true)
+	})
+
 })

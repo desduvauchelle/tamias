@@ -361,7 +361,7 @@ async function executeAiJob(job: CronJob, daemonUrl: string | null, token: strin
 	}
 }
 
-function buildPrompt(job: CronJob): string {
+export function buildPrompt(job: CronJob): string {
 	const parts: string[] = []
 	if (job.context) {
 		parts.push(`[Context]\n${job.context}\n`)

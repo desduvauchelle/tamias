@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.04.04.35] - 2026-04-04
+
+### Features
+- update changelog and README for version v26.04.04.33; enhance DiscordBridge error handling and add tests for audio transcription failures
+
 ## [v26.04.04.34] - 2026-04-04
 
 ### Features

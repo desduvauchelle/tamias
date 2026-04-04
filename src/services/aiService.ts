@@ -659,6 +659,19 @@ Important: Post at least one progress comment before your final result so the us
 					if (isAudio) {
 						// Transcribe audio attachments (e.g. voice messages from Discord)
 						const filename = att.url?.split('/').pop()?.split('?')[0] || 'audio'
+						const transcriptionStartedAt = Date.now()
+						logAiRequest({
+							timestamp: new Date().toISOString(),
+							sessionId: session.id,
+							model: session.model,
+							provider: session.connectionNickname,
+							action: 'transcription',
+							durationMs: 0,
+							messages: [{ role: 'user', content: `[Audio transcription started: ${filename}]` }],
+							response: `started: ${filename}`,
+							agentId: session.agentId,
+							channelId: session.channelId,
+						})
 						try {
 							console.log(`[AIService] Transcribing audio attachment: ${filename} (${att.mimeType})`)
 							const { transcribeAudioBuffer } = await import('../utils/transcription.ts')
@@ -668,14 +681,50 @@ Important: Post at least one progress comment before your final result so the us
 									? `${messageContent}\n\n[Transcribed audio: ${transcript}]`
 									: `[Transcribed audio: ${transcript}]`
 								console.log(`[AIService] Audio transcribed: "${transcript.slice(0, 100)}"`)
+								logAiRequest({
+									timestamp: new Date().toISOString(),
+									sessionId: session.id,
+									model: session.model,
+									provider: session.connectionNickname,
+									action: 'transcription',
+									durationMs: Date.now() - transcriptionStartedAt,
+									messages: [{ role: 'user', content: `[Audio transcription success: ${filename}]` }],
+									response: transcript,
+									agentId: session.agentId,
+									channelId: session.channelId,
+								})
 							} else {
 								console.warn(`[AIService] Audio transcription returned empty for ${filename}`)
 								messageContent = messageContent
 									? `${messageContent}\n\n[User sent an audio message but it was silent or could not be transcribed]`
 									: `[User sent an audio message but it was silent or could not be transcribed]`
+								logAiRequest({
+									timestamp: new Date().toISOString(),
+									sessionId: session.id,
+									model: session.model,
+									provider: session.connectionNickname,
+									action: 'transcription',
+									durationMs: Date.now() - transcriptionStartedAt,
+									messages: [{ role: 'user', content: `[Audio transcription empty: ${filename}]` }],
+									response: 'empty transcript',
+									agentId: session.agentId,
+									channelId: session.channelId,
+								})
 							}
 						} catch (err) {
 							console.error('[AIService] Failed to transcribe audio attachment:', err)
+							logAiRequest({
+								timestamp: new Date().toISOString(),
+								sessionId: session.id,
+								model: session.model,
+								provider: session.connectionNickname,
+								action: 'transcription',
+								durationMs: Date.now() - transcriptionStartedAt,
+								messages: [{ role: 'user', content: `[Audio transcription failed: ${filename}]` }],
+								response: err instanceof Error ? err.message : String(err),
+								agentId: session.agentId,
+								channelId: session.channelId,
+							})
 							if (!startedEventSent) {
 								session.emitter.emit('event', { type: 'start', sessionId: session.id } as DaemonEvent)
 								startedEventSent = true

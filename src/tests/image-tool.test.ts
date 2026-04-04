@@ -47,6 +47,7 @@ const BASE_CONFIG: TamiasConfig = {
 	bridges: { terminal: { enabled: true } },
 	defaultImageModels: ['test-openai/dall-e-3'],
 	debug: false,
+	ngrok: { enabled: false },
 }
 
 function clearTestDirs() {

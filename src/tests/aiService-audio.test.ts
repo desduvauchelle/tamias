@@ -224,6 +224,98 @@ describe('Transcription failure: error surface to user', () => {
 	})
 })
 
+describe('Transcription daemon logging lifecycle', () => {
+	type TranscriptionLogAction = 'started' | 'success' | 'empty' | 'failed'
+
+	interface TranscriptionLogEntry {
+		action: TranscriptionLogAction
+		filename: string
+		durationMs: number
+		response: string
+	}
+
+	async function runTranscriptionWithLogging(opts: {
+		url?: string
+		transcribeImpl: () => Promise<string>
+	}) {
+		const logs: TranscriptionLogEntry[] = []
+		const filename = opts.url?.split('/').pop()?.split('?')[0] || 'audio'
+		const startedAt = Date.now()
+
+		const push = (entry: TranscriptionLogEntry) => logs.push(entry)
+
+		push({ action: 'started', filename, durationMs: 0, response: `started: ${filename}` })
+		try {
+			const transcript = await opts.transcribeImpl()
+			if (transcript) {
+				push({
+					action: 'success',
+					filename,
+					durationMs: Date.now() - startedAt,
+					response: transcript,
+				})
+			} else {
+				push({
+					action: 'empty',
+					filename,
+					durationMs: Date.now() - startedAt,
+					response: 'empty transcript',
+				})
+			}
+		} catch (err) {
+			push({
+				action: 'failed',
+				filename,
+				durationMs: Date.now() - startedAt,
+				response: err instanceof Error ? err.message : String(err),
+			})
+		}
+
+		return logs
+	}
+
+	test('logs start and success lifecycle entries when transcription succeeds', async () => {
+		const logs = await runTranscriptionWithLogging({
+			url: 'https://cdn.discordapp.com/voice-message.ogg?ex=abc',
+			transcribeImpl: async () => 'hello world',
+		})
+
+		expect(logs).toHaveLength(2)
+		expect(logs[0].action).toBe('started')
+		expect(logs[0].response).toContain('started: voice-message.ogg')
+		expect(logs[1].action).toBe('success')
+		expect(logs[1].response).toBe('hello world')
+		expect(logs[1].durationMs).toBeGreaterThanOrEqual(0)
+	})
+
+	test('logs start and empty lifecycle entries when transcript is empty', async () => {
+		const logs = await runTranscriptionWithLogging({
+			url: 'https://cdn.discordapp.com/voice-message.ogg',
+			transcribeImpl: async () => '',
+		})
+
+		expect(logs).toHaveLength(2)
+		expect(logs[0].action).toBe('started')
+		expect(logs[1].action).toBe('empty')
+		expect(logs[1].response).toBe('empty transcript')
+		expect(logs[1].durationMs).toBeGreaterThanOrEqual(0)
+	})
+
+	test('logs start and failure lifecycle entries when transcription throws', async () => {
+		const logs = await runTranscriptionWithLogging({
+			url: undefined,
+			transcribeImpl: async () => { throw new Error('decoder unavailable') },
+		})
+
+		expect(logs).toHaveLength(2)
+		expect(logs[0].action).toBe('started')
+		expect(logs[0].filename).toBe('audio')
+		expect(logs[1].action).toBe('failed')
+		expect(logs[1].response).toContain('decoder unavailable')
+		expect(logs[1].durationMs).toBeGreaterThanOrEqual(0)
+	})
+})
+
 // ── BridgeMessage 'audio' type ────────────────────────────────────────────────
 
 describe('BridgeMessage attachment type "audio"', () => {

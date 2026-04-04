@@ -11,6 +11,12 @@ interface LogHistoryEntry {
 	model?: string
 }
 
+export function formatLiveLogTimestamp(timestamp: string): string {
+	const parsed = new Date(timestamp)
+	if (Number.isNaN(parsed.getTime())) return timestamp
+	return parsed.toLocaleString()
+}
+
 export default function LiveLogsPage() {
 	const [logsText, setLogsText] = useState('')
 	const [loading, setLoading] = useState(true)
@@ -23,7 +29,7 @@ export default function LiveLogsPage() {
 				const formatted = data.logs
 					.slice(0, 120)
 					.map((log: LogHistoryEntry) => {
-						const time = new Date(log.timestamp).toLocaleTimeString()
+						const time = formatLiveLogTimestamp(log.timestamp)
 						const session = log.sessionId || 'unknown-session'
 						const model = log.model ? ` (${log.model})` : ''
 						return `[${time}] ${session}${model}: ${log.prompt ?? ''}\n -> ${log.response ?? ''}`

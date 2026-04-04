@@ -62,7 +62,7 @@ export const runUpdateCommand = async (opts: { force?: boolean; check?: boolean 
 
 	// ── Warn about restart ────────────────────────────────────────────────────
 	p.note(
-		`This will:\n  • Download and install v${latestVersion}\n  • Stop the running daemon (if any)\n  • Restart all processes`,
+		`This will:\n  • Download and install v${latestVersion}\n  • Stop the running daemon (if any)\n  • Start the daemon again automatically`,
 		pc.yellow('⚠️  Warning')
 	)
 
@@ -107,7 +107,19 @@ export const runUpdateCommand = async (opts: { force?: boolean; check?: boolean 
 
 	if (result.success) {
 		updateSpinner.stop(pc.green(`✅ Updated to v${result.latestVersion ?? result.currentVersion}`))
-		p.outro(pc.green(`Done! Run ${pc.bold('tamias start')} to restart the daemon.`))
+
+		const restartSpinner = p.spinner()
+		restartSpinner.start('Starting daemon…')
+		try {
+			const { autoStartDaemon } = await import('../utils/daemon.ts')
+			const daemonInfo = await autoStartDaemon()
+			restartSpinner.stop(pc.green(`✅ Daemon restarted (PID: ${daemonInfo.pid}, Port: ${daemonInfo.port})`))
+			p.outro(pc.green(`Done! Tamias is now running on v${result.latestVersion ?? result.currentVersion}.`))
+		} catch (err) {
+			restartSpinner.stop(pc.red(`Updated, but failed to restart daemon: ${err}`))
+			p.note(`Please restart manually with ${pc.bold('tamias start')}.`, pc.yellow('Manual restart required'))
+			process.exit(1)
+		}
 	} else {
 		updateSpinner.stop(pc.red(`Update failed: ${result.error}`))
 		process.exit(1)

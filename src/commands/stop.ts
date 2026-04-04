@@ -23,6 +23,9 @@ export const runStopCommand = async () => {
 		if (info.dashboardPid) {
 			try { process.kill(info.dashboardPid, 'SIGTERM') } catch { /* already gone */ }
 		}
+		if (info.ngrokPid) {
+			try { process.kill(info.ngrokPid, 'SIGTERM') } catch { /* already gone */ }
+		}
 		// Kill caffeinate process if present
 		if (info.caffeinatePid) {
 			try { process.kill(info.caffeinatePid, 'SIGTERM') } catch { /* already gone */ }

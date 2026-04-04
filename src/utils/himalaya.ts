@@ -2,22 +2,28 @@
  * himalaya.ts — Auto-provision himalaya CLI account configs from Tamias email settings.
  *
  * When a himalaya command is about to run, we verify the account exists in
- * ~/.config/himalaya/config.toml (or equivalent XDG path).  If it is missing we
+ * the platform config file (macOS: ~/Library/Application Support/himalaya/config.toml,
+ * Linux: ~/.config/himalaya/config.toml, override: $HIMALAYA_CONFIG).  If it is missing we
  * generate the correct IMAP + SMTP TOML block and append it, so the user never
  * has to configure himalaya manually.
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
-import { join } from 'path'
-import { homedir } from 'os'
+import { join, dirname } from 'path'
+import { homedir, platform } from 'os'
 
 // ─── Paths ─────────────────────────────────────────────────────────────────
 
-const HIMALAYA_CONFIG_DIR = process.env.XDG_CONFIG_HOME
-	? join(process.env.XDG_CONFIG_HOME, 'himalaya')
-	: join(homedir(), '.config', 'himalaya')
+function resolveHimalayaConfigPath(): string {
+	if (process.env.HIMALAYA_CONFIG) return process.env.HIMALAYA_CONFIG
+	if (platform() === 'darwin') return join(homedir(), 'Library', 'Application Support', 'himalaya', 'config.toml')
+	const xdgDir = process.env.XDG_CONFIG_HOME
+		? join(process.env.XDG_CONFIG_HOME, 'himalaya')
+		: join(homedir(), '.config', 'himalaya')
+	return join(xdgDir, 'config.toml')
+}
 
-export const HIMALAYA_CONFIG_PATH = join(HIMALAYA_CONFIG_DIR, 'config.toml')
+export const HIMALAYA_CONFIG_PATH = resolveHimalayaConfigPath()
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -131,8 +137,9 @@ export function ensureHimalayaAccount(cfg: EmailServiceConfig): { ok: true } | {
 	}
 
 	// Ensure the directory exists
-	if (!existsSync(HIMALAYA_CONFIG_DIR)) {
-		mkdirSync(HIMALAYA_CONFIG_DIR, { recursive: true })
+	const configDir = dirname(HIMALAYA_CONFIG_PATH)
+	if (!existsSync(configDir)) {
+		mkdirSync(configDir, { recursive: true })
 	}
 
 	// Append to existing file (or create it)

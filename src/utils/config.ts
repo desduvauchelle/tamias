@@ -148,6 +148,12 @@ export const FirecrawlConfigSchema = z.object({
 
 export type FirecrawlConfig = z.infer<typeof FirecrawlConfigSchema>
 
+export const NgrokConfigSchema = z.object({
+	enabled: z.boolean().default(false),
+})
+
+export type NgrokConfig = z.infer<typeof NgrokConfigSchema>
+
 export const TamiasConfigSchema = z.object({
 	version: z.literal('1.0'),
 	connections: z.record(z.string(), ConnectionConfigSchema),
@@ -219,6 +225,7 @@ export const TamiasConfigSchema = z.object({
 		embeddingModel: 'Xenova/all-MiniLM-L6-v2',
 	}).optional(),
 	firecrawl: FirecrawlConfigSchema.optional(),
+	ngrok: NgrokConfigSchema.default({ enabled: false }),
 })
 
 export type TamiasConfig = z.infer<typeof TamiasConfigSchema>
@@ -254,7 +261,8 @@ export const loadConfig = (): TamiasConfig => {
 			connections: {},
 			bridges: { terminal: { enabled: true } },
 			workspacePath: getDefaultWorkspacePath(),
-			debug: false
+			debug: false,
+			ngrok: { enabled: false },
 		}
 	}
 
@@ -282,7 +290,7 @@ export const loadConfig = (): TamiasConfig => {
 			process.exit(1)
 		}
 		console.error('Failed to load config file, using defaults:', err)
-		return { version: '1.0', connections: {}, bridges: { terminal: { enabled: true } }, debug: false }
+		return { version: '1.0', connections: {}, bridges: { terminal: { enabled: true } }, debug: false, ngrok: { enabled: false } }
 	}
 }
 

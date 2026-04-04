@@ -59,6 +59,7 @@ export async function GET() {
 			mcpServers: config.mcpServers || {},
 			emails: config.emails || {},
 			defaultImageModels: config.defaultImageModels || [],
+			ngrok: config.ngrok || { enabled: false },
 			availableInternalTools,
 			availableFunctions,
 			availableToolsDetails,
@@ -69,6 +70,7 @@ export async function GET() {
 			mcpServers: {},
 			emails: {},
 			defaultImageModels: [],
+			ngrok: { enabled: false },
 			availableInternalTools: {},
 			availableFunctions: {},
 			availableToolsDetails: {},
@@ -78,7 +80,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
 	try {
-		const { internalTools, mcpServers, emails, defaultImageModels } = await request.json()
+		const { internalTools, mcpServers, emails, defaultImageModels, ngrok } = await request.json()
 		const config = await getTamiasConfig()
 
 		if (internalTools) config.internalTools = internalTools
@@ -100,6 +102,7 @@ export async function POST(request: Request) {
 			config.emails = processedEmails
 		}
 		if (defaultImageModels !== undefined) config.defaultImageModels = defaultImageModels
+		if (ngrok !== undefined) config.ngrok = ngrok
 
 		await saveTamiasConfig(config)
 		return NextResponse.json({ success: true })

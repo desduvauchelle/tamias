@@ -10,7 +10,7 @@ import { AIService, type Session } from '../services/aiService.ts'
 import { BridgeManager } from '../bridge/index.ts'
 import { watchSkills } from '../utils/skills.ts'
 import { loadCronJobs, recordCronJobRun } from '../utils/cronStore.ts'
-import { runCronJobsOnce } from './cron.ts'
+import { runCronJobsOnce, buildPrompt } from './cron.ts'
 import { getProjects, getProjectCrons, updateProjectCron, getProjectByDiscordChannel } from '../core/projects.ts'
 import { scaffoldFromTemplates, isOnboarded } from '../utils/memory.ts'
 import { loadAgents } from '../utils/agentsStore.ts'
@@ -46,7 +46,7 @@ function json(data: unknown, status = 200): Response {
 	})
 }
 
-export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolean } = {}) => {
+export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolean; ngrok?: boolean } = {}) => {
 	const isDaemon = opts.daemon ?? false
 	const isVerbose = opts.verbose ?? false
 
@@ -207,6 +207,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	const dashboardToken = await getOrCreateDashboardToken()
 
 	const noDashboard = process.env.TAMIAS_NO_DASHBOARD === 'true'
+	const shouldEnableNgrok = opts.ngrok ?? config.ngrok?.enabled ?? false
 
 	let dashboardProc: ReturnType<typeof Bun.spawn> | undefined
 	if (noDashboard) {
@@ -230,6 +231,22 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	}
 	dashboardProc?.unref()
 
+	let ngrokProc: ReturnType<typeof Bun.spawn> | undefined
+	if (!noDashboard && shouldEnableNgrok) {
+		const ngrokBin = Bun.which('ngrok') || 'ngrok'
+		try {
+			ngrokProc = Bun.spawn([ngrokBin, 'http', dashboardPort.toString()], {
+				stdout: dashboardLogFd,
+				stderr: dashboardLogFd,
+				env: process.env,
+			})
+			ngrokProc.unref()
+			console.log(`[Daemon] ngrok tunnel started for dashboard on port ${dashboardPort}`)
+		} catch (err) {
+			console.warn('[Daemon] Failed to start ngrok tunnel:', err)
+		}
+	}
+
 
 	// Store caffeinatePid in daemon info for cleanup
 	writeDaemonInfo({
@@ -238,6 +255,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 		startedAt: new Date().toISOString(),
 		dashboardPort,
 		dashboardPid: dashboardProc?.pid,
+		ngrokPid: ngrokProc?.pid,
 		caffeinatePid: caffeinateProc?.pid, // <-- used by stop.ts
 		token: dashboardToken
 	})
@@ -302,6 +320,62 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	// Ensure memory files (HEARTBEAT.md, AGENTS.md, etc.) exist before cron starts
 	scaffoldFromTemplates()
 
+	/**
+	 * In-process cron executor — runs entirely inside the daemon.
+	 *
+	 * WHY this exists instead of the HTTP-based executeCronJob in cron.ts:
+	 *
+	 * The HTTP path builds `channelId = "platform:numericChannelId"` (e.g. "discord:1234567890")
+	 * which never matches any bridge in BridgeManager (bridges are keyed by config name, e.g.
+	 * "discord:main"). Events dispatched with the wrong key are silently dropped.
+	 *
+	 * This executor mirrors the pattern from cron-discord-pipeline.test.ts:
+	 *   1. Look up the live bridge via findBridgeByAccount → gets the correct bridge name.
+	 *   2. Create/reuse a session with channelId=bridge.name, channelUserId=delivery.channelId.
+	 *   3. For type=message: emit events directly (no AI).
+	 *      For type=ai: enqueue to AI.
+	 */
+	function createCronExecutor() {
+		return async (job: import('../utils/cronStore.ts').CronJob, _daemonUrl: string | null, _token: string): Promise<void> => {
+			if (!job.delivery) {
+				// No delivery (target:'last' heartbeat-style jobs) — run in a background terminal session
+				const sessionKey = job.sessionKey || `cron:${job.id}`
+				let session = aiService.getAllSessions().find(s => s.channelId === 'terminal' && s.channelUserId === sessionKey)
+				if (!session) {
+					session = aiService.createSession({ channelId: 'terminal', channelUserId: sessionKey })
+				}
+				await aiService.enqueueMessage(session.id, buildPrompt(job), undefined, undefined, {
+					source: 'from-cron', cronJobId: job.id, skills: job.skills,
+				} as any)
+				return
+			}
+
+			const { platform, platformAccountId, channelId: deliveryChannelId, channelName } = job.delivery
+			const bridge = bridgeManager.findBridgeByAccount(platform, platformAccountId)
+			if (!bridge) {
+				throw new Error(`No active bridge for platform="${platform}" accountId="${platformAccountId ?? 'any'}" — is the bot running?`)
+			}
+
+			let session = aiService.getSessionForBridge(bridge.name, deliveryChannelId)
+			if (!session) {
+				session = aiService.createSession({ channelId: bridge.name, channelUserId: deliveryChannelId, channelName })
+				console.log(`[cron run] Created session ${session.id} for "${job.name}" → ${bridge.name}:${deliveryChannelId}`)
+			} else {
+				console.log(`[cron run] Reusing session ${session.id} for "${job.name}" → ${bridge.name}:${deliveryChannelId}`)
+			}
+
+			if (job.type === 'message') {
+				session.emitter.emit('event', { type: 'start', sessionId: session.id })
+				session.emitter.emit('event', { type: 'chunk', text: job.prompt })
+				session.emitter.emit('event', { type: 'done', sessionId: session.id })
+			} else {
+				await aiService.enqueueMessage(session.id, buildPrompt(job), undefined, undefined, {
+					source: 'from-cron', cronJobId: job.id, skills: job.skills,
+				} as any)
+			}
+		}
+	}
+
 	const runProjectCronsOnce = async (options: { dryRun?: boolean } = {}): Promise<{ dueCount: number; executedCount: number; failedCount: number }> => {
 		const daemonInfo = readDaemonInfo()
 		const daemonUrl = daemonInfo ? `http://127.0.0.1:${daemonInfo.port}` : null
@@ -318,6 +392,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				dryRun: options.dryRun,
 				daemonUrl,
 				daemonToken,
+				executeJobFn: createCronExecutor(),
 				loadJobsFn: () => projectJobs,
 				recordRunFn: (id, runResult) => {
 					const updated = updateProjectCron(project.id, id, {
@@ -346,6 +421,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			dryRun: options.dryRun,
 			daemonUrl,
 			daemonToken,
+			executeJobFn: createCronExecutor(),
 		})
 		await runProjectCronsOnce(options)
 	}
@@ -877,6 +953,9 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				if (dashboardProc) {
 					try { dashboardProc.kill() } catch { /* ignore */ }
 				}
+				if (ngrokProc) {
+					try { ngrokProc.kill() } catch { /* ignore */ }
+				}
 				clearDaemonInfo()
 				setTimeout(() => process.exit(0), 200)
 				return json({ ok: true })
@@ -1093,12 +1172,14 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	process.on('SIGTERM', () => {
 		clearInterval(cronSchedulerTimer)
 		if (dashboardProc) { try { dashboardProc.kill() } catch { /* ignore */ } }
+		if (ngrokProc) { try { ngrokProc.kill() } catch { /* ignore */ } }
 		clearDaemonInfo()
 		process.exit(0)
 	})
 	process.on('SIGINT', () => {
 		clearInterval(cronSchedulerTimer)
 		if (dashboardProc) { try { dashboardProc.kill() } catch { /* ignore */ } }
+		if (ngrokProc) { try { ngrokProc.kill() } catch { /* ignore */ } }
 		clearDaemonInfo()
 		process.exit(0)
 	})

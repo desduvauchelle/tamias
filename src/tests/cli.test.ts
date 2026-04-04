@@ -77,5 +77,7 @@ describe('CLI Structure', () => {
 		expect(result.status).toBe(0)
 		expect(result.stdout).toContain('--daemon')
 		expect(result.stdout).toContain('--verbose')
+		expect(result.stdout).toContain('--ngrok')
+		expect(result.stdout).toContain('--no-ngrok')
 	})
 })

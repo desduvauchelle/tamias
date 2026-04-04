@@ -20,6 +20,7 @@ describe("AIService Streaming", () => {
 			connections: {},
 			bridges: { terminal: { enabled: true } },
 			debug: false,
+			ngrok: { enabled: false },
 		}
 		spyOn(configUtils, 'loadConfig').mockReturnValue(emptyConfig)
 	})

@@ -25,6 +25,7 @@ describe("Model Tiers", () => {
 				version: "1.0",
 				connections: {},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 			} as TamiasConfig)
 			invalidateConfigCache()
 
@@ -36,6 +37,7 @@ describe("Model Tiers", () => {
 				version: "1.0",
 				connections: {},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 				smartModels: ["openrouter/anthropic/claude-3-opus", "openai/o3"],
 			} as TamiasConfig)
 			invalidateConfigCache()
@@ -55,6 +57,7 @@ describe("Model Tiers", () => {
 				version: "1.0",
 				connections: {},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 			} as TamiasConfig)
 			invalidateConfigCache()
 
@@ -70,6 +73,7 @@ describe("Model Tiers", () => {
 				version: "1.0",
 				connections: {},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 				smartModels: ["old/model"],
 			} as TamiasConfig)
 			invalidateConfigCache()
@@ -85,6 +89,7 @@ describe("Model Tiers", () => {
 				version: "1.0",
 				connections: {},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 				smartModels: ["some/model"],
 			} as TamiasConfig)
 			invalidateConfigCache()
@@ -104,6 +109,7 @@ describe("Model Tiers", () => {
 				version: "1.0",
 				connections: {},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 				defaultModels: ["openai/gpt-4o", "openai/gpt-4o-mini"],
 				smartModels: ["openai/o3"],
 			} as TamiasConfig)
@@ -120,6 +126,7 @@ describe("Model Tiers", () => {
 				version: "1.0",
 				connections: {},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 				defaultModels: ["openai/gpt-4o"],
 				smartModels: ["openai/o3", "anthropic/claude-3-opus"],
 			} as TamiasConfig)
@@ -136,6 +143,7 @@ describe("Model Tiers", () => {
 				version: "1.0",
 				connections: {},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 				defaultModels: ["openai/gpt-4o"],
 				smartModels: [],
 				debug: false,
@@ -150,6 +158,7 @@ describe("Model Tiers", () => {
 				version: "1.0",
 				connections: {},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 				defaultModels: ["openai/gpt-4o-mini"],
 			} as TamiasConfig)
 			invalidateConfigCache()
@@ -162,6 +171,7 @@ describe("Model Tiers", () => {
 				version: "1.0",
 				connections: {},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 			} as TamiasConfig)
 			invalidateConfigCache()
 
@@ -173,6 +183,7 @@ describe("Model Tiers", () => {
 				version: "1.0",
 				connections: {},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 			} as TamiasConfig)
 			invalidateConfigCache()
 
@@ -194,6 +205,7 @@ describe("Model Tiers", () => {
 					},
 				},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 				defaultModels: ["my-openai/gpt-4o"],
 				smartModels: ["my-openai/o3"],
 				debug: false,
@@ -212,6 +224,7 @@ describe("Model Tiers", () => {
 				version: "1.0",
 				connections: {},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 				defaultModels: ["openai/gpt-4o"],
 			} as TamiasConfig)
 			invalidateConfigCache()
@@ -226,6 +239,7 @@ describe("Model Tiers", () => {
 				version: "1.0",
 				connections: {},
 				bridges: { terminal: { enabled: true } },
+				ngrok: { enabled: false },
 				defaultModels: ["openai/gpt-4o", "openai/gpt-4o-mini"],
 				smartModels: ["openai/gpt-4o", "openai/o3"],
 			} as TamiasConfig)

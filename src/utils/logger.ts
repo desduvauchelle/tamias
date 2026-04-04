@@ -7,7 +7,7 @@ export interface AiLogPayload {
 	sessionId: string
 	model: string
 	provider: string
-	action: 'chat' | 'compact' | 'image'
+	action: 'chat' | 'compact' | 'image' | 'transcription'
 	durationMs: number
 	tokens?: {
 		prompt?: number
