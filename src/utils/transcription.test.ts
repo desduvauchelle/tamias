@@ -205,4 +205,36 @@ describe('ensureModelReady', () => {
 		// Both calls share the same pending promise
 		expect(_downloadState.promise).not.toBeNull()
 	})
+
+	test('triggers download when model files are absent and fetch is called', async () => {
+		// Model dir is empty (beforeEach already cleaned it)
+		let calledUrls: string[] = []
+
+		_httpFetch.fn = mock(async (url: string | URL | Request) => {
+			calledUrls.push(typeof url === 'string' ? url : url.toString())
+
+			// First call: GitHub releases API — return a fake release with a matching asset
+			if (typeof url === 'string' && url.includes('api.github.com')) {
+				return new Response(JSON.stringify({
+					assets: [{ name: 'sherpa-onnx-v1.0.0-osx-arm64.tar.bz2', browser_download_url: 'https://example.com/bin.tar.bz2' }]
+				}), { status: 200 })
+			}
+
+			// Subsequent calls (binary + model downloads) — return an empty ok response
+			return new Response(new Uint8Array(0), { status: 200 })
+		})
+
+		// Mock tar extraction and find to succeed without real files
+		_bunSpawn.fn = mock(() => makeMockProc('some/path/sherpa-onnx-offline'))
+
+		// This will fail because Bun.write can't write to a real path and find returns a fake path,
+		// but we only care that _httpFetch was called with the GitHub API URL
+		try {
+			await ensureModelReady()
+		} catch {
+			// Expected — the fake extraction path doesn't exist
+		}
+
+		expect(calledUrls[0]).toContain('api.github.com')
+	})
 })
