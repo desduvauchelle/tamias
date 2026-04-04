@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.04.04.37] - 2026-04-04
+
+### Features
+- add ngrok configuration and functionality
+
 ## [v26.04.04.36] - 2026-04-04
 
 ### Features

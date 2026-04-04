@@ -142,11 +142,14 @@ export class DiscordBridge implements IBridge {
 						const buffer = Buffer.from(arrayBuffer)
 
 						const mimeType = attachment.contentType || 'application/octet-stream'
+						const attachmentName = attachment.name ?? ''
+						const isAudioByExtension = /\.(ogg|mp3|m4a|wav|flac|aac|opus|weba|webm)$/i.test(attachmentName)
 						const attachType = mimeType.startsWith('image/')
 							? 'image'
-							: (mimeType.startsWith('audio/') || mimeType === 'application/ogg')
+							: (mimeType.startsWith('audio/') || mimeType === 'application/ogg' || isAudioByExtension)
 								? 'audio'
 								: 'file'
+						console.log(`[Discord Bridge] Attachment classified: name=${attachmentName || 'unknown'} type=${attachType} mime=${mimeType} size=${buffer.byteLength}`)
 						attachments.push({
 							type: attachType,
 							url: attachment.url,

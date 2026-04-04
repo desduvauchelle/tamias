@@ -66,16 +66,6 @@ export const runUpdateCommand = async (opts: { force?: boolean; check?: boolean 
 		pc.yellow('⚠️  Warning')
 	)
 
-	const confirmed = await p.confirm({
-		message: 'Proceed with update?',
-		initialValue: false,
-	})
-
-	if (p.isCancel(confirmed) || !confirmed) {
-		p.cancel('Update cancelled.')
-		process.exit(0)
-	}
-
 	// ── Stop running daemon first ─────────────────────────────────────────────
 	try {
 		const { isDaemonRunning, readDaemonInfo } = await import('../utils/daemon.ts')

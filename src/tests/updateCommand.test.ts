@@ -2,11 +2,8 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from 'b
 
 const introMock = mock(() => undefined)
 const outroMock = mock(() => undefined)
-const cancelMock = mock(() => undefined)
 const stepMock = mock(() => undefined)
 const noteMock = mock(() => undefined)
-const confirmMock = mock(async () => true)
-const isCancelMock = mock(() => false)
 
 const checkSpinnerStartMock = mock(() => undefined)
 const checkSpinnerStopMock = mock(() => undefined)
@@ -47,10 +44,7 @@ const spinnerFactoryMock = mock(() => {
 mock.module('@clack/prompts', () => ({
 	intro: introMock,
 	outro: outroMock,
-	cancel: cancelMock,
 	note: noteMock,
-	confirm: confirmMock,
-	isCancel: isCancelMock,
 	log: { step: stepMock },
 	spinner: spinnerFactoryMock,
 }))
@@ -97,11 +91,8 @@ beforeEach(() => {
 
 	introMock.mockClear()
 	outroMock.mockClear()
-	cancelMock.mockClear()
 	stepMock.mockClear()
 	noteMock.mockClear()
-	confirmMock.mockClear()
-	isCancelMock.mockClear()
 	checkSpinnerStartMock.mockClear()
 	checkSpinnerStopMock.mockClear()
 	checkSpinnerMessageMock.mockClear()
@@ -133,6 +124,7 @@ describe('runUpdateCommand', () => {
 
 		expect(checkForUpdateMock).toHaveBeenCalledTimes(1)
 		expect(performUpdateMock).toHaveBeenCalledTimes(1)
+		expect(noteMock).toHaveBeenCalledTimes(1)
 		expect(autoStartDaemonMock).toHaveBeenCalledTimes(1)
 		expect(restartSpinnerStartMock).toHaveBeenCalledWith('Starting daemon…')
 		expect(restartSpinnerStopMock).toHaveBeenCalledTimes(1)

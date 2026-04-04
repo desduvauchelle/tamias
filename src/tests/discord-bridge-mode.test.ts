@@ -321,7 +321,7 @@ describe('DiscordBridge audio attachment handling', () => {
 		expect(bridgeMsg.attachments[0].type).toBe('image')
 	})
 
-	test('null contentType falls back to "file" type (not "audio")', async () => {
+	test('null contentType + non-audio extension falls back to "file" type', async () => {
 		globalThis.fetch = mock(async () => ({
 			ok: true,
 			statusText: 'OK',
@@ -353,6 +353,46 @@ describe('DiscordBridge audio attachment handling', () => {
 		const bridgeMsg = (onMessage.mock.calls[0] as any)[0]
 		expect(bridgeMsg.attachments[0].type).toBe('file')
 		expect(bridgeMsg.attachments[0].mimeType).toBe('application/octet-stream')
+	})
+
+	test('null contentType + .ogg filename is classified as "audio"', async () => {
+		mockFetchWithAudio()
+		const onMessage = mock(async () => true)
+		const bridge = new DiscordBridge('default')
+
+		await bridge.initialize({
+			bridges: { discords: { default: { enabled: true, allowedChannels: [] } } },
+		} as any, onMessage)
+
+		const client = createdClients[0]
+		const msg = makeVoiceMessage({ contentType: null as any, filename: 'voice-message.ogg' })
+
+		await client.emit('messageCreate', msg)
+
+		const bridgeMsg = (onMessage.mock.calls[0] as any)[0]
+		expect(bridgeMsg.attachments[0].type).toBe('audio')
+		expect(bridgeMsg.attachments[0].mimeType).toBe('application/octet-stream')
+	})
+
+	test('logs attachment classification details for visibility', async () => {
+		mockFetchWithAudio()
+		const onMessage = mock(async () => true)
+		const bridge = new DiscordBridge('default')
+		const logSpy = spyOn(console, 'log').mockImplementation(() => { })
+
+		await bridge.initialize({
+			bridges: { discords: { default: { enabled: true, allowedChannels: [] } } },
+		} as any, onMessage)
+
+		const client = createdClients[0]
+		const msg = makeVoiceMessage({ contentType: null as any, filename: 'voice-message.ogg' })
+
+		await client.emit('messageCreate', msg)
+
+		expect(logSpy).toHaveBeenCalledWith(
+			expect.stringContaining('[Discord Bridge] Attachment classified: name=voice-message.ogg type=audio mime=application/octet-stream')
+		)
+		logSpy.mockRestore()
 	})
 
 	test('application/ogg contentType is classified as "audio"', async () => {
