@@ -232,3 +232,63 @@ export async function autoUpdateDaemon(bridgeManager: BridgeManager) {
 		console.error(`[AutoUpdate] Error during auto-update:`, err)
 	}
 }
+
+export interface RestartContext {
+	channelId: string
+	channelUserId?: string
+	fromVersion: string
+	toVersion: string
+	changelog: string
+}
+
+/**
+ * Runs the update, writes pending-restart.json on success, spawns a new daemon, then exits.
+ * The pending file is written ONLY after a successful update to prevent stale notifications.
+ * @param _performUpdateFn Injected for testing. Defaults to the real performUpdate.
+ */
+export async function performUpdateAndRestart(
+	context: RestartContext,
+	_performUpdateFn: () => Promise<UpdateResult> = performUpdate,
+): Promise<void> {
+	const result = await _performUpdateFn()
+
+	if (!result.success) {
+		console.error('[UpdateRestart] Update failed:', result.error)
+		return
+	}
+
+	// Write notification file AFTER confirmed success
+	const { writePendingRestart } = await import('./pendingRestart.ts')
+	writePendingRestart({
+		channelId: context.channelId,
+		channelUserId: context.channelUserId,
+		fromVersion: context.fromVersion,
+		toVersion: context.toVersion,
+		changelog: context.changelog,
+		requestedAt: new Date().toISOString(),
+	})
+
+	// Spawn new daemon (mirrors autoStartDaemon spawn logic)
+	const { join } = await import('path')
+	const { homedir } = await import('os')
+	const { openSync, existsSync: fsExists } = await import('fs')
+
+	const isCompiled = import.meta.dir?.includes('$bunfs') || !fsExists(import.meta.dir ?? '')
+	const projectRoot = isCompiled ? process.cwd() : join(import.meta.dir, '../..')
+	const logPath = join(process.env.TAMIAS_DIR ?? join(homedir(), '.tamias'), 'daemon.log')
+	const logFd = openSync(logPath, 'a')
+
+	const spawnArgs: string[] = isCompiled
+		? [process.execPath, 'start', '--daemon']
+		: [process.argv[0], join(projectRoot, 'src', 'index.ts'), 'start', '--daemon']
+
+	const proc = Bun.spawn(spawnArgs, {
+		cwd: projectRoot,
+		detached: true,
+		stdio: ['ignore', logFd, logFd],
+		env: { ...process.env } as Record<string, string>,
+	})
+	proc.unref()
+
+	setTimeout(() => process.exit(0), 1000)
+}
