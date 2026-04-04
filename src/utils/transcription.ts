@@ -2,7 +2,7 @@ import ffmpeg from 'fluent-ffmpeg'
 import ffmpegStatic from 'ffmpeg-static'
 import { Readable } from 'stream'
 import { join, dirname } from 'path'
-import { existsSync, mkdirSync, unlinkSync, chmodSync } from 'fs'
+import { existsSync, mkdirSync, unlinkSync, chmodSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { randomBytes } from 'crypto'
 import { getConfigFilePath } from './config.ts'
@@ -30,8 +30,10 @@ interface SpawnResult {
 
 // ── Test injection hooks (exported objects — ESM-safe mutable properties) ─────
 
-export const _bunSpawn: { fn: (cmd: string[], opts?: any) => SpawnResult } = {
-	fn: (cmd: string[], opts?: any) => Bun.spawn(cmd as [string, ...string[]], opts) as unknown as SpawnResult,
+type BunSpawnOpts = Parameters<typeof Bun.spawn>[1]
+
+export const _bunSpawn: { fn: (cmd: string[], opts?: BunSpawnOpts) => SpawnResult } = {
+	fn: (cmd: string[], opts?: BunSpawnOpts) => Bun.spawn(cmd as [string, ...string[]], opts) as unknown as SpawnResult,
 }
 export const _httpFetch: { fn: (input: string | URL | Request, init?: RequestInit) => Promise<Response> } = {
 	fn: fetch,
@@ -102,7 +104,7 @@ async function _downloadParakeet(dir: string): Promise<void> {
 async function _fetchToFile(url: string, dest: string): Promise<void> {
 	const res = await _httpFetch.fn(url)
 	if (!res.ok) throw new Error(`Download failed (${res.status}): ${url}`)
-	await Bun.write(dest, await res.arrayBuffer())
+	await Bun.write(dest, res)
 }
 
 async function _extractBinary(tarPath: string, dir: string): Promise<void> {
@@ -116,7 +118,7 @@ async function _extractBinary(tarPath: string, dir: string): Promise<void> {
 		})
 		const extractCode = await extractProc.exited
 		if (extractCode !== 0) {
-			throw new Error(`tar extraction failed (${extractCode}): ${await new Response(extractProc.stderr!).text()}`)
+			throw new Error(`tar extraction failed (${extractCode}): ${await new Response(extractProc.stderr ?? new ReadableStream()).text()}`)
 		}
 
 		// Locate the binary anywhere in the extracted tree
@@ -125,14 +127,14 @@ async function _extractBinary(tarPath: string, dir: string): Promise<void> {
 			{ stdout: 'pipe' }
 		)
 		await findProc.exited
-		const foundPath = (await new Response(findProc.stdout!).text()).trim()
+		const foundPath = (await new Response(findProc.stdout ?? new ReadableStream()).text()).trim()
 		if (!foundPath) throw new Error('sherpa-onnx-offline not found in binary archive')
 
 		const destBin = join(dir, 'sherpa-onnx-offline')
 		await Bun.write(destBin, Bun.file(foundPath))
 		chmodSync(destBin, 0o755)
 	} finally {
-		void _bunSpawn.fn(['rm', '-rf', tmpExtract])
+		try { rmSync(tmpExtract, { recursive: true, force: true }) } catch {}
 	}
 }
 
@@ -145,7 +147,7 @@ async function _extractModelFiles(tarPath: string, dir: string): Promise<void> {
 	)
 	const code = await proc.exited
 	if (code !== 0) {
-		throw new Error(`Model extraction failed (${code}): ${await new Response(proc.stderr!).text()}`)
+		throw new Error(`Model extraction failed (${code}): ${await new Response(proc.stderr ?? new ReadableStream()).text()}`)
 	}
 }
 
@@ -207,11 +209,11 @@ export async function transcribeAudioBuffer(buffer: Buffer): Promise<string> {
 
 		const code = await proc.exited
 		if (code !== 0) {
-			const stderr = await new Response(proc.stderr!).text()
+			const stderr = await new Response(proc.stderr ?? new ReadableStream()).text()
 			throw new Error(`sherpa-onnx-offline failed (exit ${code}): ${stderr}`)
 		}
 
-		const stdout = await new Response(proc.stdout!).text()
+		const stdout = await new Response(proc.stdout ?? new ReadableStream()).text()
 		return parseSherpaOutput(stdout)
 	} finally {
 		try { unlinkSync(tmpWav) } catch {}
