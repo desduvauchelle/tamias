@@ -50,6 +50,7 @@ describe('performUpdateAndRestart', () => {
 		const info = readPendingRestart()
 		expect(info).not.toBeNull()
 		expect(info!.channelId).toBe('discord:1234567890')
+		expect(info!.channelUserId).toBe('user-42')
 		expect(info!.fromVersion).toBe('26.03.16.4')
 		expect(info!.toVersion).toBe('26.04.03.1')
 		expect(info!.changelog).toContain('cron jobs restored')
@@ -60,7 +61,7 @@ describe('performUpdateAndRestart', () => {
 		await performUpdateAndRestart(ctx, async () => successResult)
 		expect(spawnMock).toHaveBeenCalledTimes(1)
 		const [spawnArgs] = spawnMock.mock.calls[0] as unknown as [string[], unknown]
-		expect(spawnArgs.join(' ')).toContain('start')
+		expect(spawnArgs).toContain('--daemon')
 	})
 
 	test('does NOT write pending-restart.json when update fails', async () => {

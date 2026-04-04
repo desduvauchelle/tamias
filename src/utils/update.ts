@@ -269,14 +269,13 @@ export async function performUpdateAndRestart(
 	})
 
 	// Spawn new daemon (mirrors autoStartDaemon spawn logic)
-	const { join } = await import('path')
-	const { homedir } = await import('os')
-	const { openSync, existsSync: fsExists } = await import('fs')
-
-	const isCompiled = import.meta.dir?.includes('$bunfs') || !fsExists(import.meta.dir ?? '')
+	const currentExecPath = process.execPath
+	// A compiled binary's basename is "tamias"; the bun/node runtimes are named "bun" or "node"
+	const execBasename = basename(currentExecPath)
+	const isCompiled = !['bun', 'node', 'bun.exe', 'node.exe'].includes(execBasename)
 	const projectRoot = isCompiled ? process.cwd() : join(import.meta.dir, '../..')
 	const logPath = join(process.env.TAMIAS_DIR ?? join(homedir(), '.tamias'), 'daemon.log')
-	const logFd = openSync(logPath, 'a')
+	const logFd = fs.openSync(logPath, 'a')
 
 	const spawnArgs: string[] = isCompiled
 		? [process.execPath, 'start', '--daemon']
