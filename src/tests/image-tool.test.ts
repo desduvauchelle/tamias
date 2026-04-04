@@ -1,8 +1,14 @@
-import { expect, test, describe, beforeEach, afterAll, mock } from 'bun:test'
+import { expect, test, describe, beforeEach, afterEach, afterAll, mock } from 'bun:test'
 import { EventEmitter } from 'events'
 import { join } from 'node:path'
-import { existsSync, writeFileSync, mkdirSync, rmSync, readFileSync } from 'node:fs'
-import { TAMIAS_DIR } from '../utils/config'
+import { existsSync, mkdirSync, rmSync, readFileSync } from 'node:fs'
+import {
+	TAMIAS_DIR,
+	saveConfig,
+	invalidateConfigCache,
+	type TamiasConfig,
+} from '../utils/config'
+import { setEnv, removeEnv } from '../utils/env'
 
 // Mock the AI SDK before importing
 mock.module('ai', () => {
@@ -21,30 +27,27 @@ mock.module('ai', () => {
 	}
 })
 
-// Mock config utilities — spread real module so unmocked exports survive cross-file worker reuse
-const realConfig = await import('../utils/config')
-mock.module('../utils/config', () => {
-	let models = ['test-openai/dall-e-3']
-	return {
-		...realConfig,
-		getDefaultImageModels: () => models,
-		getApiKeyForConnection: () => 'sk-test',
-		loadConfig: () => ({
-			connections: {
-				'test-openai': { provider: 'openai', nickname: 'test-openai' },
-				'test-google': { provider: 'google', nickname: 'test-google' },
-			}
-		}),
-		TAMIAS_DIR,
-		__setModels: (m: string[]) => { models = m } // explicit test helper
-	}
-})
-
 import { createImageTools } from '../tools/image'
 import type { AIService } from '../services/aiService'
 
 const TEMP_WORKSPACE = join(TAMIAS_DIR, 'test-workspace')
 const TEMP_FALLBACK = join(TAMIAS_DIR, 'generated-images')
+const TEST_ENV_KEY = 'TAMIAS_TEST_IMAGE_API_KEY'
+
+const BASE_CONFIG: TamiasConfig = {
+	version: '1.0',
+	connections: {
+		'test-openai': {
+			nickname: 'test-openai',
+			provider: 'openai',
+			envKeyName: TEST_ENV_KEY,
+			selectedModels: ['dall-e-3'],
+		},
+	},
+	bridges: { terminal: { enabled: true } },
+	defaultImageModels: ['test-openai/dall-e-3'],
+	debug: false,
+}
 
 function clearTestDirs() {
 	if (existsSync(TEMP_WORKSPACE)) rmSync(TEMP_WORKSPACE, { recursive: true, force: true })
@@ -55,6 +58,15 @@ describe('Image Tool', () => {
 	beforeEach(() => {
 		clearTestDirs()
 		mkdirSync(TEMP_WORKSPACE, { recursive: true })
+		saveConfig(BASE_CONFIG)
+		invalidateConfigCache()
+		setEnv(TEST_ENV_KEY, 'sk-test')
+	})
+
+	afterEach(() => {
+		invalidateConfigCache()
+		removeEnv(TEST_ENV_KEY)
+		mock.restore()
 	})
 
 	afterAll(() => {
@@ -126,5 +138,3 @@ describe('Image Tool', () => {
 		expect(existsSync(result.filePath)).toBe(true)
 	})
 })
-
-afterAll(() => mock.restore())

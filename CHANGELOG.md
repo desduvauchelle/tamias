@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- update tests to import real config modules for improved mocking
 - unify project directory structure and enhance test cleanup with afterAll
 - add project management features and documentation to changelog
 - enhance project management features and documentation, add default project routing
