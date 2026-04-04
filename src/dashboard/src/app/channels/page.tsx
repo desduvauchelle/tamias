@@ -75,7 +75,7 @@ function BotCard({
 	return (
 		<div data-testid={`channel-card-${platform}-${instanceKey}`} className={`card bg-base-200 border ${config.enabled ? accentClass : 'border-base-300 opacity-70'} transition-all`}>
 			<div className="card-body p-6">
-				<div className="flex items-center justify-between mb-4">
+				<div className="flex flex-wrap items-center justify-between gap-3 mb-4">
 					<div className="flex items-center gap-4">
 						<div className={`w-12 h-12 ${iconBgClass} rounded-xl flex items-center justify-center text-3xl`}>{icon}</div>
 						<div>
@@ -106,7 +106,7 @@ function BotCard({
 
 				<div className="space-y-4 pt-4 border-t border-base-300/50">
 					<div className="flex items-center gap-4">
-						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-32 shrink-0">Bot Token</span>
+						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 sm:w-32 shrink-0">Bot Token</span>
 						<input
 							data-testid={`channel-token-${platform}-${instanceKey}`}
 							type="password"
@@ -117,7 +117,7 @@ function BotCard({
 						/>
 					</div>
 					<div className="flex items-start gap-4">
-						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-32 shrink-0 mt-2">{allowLabel}</span>
+						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 sm:w-32 shrink-0 mt-2">{allowLabel}</span>
 						<div className="flex-1">
 							<textarea
 								data-testid={`channel-allowed-${platform}-${instanceKey}`}
@@ -131,7 +131,7 @@ function BotCard({
 						</div>
 					</div>
 					<div className="flex items-center gap-4">
-						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-32 shrink-0">Reply Mode</span>
+						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 sm:w-32 shrink-0">Reply Mode</span>
 						<select
 							data-testid={`channel-mode-${platform}-${instanceKey}`}
 							className="select select-sm select-bordered w-full"
@@ -167,7 +167,7 @@ function WhatsAppUnofficialCard({
 	return (
 		<div data-testid={`channel-card-whatsapp-${instanceKey}`} className={`card bg-base-200 border ${accentClass} transition-all`}>
 			<div className="card-body p-6">
-				<div className="flex items-center justify-between mb-4">
+				<div className="flex flex-wrap items-center justify-between gap-3 mb-4">
 					<div className="flex items-center gap-4">
 						<div className="w-12 h-12 bg-green-500/20 text-green-400 rounded-xl flex items-center justify-center text-3xl">
 							📱
@@ -208,7 +208,7 @@ function WhatsAppUnofficialCard({
 					)}
 
 					<div className="flex items-center gap-4">
-						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-32 shrink-0">Mode</span>
+						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 sm:w-32 shrink-0">Mode</span>
 						<select
 							data-testid={`channel-mode-whatsapp-${instanceKey}`}
 							className="select select-sm select-bordered w-full"
@@ -221,7 +221,7 @@ function WhatsAppUnofficialCard({
 					</div>
 
 					<div className="flex items-start gap-4">
-						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-32 shrink-0 mt-2">Groups</span>
+						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 sm:w-32 shrink-0 mt-2">Groups</span>
 						<div className="flex-1">
 							<textarea
 								data-testid={`channel-groups-whatsapp-${instanceKey}`}
@@ -236,7 +236,7 @@ function WhatsAppUnofficialCard({
 					</div>
 
 					<div className="flex items-start gap-4">
-						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-32 shrink-0 mt-2">DM Contacts</span>
+						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 sm:w-32 shrink-0 mt-2">DM Contacts</span>
 						<div className="flex-1">
 							<textarea
 								data-testid={`channel-contacts-whatsapp-${instanceKey}`}
@@ -383,7 +383,7 @@ export default function ChannelsPage() {
 
 	return (
 		<div className="p-6 max-w-4xl max-h-screen overflow-y-auto space-y-12 font-mono pb-24 mx-auto">
-			<div className="flex justify-between items-start">
+			<div className="flex flex-wrap justify-between items-start gap-3">
 				<div>
 					<h1 className="text-3xl font-black text-primary uppercase tracking-tighter">COMMUNICATION CHANNELS</h1>
 					<p className="text-base-content/50 text-sm mt-1">Configure where Tamias listens and responds. Multiple bots per platform are supported.</p>
