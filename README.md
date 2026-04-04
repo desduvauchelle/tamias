@@ -253,8 +253,13 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.03.16.4)
+### Latest Version (v26.03.17.2)
 
 ### Features
-- add comprehensive tests for various pages and functionalities
-- add model tier selection for onboarding and AI service
+- enhance project management with agents and crons
+- implement browser authentication functionality with launch and close endpoints
+- unify project directory into ~/.tamias/workspace/<slug>/
+- implement browser authentication functionality with launch and close endpoints
+
+### Maintenance
+- update changelog for version v26.03.16.4 and fix response status handling in browser route

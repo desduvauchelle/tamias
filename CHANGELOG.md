@@ -3,6 +3,18 @@
 ## [Unreleased]
 
 ### Features
+- add cron command for managing recurring jobs and heartbeats
+
+### Documentation
+- add self-update restart implementation plan
+- add inspect context implementation plan
+- add self-update restart design spec
+- add inspect context design spec
+
+## [v26.03.17.2] - 2026-03-17
+
+### Features
+- enhance project management with agents and crons
 - implement browser authentication functionality with launch and close endpoints
 - unify project directory into ~/.tamias/workspace/<slug>/
 - implement browser authentication functionality with launch and close endpoints
