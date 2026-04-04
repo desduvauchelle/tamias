@@ -659,6 +659,7 @@ Important: Post at least one progress comment before your final result so the us
 					if (isAudio) {
 						// Transcribe audio attachments (e.g. voice messages from Discord)
 						const filename = att.url?.split('/').pop()?.split('?')[0] || 'audio'
+						const fileSizeKb = Math.round(att.buffer.byteLength / 1024)
 						const transcriptionStartedAt = Date.now()
 						logAiRequest({
 							timestamp: new Date().toISOString(),
@@ -673,28 +674,29 @@ Important: Post at least one progress comment before your final result so the us
 							channelId: session.channelId,
 						})
 						try {
-							console.log(`[AIService] Transcribing audio attachment: ${filename} (${att.mimeType})`)
+							console.log(`[AIService] Audio received: ${filename} (${att.mimeType}, ${fileSizeKb}KB) — transcribing...`)
 							const { transcribeAudioBuffer } = await import('../utils/transcription.ts')
 							const transcript = await transcribeAudioBuffer(att.buffer)
+							const durationMs = Date.now() - transcriptionStartedAt
 							if (transcript) {
 								messageContent = messageContent
 									? `${messageContent}\n\n[Transcribed audio: ${transcript}]`
 									: `[Transcribed audio: ${transcript}]`
-								console.log(`[AIService] Audio transcribed: "${transcript.slice(0, 100)}"`)
+								console.log(`[AIService] Transcription complete (${durationMs}ms): "${transcript}"`)
 								logAiRequest({
 									timestamp: new Date().toISOString(),
 									sessionId: session.id,
 									model: session.model,
 									provider: session.connectionNickname,
 									action: 'transcription',
-									durationMs: Date.now() - transcriptionStartedAt,
+									durationMs,
 									messages: [{ role: 'user', content: `[Audio transcription success: ${filename}]` }],
 									response: transcript,
 									agentId: session.agentId,
 									channelId: session.channelId,
 								})
 							} else {
-								console.warn(`[AIService] Audio transcription returned empty for ${filename}`)
+								console.warn(`[AIService] Transcription returned empty for ${filename} (${durationMs}ms) — audio may be silent`)
 								messageContent = messageContent
 									? `${messageContent}\n\n[User sent an audio message but it was silent or could not be transcribed]`
 									: `[User sent an audio message but it was silent or could not be transcribed]`
@@ -704,7 +706,7 @@ Important: Post at least one progress comment before your final result so the us
 									model: session.model,
 									provider: session.connectionNickname,
 									action: 'transcription',
-									durationMs: Date.now() - transcriptionStartedAt,
+									durationMs,
 									messages: [{ role: 'user', content: `[Audio transcription empty: ${filename}]` }],
 									response: 'empty transcript',
 									agentId: session.agentId,
@@ -764,6 +766,7 @@ Important: Post at least one progress comment before your final result so the us
 			userContent = messageContent
 		}
 		session.messages.push({ role: 'user', content: userContent })
+		console.log(`[AIService] Passing message to AI: "${messageContent.slice(0, 200)}${messageContent.length > 200 ? '…' : ''}"`)
 
 		const config = loadConfig()
 		// Priority order: smart models (if tier=smart) → configured default models → session's stored model → any other configured model

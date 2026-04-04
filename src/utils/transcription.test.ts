@@ -82,6 +82,7 @@ mock.module('ffmpeg-static', () => ({ default: '/usr/bin/ffmpeg' }))
 const {
 	transcribeAudioBuffer,
 	ensureModelReady,
+	prefetchModelInBackground,
 	_bunSpawn,
 	_httpFetch,
 	_downloadState,
@@ -263,5 +264,53 @@ describe('ensureModelReady', () => {
 
 		expect(calledUrls[0]).toContain('api.github.com')
 		expect(calledUrls).toContain('https://example.com/bin.tar.bz2')
+	})
+})
+
+// ── prefetchModelInBackground ─────────────────────────────────────────────────
+
+describe('prefetchModelInBackground', () => {
+	test('does nothing when all model files are already present', () => {
+		createModelFiles()
+		const mockFetchFn = mock(async () => new Response('{}'))
+		_httpFetch.fn = mockFetchFn
+
+		prefetchModelInBackground()
+
+		expect(mockFetchFn).not.toHaveBeenCalled()
+		expect(_downloadState.promise).toBeNull()
+	})
+
+	test('sets _downloadState.promise when model files are absent', () => {
+		_httpFetch.fn = mock(async () => new Promise<Response>(() => {})) // never resolves
+
+		prefetchModelInBackground()
+
+		expect(_downloadState.promise).not.toBeNull()
+	})
+
+	test('does not start a second download if one is already in progress', () => {
+		let fetchCallCount = 0
+		_httpFetch.fn = mock(async () => {
+			fetchCallCount++
+			return new Promise<Response>(() => {})
+		})
+
+		prefetchModelInBackground()
+		prefetchModelInBackground()
+
+		expect(fetchCallCount).toBe(1)
+	})
+
+	test('clears _downloadState.promise on network failure (allows retry)', async () => {
+		_httpFetch.fn = mock(async () => { throw new Error('network down') })
+
+		prefetchModelInBackground()
+		expect(_downloadState.promise).not.toBeNull()
+
+		await _downloadState.promise?.catch(() => {})
+		await new Promise(r => setTimeout(r, 0))
+
+		expect(_downloadState.promise).toBeNull()
 	})
 })

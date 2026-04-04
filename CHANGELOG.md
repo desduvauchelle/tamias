@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.04.04.36] - 2026-04-04
+
+### Features
+- enhance cron job management and project context handling
+
 ## [v26.04.04.35] - 2026-04-04
 
 ### Features

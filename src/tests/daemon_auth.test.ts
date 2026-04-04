@@ -22,7 +22,8 @@ describe('Daemon Authentication Integration', () => {
 			pid: 12345,
 			port: 9001,
 			startedAt: new Date().toISOString(),
-			token: 'test-token-abcdef'
+			token: 'test-token-abcdef',
+			ngrokUrl: 'https://demo.ngrok-free.app',
 		}
 
 		mkdirSync(join(homedir(), '.tamias'), { recursive: true })
@@ -30,5 +31,6 @@ describe('Daemon Authentication Integration', () => {
 
 		const saved = JSON.parse(readFileSync(DAEMON_FILE, 'utf-8'))
 		expect(saved.token).toBe('test-token-abcdef')
+		expect(saved.ngrokUrl).toBe('https://demo.ngrok-free.app')
 	})
 })

@@ -64,7 +64,10 @@ function getParakeetDir(): string {
 export async function ensureModelReady(): Promise<void> {
 	const dir = getParakeetDir()
 	if (REQUIRED_FILES.every(f => existsSync(join(dir, f)))) return
-	if (_downloadState.promise) return _downloadState.promise
+	if (_downloadState.promise) {
+		console.log('[Transcription] Model download already in progress — waiting for it to complete...')
+		return _downloadState.promise
+	}
 	_downloadState.promise = _downloadParakeet(dir).catch(err => {
 		_downloadState.promise = null // allow retry after failure
 		throw err
@@ -72,10 +75,25 @@ export async function ensureModelReady(): Promise<void> {
 	return _downloadState.promise
 }
 
+/**
+ * Starts a background download of the Parakeet model without blocking.
+ * Safe to call at startup — silently skips if already downloaded or already in progress.
+ */
+export function prefetchModelInBackground(): void {
+	const dir = getParakeetDir()
+	if (REQUIRED_FILES.every(f => existsSync(join(dir, f)))) return
+	if (_downloadState.promise) return
+	_downloadState.promise = _downloadParakeet(dir, { silent: true }).catch(err => {
+		_downloadState.promise = null
+		console.log('[Transcription] Background model pre-fetch failed (will retry on first voice message):', err instanceof Error ? err.message : err)
+	})
+}
+
 // ── Download logic ────────────────────────────────────────────────────────────
 
-async function _downloadParakeet(dir: string): Promise<void> {
-	console.log('[Transcription] Downloading Parakeet model (~640MB), this may take a few minutes...')
+async function _downloadParakeet(dir: string, opts: { silent?: boolean } = {}): Promise<void> {
+	const progress = opts.silent ? () => {} : console.log.bind(console)
+	console.log('[Transcription] Parakeet model not found — downloading (~640MB), this may take a few minutes...')
 	mkdirSync(dir, { recursive: true })
 
 	// 1. Resolve latest binary URL via GitHub API
@@ -93,7 +111,7 @@ async function _downloadParakeet(dir: string): Promise<void> {
 	}
 
 	// 2. Download and extract binary
-	console.log(`[Transcription] Downloading binary (${binaryAsset.name})...`)
+	progress(`[Transcription] Downloading binary (${binaryAsset.name})...`)
 	const tmpBin = join(tmpdir(), `tamias-sherpa-bin-${randomBytes(4).toString('hex')}.tar.bz2`)
 	try {
 		await _fetchToFile(binaryAsset.browser_download_url, tmpBin)
@@ -103,7 +121,7 @@ async function _downloadParakeet(dir: string): Promise<void> {
 	}
 
 	// 3. Download and extract model weights
-	console.log('[Transcription] Downloading model weights (~640MB)...')
+	progress('[Transcription] Downloading model weights (~640MB)...')
 	const tmpModel = join(tmpdir(), `tamias-sherpa-model-${randomBytes(4).toString('hex')}.tar.bz2`)
 	try {
 		await _fetchToFile(MODEL_ARCHIVE_URL, tmpModel)
@@ -112,7 +130,7 @@ async function _downloadParakeet(dir: string): Promise<void> {
 		try { unlinkSync(tmpModel) } catch {}
 	}
 
-	console.log('[Transcription] Parakeet model download complete.')
+	console.log('[Transcription] Parakeet model download complete ✓')
 }
 
 async function _fetchToFile(url: string, dest: string): Promise<void> {

@@ -282,7 +282,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.04.35)
+### Latest Version (v26.04.04.36)
 
 ### Features
-- update changelog and README for version v26.04.04.33; enhance DiscordBridge error handling and add tests for audio transcription failures
+- enhance cron job management and project context handling

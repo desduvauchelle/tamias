@@ -13,6 +13,7 @@ import { loadCronJobs, recordCronJobRun } from '../utils/cronStore.ts'
 import { runCronJobsOnce, buildPrompt } from './cron.ts'
 import { getProjects, getProjectCrons, updateProjectCron, getProjectByDiscordChannel } from '../core/projects.ts'
 import { scaffoldFromTemplates, isOnboarded } from '../utils/memory.ts'
+import { prefetchModelInBackground } from '../utils/transcription.ts'
 import { loadAgents } from '../utils/agentsStore.ts'
 import { db } from '../utils/db.ts'
 import { getEstimatedCost } from '../utils/pricing.ts'
@@ -85,6 +86,10 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				const dashboardUrl = `${baseUrl}${info.token ? `?token=${info.token}` : ''}`
 				const onboardingUrl = `${baseUrl}/onboarding${info.token ? `?token=${info.token}` : ''}`
 				p.outro(pc.green(`✅ Dashboard running at ${pc.bold(dashboardUrl)}`))
+				if (info.ngrokUrl) {
+					const ngrokDashboardUrl = `${info.ngrokUrl}${info.token ? `?token=${info.token}` : ''}`
+					p.note(`Public tunnel available at:\n\n  ${pc.bold(pc.cyan(ngrokDashboardUrl))}`, pc.yellow('🌍 ngrok'))
+				}
 				if (!isOnboarded()) {
 					p.note(
 						`Looks like your first time! Run through the setup wizard:\n\n  ${pc.bold(pc.cyan(onboardingUrl))}`,
@@ -232,6 +237,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	dashboardProc?.unref()
 
 	let ngrokProc: ReturnType<typeof Bun.spawn> | undefined
+	let ngrokUrl: string | undefined
 	if (!noDashboard && shouldEnableNgrok) {
 		const ngrokBin = Bun.which('ngrok') || 'ngrok'
 		try {
@@ -241,6 +247,23 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				env: process.env,
 			})
 			ngrokProc.unref()
+			for (let i = 0; i < 20; i++) {
+				try {
+					const res = await fetch('http://127.0.0.1:4040/api/tunnels', { signal: AbortSignal.timeout(250) })
+					if (res.ok) {
+						const data = await res.json() as { tunnels?: Array<{ public_url?: string }> }
+						const publicUrl = data.tunnels?.find(t => t.public_url?.startsWith('https://'))?.public_url
+							|| data.tunnels?.[0]?.public_url
+						if (publicUrl) {
+							ngrokUrl = publicUrl
+							break
+						}
+					}
+				} catch {
+					// ngrok API not ready yet
+				}
+				await new Promise(r => setTimeout(r, 250))
+			}
 			console.log(`[Daemon] ngrok tunnel started for dashboard on port ${dashboardPort}`)
 		} catch (err) {
 			console.warn('[Daemon] Failed to start ngrok tunnel:', err)
@@ -256,6 +279,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 		dashboardPort,
 		dashboardPid: dashboardProc?.pid,
 		ngrokPid: ngrokProc?.pid,
+		ngrokUrl,
 		caffeinatePid: caffeinateProc?.pid, // <-- used by stop.ts
 		token: dashboardToken
 	})
@@ -267,6 +291,12 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 		console.log(pc.bold(dashboardToken))
 		console.log(pc.green('\nDashboard URL:'))
 		console.log(pc.bold(url))
+		if (ngrokUrl) {
+			console.log(pc.green('\nngrok Public URL:'))
+			console.log(pc.bold(ngrokUrl))
+			console.log(pc.green('\nngrok Dashboard URL (with token):'))
+			console.log(pc.bold(`${ngrokUrl}/configs?token=${dashboardToken}`))
+		}
 		console.log('\nPaste this token in the dashboard if prompted.')
 	}
 
@@ -319,6 +349,10 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 
 	// Ensure memory files (HEARTBEAT.md, AGENTS.md, etc.) exist before cron starts
 	scaffoldFromTemplates()
+
+	// Pre-fetch the Parakeet speech-to-text model in the background so it's ready
+	// when the user first sends a voice message. Silently skips if already present.
+	prefetchModelInBackground()
 
 	/**
 	 * In-process cron executor — runs entirely inside the daemon.

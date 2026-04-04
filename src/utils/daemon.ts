@@ -18,6 +18,7 @@ export interface DaemonInfo {
 	dashboardPort?: number
 	dashboardPid?: number
 	ngrokPid?: number
+	ngrokUrl?: string
 	/** PID of the caffeinate process (macOS only, optional) */
 	caffeinatePid?: number
 	token?: string
