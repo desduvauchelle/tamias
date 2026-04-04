@@ -94,6 +94,7 @@ function ProjectsContent() {
 	const [availableConnections, setAvailableConnections] = useState<ConnectionInfo[]>([])
 	const [connectionModels, setConnectionModels] = useState<Record<string, { id: string; name: string }[]>>({})
 
+
 	// Update active project when ID param changes or projects load
 	useEffect(() => {
 		if (projectId && projects.length > 0) {

@@ -28,6 +28,9 @@
 - add shape validation and fix ESM import in pendingRestart
 - improve error isolation and safety in inspectReport
 
+### Maintenance
+- remove unused wavefile dependency
+
 ### Documentation
 - add Parakeet transcription implementation plan
 - add mobile responsive dashboard implementation plan
