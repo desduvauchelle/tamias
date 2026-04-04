@@ -124,11 +124,19 @@ describe('runUpdateCommand', () => {
 
 		expect(checkForUpdateMock).toHaveBeenCalledTimes(1)
 		expect(performUpdateMock).toHaveBeenCalledTimes(1)
-		expect(noteMock).toHaveBeenCalledTimes(1)
+		expect(noteMock).toHaveBeenCalledTimes(2)
+		expect(noteMock).toHaveBeenNthCalledWith(
+			1,
+			expect.stringContaining('Start the daemon again automatically'),
+			expect.stringContaining('Warning')
+		)
+		expect(noteMock).toHaveBeenNthCalledWith(
+			2,
+			expect.stringContaining('Spawning background process'),
+			'Status'
+		)
 		expect(autoStartDaemonMock).toHaveBeenCalledTimes(1)
-		expect(restartSpinnerStartMock).toHaveBeenCalledWith('Starting daemon…')
-		expect(restartSpinnerStopMock).toHaveBeenCalledTimes(1)
-		expect(outroMock).toHaveBeenCalledWith(expect.stringContaining('Tamias is now running on v1.1.0'))
+		expect(outroMock).toHaveBeenCalledWith(expect.stringContaining('Daemon started'))
 	})
 
 	test('exits with error when restart fails after a successful update', async () => {
@@ -142,7 +150,7 @@ describe('runUpdateCommand', () => {
 
 		expect(performUpdateMock).toHaveBeenCalledTimes(1)
 		expect(autoStartDaemonMock).toHaveBeenCalledTimes(1)
-		expect(noteMock).toHaveBeenCalledWith(expect.stringContaining('tamias start'), expect.stringContaining('Manual restart required'))
+		expect(noteMock).toHaveBeenCalledWith(expect.stringContaining('Spawning background process'), 'Status')
 		expect(exitMock).toHaveBeenCalledWith(1)
 	})
 })

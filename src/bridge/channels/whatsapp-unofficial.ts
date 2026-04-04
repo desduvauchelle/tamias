@@ -25,9 +25,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, rmSyn
 
 interface WhatsAppUnofficialConfig {
 	enabled: boolean
-	mode?: 'full' | 'read-only'
+	mode?: 'full' | 'read-only' | 'mention-only'
 	allowedGroups?: string[]
 	allowedContacts?: string[]
+	mentionPattern?: string
 	authDir?: string
 }
 
@@ -60,7 +61,9 @@ export class WhatsAppUnofficialBridge implements IBridge {
 	platform = 'whatsapp-unofficial'
 	platformAccountId?: string
 	private instanceKey: string
-	private mode: 'full' | 'read-only' = 'read-only'
+	private mode: 'full' | 'read-only' | 'mention-only' = 'read-only'
+	private mentionPattern = '\\btamias\\b'
+	private mentionRegex: RegExp = /\btamias\b/i
 	private allowedGroups: string[] = []
 	private allowedContacts: string[] = []
 	private authDir = ''
@@ -92,6 +95,14 @@ export class WhatsAppUnofficialBridge implements IBridge {
 		this.mode = waCfg.mode ?? 'read-only'
 		this.allowedGroups = waCfg.allowedGroups ?? []
 		this.allowedContacts = waCfg.allowedContacts ?? []
+		this.mentionPattern = waCfg.mentionPattern?.trim() || '\\btamias\\b'
+		try {
+			this.mentionRegex = new RegExp(this.mentionPattern, 'i')
+		} catch {
+			console.warn(`[WA-Unofficial:${this.instanceKey}] Invalid mentionPattern "${this.mentionPattern}" — using default "\\btamias\\b"`)
+			this.mentionPattern = '\\btamias\\b'
+			this.mentionRegex = /\btamias\b/i
+		}
 		this.authDir = waCfg.authDir ?? join(TAMIAS_DIR, 'whatsapp-auth', this.instanceKey)
 
 		// Ensure auth directory exists
@@ -250,6 +261,7 @@ export class WhatsAppUnofficialBridge implements IBridge {
 		// ─── Extract message content ────────────────────────────────────
 		const content = this.extractMessageText(msg)
 		if (!content) return // No text content to process
+		if (this.mode === 'mention-only' && !this.mentionRegex.test(content)) return
 
 		// Build author info
 		const senderJid = isGroup ? (msg.key.participant || jid) : jid
@@ -556,6 +568,10 @@ export class WhatsAppUnofficialBridge implements IBridge {
 		return this.mode
 	}
 
+	getMentionPattern(): string {
+		return this.mentionPattern
+	}
+
 	getAllowedGroups(): string[] {
 		return this.allowedGroups
 	}
@@ -591,8 +607,17 @@ export class WhatsAppUnofficialBridge implements IBridge {
 	/**
 	 * Update the mode at runtime and persist to config.
 	 */
-	async updateMode(mode: 'full' | 'read-only'): Promise<void> {
+	async updateMode(mode: 'full' | 'read-only' | 'mention-only'): Promise<void> {
 		this.mode = mode
+		await this.persistConfig()
+	}
+
+	async updateMentionPattern(pattern: string): Promise<void> {
+		const normalized = pattern.trim()
+		if (!normalized) throw new Error('mentionPattern cannot be empty')
+		const compiled = new RegExp(normalized, 'i')
+		this.mentionPattern = normalized
+		this.mentionRegex = compiled
 		await this.persistConfig()
 	}
 
@@ -606,6 +631,7 @@ export class WhatsAppUnofficialBridge implements IBridge {
 				mode: this.mode,
 				allowedGroups: this.allowedGroups.length ? this.allowedGroups : undefined,
 				allowedContacts: this.allowedContacts.length ? this.allowedContacts : undefined,
+				mentionPattern: this.mentionPattern !== '\\btamias\\b' ? this.mentionPattern : undefined,
 				authDir: this.authDir !== join(TAMIAS_DIR, 'whatsapp-auth', this.instanceKey) ? this.authDir : undefined,
 			}
 			setBridgesConfig(bridges)

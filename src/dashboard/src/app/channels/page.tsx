@@ -12,9 +12,10 @@ export type BotInstanceConfig = {
 
 export type WhatsAppUnofficialInstanceConfig = {
 	enabled: boolean
-	mode?: 'full' | 'read-only'
+	mode?: 'full' | 'read-only' | 'mention-only'
 	allowedGroups?: string[]
 	allowedContacts?: string[]
+	mentionPattern?: string
 	linked?: boolean
 }
 
@@ -213,11 +214,24 @@ function WhatsAppUnofficialCard({
 							data-testid={`channel-mode-whatsapp-${instanceKey}`}
 							className="select select-sm select-bordered w-full"
 							value={config.mode ?? 'read-only'}
-							onChange={e => onChange({ ...config, mode: e.target.value as 'full' | 'read-only' })}
+							onChange={e => onChange({ ...config, mode: e.target.value as 'full' | 'read-only' | 'mention-only' })}
 						>
 							<option value="read-only">Read-only (receive messages, no replies)</option>
+							<option value="mention-only">Mention-only (regex prefilter, replies only when matched)</option>
 							<option value="full">Full (send and receive)</option>
 						</select>
+					</div>
+
+					<div className="flex items-center gap-4">
+						<span className="text-xs font-bold uppercase tracking-wider text-base-content/50 w-24 sm:w-32 shrink-0">Mention Regex</span>
+						<input
+							data-testid={`channel-mention-regex-whatsapp-${instanceKey}`}
+							type="text"
+							placeholder="\\btamias\\b"
+							className="input input-sm input-bordered w-full font-mono text-xs"
+							value={config.mentionPattern ?? '\\btamias\\b'}
+							onChange={e => onChange({ ...config, mentionPattern: e.target.value })}
+						/>
 					</div>
 
 					<div className="flex items-start gap-4">
@@ -357,7 +371,7 @@ export default function ChannelsPage() {
 	}
 
 	const addWhatsAppUnofficial = (key: string) => {
-		setBridges(b => ({ ...b, whatsappUnofficials: { ...b.whatsappUnofficials, [key]: { enabled: true, mode: 'read-only', allowedGroups: [], allowedContacts: [], linked: false } } }))
+		setBridges(b => ({ ...b, whatsappUnofficials: { ...b.whatsappUnofficials, [key]: { enabled: true, mode: 'read-only', allowedGroups: [], allowedContacts: [], mentionPattern: '\\btamias\\b', linked: false } } }))
 	}
 
 	const removeDiscord = (key: string) => {

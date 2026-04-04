@@ -1282,6 +1282,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 						key,
 						status: bridge.getConnectionStatus(),
 						mode: bridge.getMode(),
+						mentionPattern: bridge.getMentionPattern ? bridge.getMentionPattern() : undefined,
 						allowedGroups: bridge.getAllowedGroups(),
 						allowedContacts: bridge.getAllowedContacts(),
 						availableGroups: bridge.listAvailableGroups(),
@@ -1309,7 +1310,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 						const config = loadConfig()
 						const bridges = getBridgesConfig()
 						if (!bridges.whatsappUnofficials) bridges.whatsappUnofficials = {}
-						bridges.whatsappUnofficials[key] = { enabled: true, mode: 'read-only' }
+						bridges.whatsappUnofficials[key] = { enabled: true, mode: 'read-only', mentionPattern: '\\btamias\\b' }
 						setBridgesConfig(bridges)
 						config.bridges = { ...(config.bridges || {}), whatsappUnofficials: bridges.whatsappUnofficials } as any
 						await bridge.initialize(config, (msg: any) => true)
@@ -1328,6 +1329,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					if (body.allowedGroups) await bridge.updateAllowedGroups(body.allowedGroups)
 					if (body.allowedContacts) await bridge.updateAllowedContacts(body.allowedContacts)
 					if (body.mode) await bridge.updateMode(body.mode)
+					if (typeof body.mentionPattern === 'string') await bridge.updateMentionPattern(body.mentionPattern)
 					return json({ success: true })
 				}
 

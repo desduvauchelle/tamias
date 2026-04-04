@@ -714,9 +714,10 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 				instanceKey: z.string().optional().describe('Instance name (e.g. "personal", "work"). Defaults to "default".'),
 				groups: z.array(z.string()).optional().describe('For select-groups: array of group JIDs to monitor, or ["*"] for all'),
 				contacts: z.array(z.string()).optional().describe('For select-contacts: array of phone numbers in E.164 format, or ["*"] for all'),
-				mode: z.enum(['full', 'read-only']).optional().describe('Channel mode: read-only (default) = receive only, full = send and receive'),
+				mode: z.enum(['full', 'read-only', 'mention-only']).optional().describe('Channel mode: read-only (default) = receive only, mention-only = regex prefilter before AI, full = send and receive'),
+				mentionPattern: z.string().optional().describe('Regex pattern used in mention-only mode. Case-insensitive. Default: \\btamias\\b'),
 			}),
-			execute: async ({ action, instanceKey, groups, contacts, mode }) => {
+			execute: async ({ action, instanceKey, groups, contacts, mode, mentionPattern }) => {
 				const key = instanceKey || 'default'
 				const session = aiService.getSession(sessionId)
 				if (!session) return { success: false, error: 'Session not found' }
@@ -778,7 +779,7 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 						const res = await fetch(`${daemonUrl}/whatsapp-unofficial/${key}/select`, {
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({ allowedGroups: groups, ...(mode ? { mode } : {}) }),
+							body: JSON.stringify({ allowedGroups: groups, ...(mode ? { mode } : {}), ...(mentionPattern ? { mentionPattern } : {}) }),
 						})
 						if (!res.ok) return { success: false, error: 'Failed to update groups' }
 						return { success: true, message: `Now monitoring ${groups.includes('*') ? 'ALL' : groups.length} group(s).`, groups }
@@ -789,7 +790,7 @@ export function createTamiasTools(aiService: AIService, sessionId: string) {
 						const res = await fetch(`${daemonUrl}/whatsapp-unofficial/${key}/select`, {
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({ allowedContacts: contacts, ...(mode ? { mode } : {}) }),
+							body: JSON.stringify({ allowedContacts: contacts, ...(mode ? { mode } : {}), ...(mentionPattern ? { mentionPattern } : {}) }),
 						})
 						if (!res.ok) return { success: false, error: 'Failed to update contacts' }
 						return { success: true, message: `Now allowing DMs from ${contacts.includes('*') ? 'ALL contacts' : contacts.length + ' contact(s)'}.`, contacts }

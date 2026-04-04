@@ -128,3 +128,86 @@ describe('WhatsAppUnofficialBridge reconnect logging', () => {
 		expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining('Max reconnect attempts reached'))
 	})
 })
+
+describe('WhatsAppUnofficialBridge mention-only filtering', () => {
+	let authDir = ''
+
+	beforeEach(() => {
+		createdSockets.length = 0
+		authDir = join(tmpdir(), `tamias-wa-auth-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+		if (!existsSync(authDir)) mkdirSync(authDir, { recursive: true })
+		writeFileSync(join(authDir, 'creds.json'), JSON.stringify({ me: 'ok' }))
+	})
+
+	afterEach(() => {
+		rmSync(authDir, { recursive: true, force: true })
+	})
+
+	test('does not call onMessage when content does not match mention regex', async () => {
+		const onMessage = mock(async () => true)
+		const bridge = new WhatsAppUnofficialBridge('default')
+		await bridge.initialize({
+			version: '1.0',
+			connections: {},
+			debug: false,
+			ngrok: { enabled: false },
+			bridges: {
+				terminal: { enabled: true },
+				whatsappUnofficials: {
+					default: {
+						enabled: true,
+						authDir,
+						mode: 'mention-only',
+						allowedGroups: ['*'],
+						mentionPattern: '\\btamias\\b',
+					},
+				},
+			},
+		}, onMessage)
+
+		const upsert = {
+			type: 'notify',
+			messages: [{
+				key: { fromMe: false, remoteJid: '120363022222222222@g.us', participant: '1234567890@s.whatsapp.net' },
+				pushName: 'Alice',
+				message: { conversation: 'hello everyone' },
+			}],
+		}
+		await createdSockets[0].ev.emit('messages.upsert', upsert)
+		expect(onMessage).not.toHaveBeenCalled()
+	})
+
+	test('calls onMessage when content matches mention regex', async () => {
+		const onMessage = mock(async () => true)
+		const bridge = new WhatsAppUnofficialBridge('default')
+		await bridge.initialize({
+			version: '1.0',
+			connections: {},
+			debug: false,
+			ngrok: { enabled: false },
+			bridges: {
+				terminal: { enabled: true },
+				whatsappUnofficials: {
+					default: {
+						enabled: true,
+						authDir,
+						mode: 'mention-only',
+						allowedGroups: ['*'],
+						mentionPattern: '^tamias[:,\\s]',
+					},
+				},
+			},
+		}, onMessage)
+
+		const upsert = {
+			type: 'notify',
+			messages: [{
+				key: { fromMe: false, remoteJid: '120363022222222222@g.us', participant: '1234567890@s.whatsapp.net' },
+				pushName: 'Alice',
+				message: { conversation: 'Tamias: summarize this thread' },
+			}],
+		}
+		await createdSockets[0].ev.emit('messages.upsert', upsert)
+		expect(onMessage).toHaveBeenCalledTimes(1)
+	})
+})

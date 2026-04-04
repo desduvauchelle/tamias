@@ -108,12 +108,14 @@ export type WhatsAppBotConfig = z.infer<typeof WhatsAppBotConfigSchema>
 
 export const WhatsAppUnofficialConfigSchema = z.object({
 	enabled: z.boolean().default(false),
-	/** Channel mode: full = send and receive, read-only = receive only (no outbound) */
-	mode: z.enum(['full', 'read-only']).default('read-only').optional(),
+	/** Channel mode: full = send and receive, read-only = receive only (no outbound), mention-only = respond only when message matches mentionPattern */
+	mode: z.enum(['full', 'read-only', 'mention-only']).default('read-only').optional(),
 	/** Allowed group JIDs (e.g. '120363022222222222@g.us'). Use '*' for all groups. Empty = none. */
 	allowedGroups: z.array(z.string()).optional(),
 	/** Allowed contact phone numbers in E.164 format (e.g. '+1234567890'). Use '*' for all DMs. Empty = none. */
 	allowedContacts: z.array(z.string()).optional(),
+	/** Regex used when mode is mention-only. Case-insensitive by default in bridge runtime. */
+	mentionPattern: z.string().optional(),
 	/** Override the auth directory path (default: ~/.tamias/whatsapp-auth/<key>) */
 	authDir: z.string().optional(),
 })

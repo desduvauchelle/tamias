@@ -162,6 +162,7 @@ export async function POST(request: Request) {
 				const { linked, ...rest } = instanceData  // strip computed "linked" field
 				const existing = (config.bridges.whatsappUnofficials as any)[key] ?? {}
 				rest.mode = rest.mode ?? existing.mode ?? 'read-only'
+				rest.mentionPattern = rest.mentionPattern ?? existing.mentionPattern ?? '\\btamias\\b'
 					; (config.bridges.whatsappUnofficials as any)[key] = { ...existing, ...rest }
 			}
 			// Remove instances removed in UI
