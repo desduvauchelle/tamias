@@ -11,7 +11,7 @@
 
 import { describe, test, expect, mock, beforeEach } from 'bun:test'
 import { PassThrough } from 'stream'
-import { mkdirSync, writeFileSync, readdirSync } from 'fs'
+import { mkdirSync, writeFileSync, readdirSync, rmSync } from 'fs'
 import { join, dirname } from 'path'
 import { tmpdir } from 'os'
 import { getConfigFilePath } from './config.ts'
@@ -122,6 +122,9 @@ beforeEach(() => {
 	_httpFetch.fn = originalFetchFn
 	_downloadState.promise = null
 	wavBufToReturn = makeWavBuffer([100, 200, -100, -200])
+	// Clean up any model files created by previous tests so ensureModelReady
+	// correctly triggers a download in the concurrent-calls test
+	rmSync(getParakeetDir(), { recursive: true, force: true })
 })
 
 // ── transcribeAudioBuffer ─────────────────────────────────────────────────────

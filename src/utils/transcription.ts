@@ -2,7 +2,7 @@ import ffmpeg from 'fluent-ffmpeg'
 import ffmpegStatic from 'ffmpeg-static'
 import { Readable } from 'stream'
 import { join, dirname } from 'path'
-import { existsSync, mkdirSync, unlinkSync, chmodSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, unlinkSync, chmodSync } from 'fs'
 import { tmpdir } from 'os'
 import { randomBytes } from 'crypto'
 import { getConfigFilePath } from './config.ts'
@@ -37,22 +37,7 @@ export const _httpFetch: { fn: (input: string | URL | Request, init?: RequestIni
 	fn: fetch,
 }
 
-// _downloadState uses a Proxy so that setting promise = null also clears any
-// cached model files from disk. This ensures test isolation: when a test resets
-// _downloadState.promise = null, the next ensureModelReady() call re-evaluates
-// whether the model needs to be downloaded.
-const _downloadStateInner: { promise: Promise<void> | null } = { promise: null }
-export const _downloadState = new Proxy(_downloadStateInner, {
-	set(target, prop, value) {
-		if (prop === 'promise' && value === null) {
-			// Reset disk state so the next ensureModelReady() call re-checks from scratch
-			const dir = join(dirname(getConfigFilePath()), 'models', 'parakeet')
-			try { rmSync(dir, { recursive: true, force: true }) } catch {}
-		}
-		target[prop as 'promise'] = value
-		return true
-	},
-})
+export const _downloadState: { promise: Promise<void> | null } = { promise: null }
 
 // ── Path helper ───────────────────────────────────────────────────────────────
 
