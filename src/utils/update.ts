@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { execSync } from 'node:child_process'
 import { VERSION } from './version.ts'
 import type { BridgeManager } from '../bridge/index.ts'
+import { getLogFilePath } from './logPaths.ts'
 
 const REPO = 'desduvauchelle/tamias'
 
@@ -274,7 +275,7 @@ export async function performUpdateAndRestart(
 	const execBasename = basename(currentExecPath)
 	const isCompiled = !['bun', 'node', 'bun.exe', 'node.exe'].includes(execBasename)
 	const projectRoot = isCompiled ? process.cwd() : join(import.meta.dir, '../..')
-	const logPath = join(process.env.TAMIAS_DIR ?? join(homedir(), '.tamias'), 'daemon.log')
+	const logPath = getLogFilePath('daemon.log')
 	const logFd = fs.openSync(logPath, 'a')
 
 	const spawnArgs: string[] = isCompiled

@@ -9,11 +9,17 @@ import { getConfigFilePath } from './config.ts'
 
 export const _ffmpegRuntime: {
 	staticPath: string | null
+	envPathLookup: () => string | undefined
+	pathLookup: (binary: string) => string | null
+	commonPaths: string[]
 	setPath: (path: string) => void
 	pathExists: (path: string) => boolean
 	configured: boolean
 } = {
 	staticPath: ffmpegStatic,
+	envPathLookup: () => process.env.FFMPEG_PATH,
+	pathLookup: (binary: string) => Bun.which(binary),
+	commonPaths: ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg'],
 	setPath: (path: string) => { ffmpeg.setFfmpegPath(path) },
 	pathExists: (path: string) => existsSync(path),
 	configured: false,
@@ -22,11 +28,19 @@ export const _ffmpegRuntime: {
 export function configureFfmpegPathForRuntime(): void {
 	if (_ffmpegRuntime.configured) return
 
-	const candidate = _ffmpegRuntime.staticPath
-	if (candidate && _ffmpegRuntime.pathExists(candidate)) {
-		_ffmpegRuntime.setPath(candidate)
-	} else if (candidate) {
-		console.warn(`[Transcription] ffmpeg-static binary not found at ${candidate}; falling back to system ffmpeg in PATH`)
+	const candidatePaths = [
+		_ffmpegRuntime.staticPath,
+		_ffmpegRuntime.envPathLookup(),
+		_ffmpegRuntime.pathLookup('ffmpeg'),
+		..._ffmpegRuntime.commonPaths,
+	].filter((path): path is string => typeof path === 'string' && path.length > 0)
+
+	const uniqueCandidates = [...new Set(candidatePaths)]
+	const resolvedPath = uniqueCandidates.find(path => _ffmpegRuntime.pathExists(path))
+	if (resolvedPath) {
+		_ffmpegRuntime.setPath(resolvedPath)
+	} else {
+		console.warn('[Transcription] ffmpeg binary not found in ffmpeg-static, FFMPEG_PATH, PATH, or common system locations.')
 	}
 
 	_ffmpegRuntime.configured = true
@@ -285,7 +299,7 @@ function convertToWav(inputBuffer: Buffer): Promise<Buffer> {
 			.toFormat('wav')
 			.audioFrequency(16000)
 			.audioChannels(1)
-			.on('error', (err) => reject(new Error(`FFmpeg error: ${err.message}`)))
+			.on('error', (err) => reject(new Error(`FFmpeg error: ${err.message}. Install ffmpeg or set FFMPEG_PATH to a valid ffmpeg binary.`)))
 			.on('end', () => resolve(Buffer.concat(buffers)))
 		const stream = command.pipe()
 		stream.on('data', (chunk: Buffer) => buffers.push(chunk))

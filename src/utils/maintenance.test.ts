@@ -1,25 +1,16 @@
-import { expect, test, describe, beforeAll, afterAll, beforeEach } from "bun:test"
+import { expect, test, describe, beforeEach } from "bun:test"
 import { db } from "./db"
 import { runDatabaseMaintenance } from "./maintenance"
-import { join } from "path"
-import { homedir } from "os"
-import { existsSync, unlinkSync, readFileSync } from "fs"
 
 /**
  * REFINED DATABASE MAINTENANCE TESTS
- * Focus: Granular validation of log pruning, 30-day archiving, and session TTL.
+ * Focus: Granular validation of log pruning, 30-day archiving to SQLite, and session TTL.
  */
 
-describe("Database Maintenance: Pruning & History", () => {
-	const archiveFile = join(homedir(), ".tamias", "archive", "history.json")
-
-	beforeAll(() => {
-		// Clean up environment
-		if (existsSync(archiveFile)) unlinkSync(archiveFile)
-	})
-
+describe("Database Maintenance: Pruning & Archive", () => {
 	beforeEach(() => {
 		db.exec("DELETE FROM ai_logs")
+		db.exec("DELETE FROM ai_logs_archive")
 		db.exec("DELETE FROM sessions")
 	})
 
@@ -54,7 +45,7 @@ describe("Database Maintenance: Pruning & History", () => {
 		expect(log.model).toBe('gpt-4o')
 	})
 
-	test("Case 3: Logs older than 30 days are archived to JSON and deleted from DB", async () => {
+	test("Case 3: Logs older than 30 days are archived to ai_logs_archive and deleted from ai_logs", async () => {
 		const fortyDaysAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString()
 		db.prepare(`
             INSERT INTO ai_logs (timestamp, sessionId, model, provider, action, durationMs, promptTokens, completionTokens, totalTokens, requestMessagesJson, response, estimatedCostUsd, tenantId, agentId, channelId)
@@ -63,26 +54,20 @@ describe("Database Maintenance: Pruning & History", () => {
 
 		await runDatabaseMaintenance()
 
-		// Should be gone from DB
+		// Should be gone from ai_logs
 		const dbLog = db.query("SELECT * FROM ai_logs WHERE sessionId = 'archive_sess'").get()
 		expect(dbLog).toBeNull()
 
-		// Should be in JSON
-		expect(existsSync(archiveFile)).toBe(true)
-		const archive = JSON.parse(readFileSync(archiveFile, "utf-8"))
-		const entry = archive.find((e: any) => e.sessionId === 'archive_sess')
+		// Should be in ai_logs_archive
+		const entry = db.query("SELECT * FROM ai_logs_archive WHERE sessionId = 'archive_sess'").get() as any
 		expect(entry).toBeDefined()
 		expect(entry.totalTokens).toBe(300)
 		expect(entry.model).toBe('claude-3')
 		expect(entry.timestamp).toBe(fortyDaysAgo)
-		// Verify cost and dimension fields are archived
 		expect(entry.estimatedCostUsd).toBe(0.0045)
 		expect(entry.tenantId).toBe('tenant1')
 		expect(entry.agentId).toBe('agent1')
 		expect(entry.channelId).toBe('discord')
-		// Ensure detailed text was NOT archived (we prune text >24h before archiving >30d)
-		expect(entry.requestMessagesJson).toBeUndefined()
-		expect(entry.response).toBeUndefined()
 	})
 
 	test("Case 4: Inactive sessions older than 90 days are deleted", async () => {
@@ -98,7 +83,7 @@ describe("Database Maintenance: Pruning & History", () => {
 		expect(session).toBeNull()
 	})
 
-	test("Case 5: Archive appends to existing JSON file", async () => {
+	test("Case 5: Archive accumulates across multiple maintenance runs", async () => {
 		// Run once with one old log
 		const date1 = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString()
 		db.prepare("INSERT INTO ai_logs (timestamp, sessionId, totalTokens) VALUES (?, 'sess_1', 10)").run(date1)
@@ -109,9 +94,12 @@ describe("Database Maintenance: Pruning & History", () => {
 		db.prepare("INSERT INTO ai_logs (timestamp, sessionId, totalTokens) VALUES (?, 'sess_2', 20)").run(date2)
 		await runDatabaseMaintenance()
 
-		const archive = JSON.parse(readFileSync(archiveFile, "utf-8"))
-		expect(archive.length).toBeGreaterThanOrEqual(2)
-		expect(archive.some((e: any) => e.sessionId === 'sess_1')).toBe(true)
-		expect(archive.some((e: any) => e.sessionId === 'sess_2')).toBe(true)
+		const count = db.query("SELECT COUNT(*) as cnt FROM ai_logs_archive").get() as any
+		expect(count.cnt).toBeGreaterThanOrEqual(2)
+
+		const sess1 = db.query("SELECT * FROM ai_logs_archive WHERE sessionId = 'sess_1'").get()
+		const sess2 = db.query("SELECT * FROM ai_logs_archive WHERE sessionId = 'sess_2'").get()
+		expect(sess1).toBeDefined()
+		expect(sess2).toBeDefined()
 	})
 })

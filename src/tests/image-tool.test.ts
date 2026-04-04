@@ -11,19 +11,21 @@ import {
 import { setEnv, removeEnv } from '../utils/env'
 
 // Mock the AI SDK before importing
+const generateImageMock = mock(async (params: any) => {
+	if (params.prompt === 'fail') {
+		throw new Error('Image generation failed intentionally')
+	}
+	return {
+		image: {
+			uint8Array: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x01, 0x02, 0x03]), // mock PNG bytes
+		}
+	}
+})
+
 mock.module('ai', () => {
 	return {
 		tool: (spec: any) => spec, // passthrough
-		generateImage: async (params: any) => {
-			if (params.prompt === 'fail') {
-				throw new Error('Image generation failed intentionally')
-			}
-			return {
-				image: {
-					uint8Array: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x01, 0x02, 0x03]), // mock PNG bytes
-				}
-			}
-		}
+		generateImage: generateImageMock,
 	}
 })
 
@@ -67,6 +69,7 @@ describe('Image Tool', () => {
 	afterEach(() => {
 		invalidateConfigCache()
 		removeEnv(TEST_ENV_KEY)
+		generateImageMock.mockClear()
 		mock.restore()
 	})
 
@@ -137,5 +140,30 @@ describe('Image Tool', () => {
 		expect(result.success).toBe(true)
 		expect(result.filePath).toBe(join(TEMP_FALLBACK, result.fileName))
 		expect(existsSync(result.filePath)).toBe(true)
+	})
+
+	test('always requests exactly one image from the SDK', async () => {
+		const session = {
+			id: 'sess123',
+			emitter: new EventEmitter(),
+		}
+
+		const mockAiService = {
+			getSession: () => session
+		} as unknown as AIService
+
+		const tools = createImageTools(mockAiService, 'sess123', TEMP_WORKSPACE)
+		const execute = (tools.generate as any).execute
+
+		const result = await execute({
+			prompt: 'poster for primary school',
+			size: '1024x1024',
+			mode: 'generate',
+		}, {})
+
+		expect(result.success).toBe(true)
+		expect(generateImageMock).toHaveBeenCalledTimes(1)
+		const firstCallArgs = generateImageMock.mock.calls[0]?.[0]
+		expect(firstCallArgs?.n).toBe(1)
 	})
 })

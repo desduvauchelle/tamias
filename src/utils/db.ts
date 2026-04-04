@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite'
 import { join } from 'path'
-import { mkdirSync } from 'fs'
+import { mkdirSync, existsSync, readFileSync, renameSync } from 'fs'
 import { TAMIAS_DIR } from './config.ts'
 
 mkdirSync(TAMIAS_DIR, { recursive: true })
@@ -132,6 +132,28 @@ const migrations = [
 	CREATE INDEX IF NOT EXISTS idx_unified_logs_agentId ON unified_logs(agentId);
 	CREATE INDEX IF NOT EXISTS idx_unified_logs_tenantId ON unified_logs(tenantId);
 	CREATE INDEX IF NOT EXISTS idx_unified_logs_source_type ON unified_logs(source, type);
+	`,
+	// Version 8: Archive table for ai_logs older than 30 days (replaces ~/.tamias/archive/history.json)
+	`
+	CREATE TABLE IF NOT EXISTS ai_logs_archive (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		timestamp TEXT,
+		sessionId TEXT,
+		model TEXT,
+		provider TEXT,
+		action TEXT,
+		durationMs INTEGER,
+		promptTokens INTEGER,
+		completionTokens INTEGER,
+		totalTokens INTEGER,
+		estimatedCostUsd REAL,
+		tenantId TEXT,
+		agentId TEXT,
+		channelId TEXT
+	);
+	CREATE INDEX IF NOT EXISTS idx_archive_timestamp ON ai_logs_archive(timestamp);
+	CREATE INDEX IF NOT EXISTS idx_archive_model ON ai_logs_archive(model);
+	CREATE INDEX IF NOT EXISTS idx_archive_sessionId ON ai_logs_archive(sessionId);
 	`
 ]
 
@@ -155,4 +177,35 @@ db.transaction(() => {
 	}
 
 	db.exec(`PRAGMA user_version = ${migrations.length}`)
+
+	// One-time import: migrate existing history.json into ai_logs_archive
+	if (currentVersion < 8) {
+		const archiveFile = join(TAMIAS_DIR, 'archive', 'history.json')
+		if (existsSync(archiveFile)) {
+			try {
+				const raw = readFileSync(archiveFile, 'utf-8')
+				const entries = JSON.parse(raw) as any[]
+				if (Array.isArray(entries) && entries.length > 0) {
+					const insert = db.prepare(`
+						INSERT INTO ai_logs_archive (timestamp, sessionId, model, provider, action, durationMs,
+							promptTokens, completionTokens, totalTokens, estimatedCostUsd, tenantId, agentId, channelId)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					`)
+					for (const e of entries) {
+						insert.run(
+							e.timestamp ?? null, e.sessionId ?? null, e.model ?? null,
+							e.provider ?? null, e.action ?? null, e.durationMs ?? null,
+							e.promptTokens ?? null, e.completionTokens ?? null, e.totalTokens ?? null,
+							e.estimatedCostUsd ?? null, e.tenantId ?? null, e.agentId ?? null, e.channelId ?? null
+						)
+					}
+					console.log(`[DB Migration] Imported ${entries.length} archived entries from history.json`)
+				}
+				renameSync(archiveFile, archiveFile + '.migrated')
+				console.log('[DB Migration] Renamed history.json to history.json.migrated')
+			} catch (err) {
+				console.error('[DB Migration] Failed to import history.json:', err)
+			}
+		}
+	}
 })()

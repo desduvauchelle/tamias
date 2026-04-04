@@ -85,13 +85,13 @@ It injects the full skill reference document into context. Skills are *reference
 
 You have access to a long-term semantic memory store via the `memory__*` tools. This is separate from persona files — it's a searchable vector database of facts, insights, and knowledge persisted across conversations.
 
-**Session start (required):** At the very start of every new session — before responding to the first substantive message — call `memory__search` with a 1-sentence summary of what the user is asking about. This surfaces relevant context from past sessions automatically. Skip only for sub-agents and one-shot tool invocations.
+**Automatic recall:** The system automatically searches memory on every message you receive. Relevant past memories are injected into your context with source, tags, date, and similarity score. You do NOT need to call `memory__search` at session start — it happens automatically. Use `memory__search` manually only when you need deeper or different recall (e.g., specific tags, higher topK, or a different query angle).
 
-**When to SEARCH (`memory__search`):**
-- At the start of every new session (see above)
+**When to SEARCH (`memory__search`) manually:**
 - When the user asks about past conversations, decisions, or context you don't see in the current history
 - When you need background on a topic that might have come up before
 - When the user references something you discussed previously
+- When the auto-recalled memories aren't covering the right topic
 
 **When to SAVE (`memory__save`):**
 - Important decisions or conclusions reached in conversation

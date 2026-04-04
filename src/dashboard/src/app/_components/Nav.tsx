@@ -23,7 +23,8 @@ import {
 	KanbanSquare,
 	Plus,
 	Check,
-	Code
+	Code,
+	Brain
 } from 'lucide-react'
 
 const navGroups = {
@@ -58,6 +59,11 @@ const navGroups = {
 			href: '/files',
 			label: 'Files',
 			icon: <FolderOpen className="w-4 h-4" />,
+		},
+		{
+			href: '/memory',
+			label: 'Memory',
+			icon: <Brain className="w-4 h-4" />,
 		},
 	],
 	Usage: [

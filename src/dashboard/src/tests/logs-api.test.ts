@@ -56,4 +56,35 @@ describe('GET /api/logs proxy', () => {
 			globalThis.fetch = originalFetch
 		}
 	})
+
+	test('falls back to daemon.log lines when daemon /logs is unavailable', async () => {
+		const logsDir = join(fakeTamiasDir, 'logs')
+		await mkdir(logsDir, { recursive: true })
+		const daemonLogPath = join(logsDir, 'daemon.log')
+		await writeFile(daemonLogPath, [
+			'[Daemon] booting',
+			'[Bridge] loaded discord:main',
+			'[AI] request done',
+		].join('\n'), 'utf8')
+
+		const originalFetch = globalThis.fetch
+		globalThis.fetch = ((async () => {
+			return new Response('not found', { status: 404 })
+		}) as unknown) as typeof fetch
+
+		try {
+			const { GET } = await import('../app/api/logs/route')
+			const req = new Request('http://localhost/api/logs?source=daemon&limit=2')
+			const res = await GET(req)
+			expect(res.status).toBe(200)
+			const body = await res.json() as { logs: Array<{ source: string; type: string; message: string }>; fallback?: string }
+			expect(body.fallback).toBe('daemon.log')
+			expect(body.logs.length).toBe(2)
+			expect(body.logs[0]?.source).toBe('daemon')
+			expect(body.logs[0]?.type).toBe('daemon_file_line')
+			expect(body.logs[0]?.message.length).toBeGreaterThan(0)
+		} finally {
+			globalThis.fetch = originalFetch
+		}
+	})
 })

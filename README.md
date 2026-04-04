@@ -278,11 +278,14 @@ bun run type-check   # Validate TypeScript
 
 > All configuration is stored in `~/.tamias/config.json`.
 
+Runtime logs are centralized under `~/.tamias/logs/` (for example `daemon.log`, `dashboard.log`, `cron.log`).
+
 ## Changelog
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.04.39)
+### Latest Version (v26.04.04.41)
 
 ### Features
-- update changelog for version v26.04.04.37; add ngrok configuration and enhance DiscordBridge audio attachment handling
+- enhance WhatsAppUnofficialBridge with mention-only mode and regex support
+- coding CLI delegation system

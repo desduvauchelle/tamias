@@ -979,30 +979,41 @@ Important: Post at least one progress comment before your final result so the us
 					console.error('[AIService] Critical error building project context', err)
 				}
 
-				// ── Auto-inject relevant vector memories on first message ─────
-				// On the first message of a new session, run a quick semantic
-				// search and prepend the top results to the project context so
-				// the AI has relevant past context without needing to call the
-				// memory tool explicitly.
-				if (session.messages.length <= 1) {
+				// ── Auto-inject relevant vector memories on every message ──
+				// Run a quick semantic search using the current message + session
+				// context so the AI always has relevant past context. The vector
+				// search is cheap (one local embedding + in-memory cosine), so
+				// there's no reason to limit it to only the first message.
+				if (!session.isSubagent) {
 					try {
 						const { getVectorStore } = await import('../utils/vectors')
 						const { getVectorStoreConfig } = await import('../utils/config')
 						const vsCfg = getVectorStoreConfig()
 						if (vsCfg.enabled) {
-							const firstMsg = session.messages[0]
-							const query = typeof firstMsg?.content === 'string' ? firstMsg.content : ''
-							if (query.trim().length > 10) {
-								const vs = await getVectorStore()
-								const hits = await vs.search(query, 3, 0.4)
-								if (hits.length > 0) {
-									const recalledBlock = [
-										'## Recalled Memories (from past sessions)',
-										...hits.map(h => `- ${h.entry.text}`)
-									].join('\n')
-									projectContext = projectContext
-										? recalledBlock + '\n\n---\n\n' + projectContext
-										: recalledBlock
+							const vs = await getVectorStore()
+							if (vs.count > 0) {
+								const queryParts: string[] = []
+								const msgText = typeof job.content === 'string' ? job.content.trim() : ''
+								if (msgText) queryParts.push(msgText)
+								if (session.channelName) queryParts.push(session.channelName)
+								if (session.name && !session.name.startsWith('sess_')) queryParts.push(session.name)
+								if (session.agentSlug) queryParts.push(`agent: ${session.agentSlug}`)
+								if (session.projectSlug) queryParts.push(`project: ${session.projectSlug}`)
+
+								const query = queryParts.join(' | ')
+								if (query.length > 0) {
+									const hits = await vs.search(query, 5, 0.3)
+									if (hits.length > 0) {
+										const recalledBlock = [
+											'## Recalled Memories (auto-retrieved from past sessions)',
+											...hits.map(h =>
+												`- [${h.entry.source}] ${h.entry.text} (score: ${(h.score * 100).toFixed(0)}%, tags: ${h.entry.tags.length > 0 ? h.entry.tags.join(', ') : 'none'}, date: ${h.entry.createdAt.split('T')[0]})`
+											)
+										].join('\n')
+										projectContext = projectContext
+											? recalledBlock + '\n\n---\n\n' + projectContext
+											: recalledBlock
+									}
 								}
 							}
 						}
@@ -1063,6 +1074,8 @@ Important: Post at least one progress comment before your final result so the us
 				// Build provider-specific options (cache scoping, usage tracking)
 				const providerOpts = buildProviderOptions(connection.provider, modelId, session.id)
 
+				let accumulatedProviderCost: number | null = null
+
 				_streamResult = streamText({
 					model,
 					system: systemPrompt,
@@ -1071,7 +1084,12 @@ Important: Post at least one progress comment before your final result so the us
 					stopWhen: stepCountIs(10),
 					headers,
 					...(providerOpts ? { providerOptions: providerOpts } : {}),
-					onStepFinish: async ({ toolCalls, toolResults }) => {
+					onStepFinish: async ({ toolCalls, toolResults, providerMetadata }) => {
+						// Extract OpenRouter cost from provider metadata
+						const orCost = (providerMetadata as any)?.openrouter?.usage?.cost
+						if (typeof orCost === 'number') {
+							accumulatedProviderCost = (accumulatedProviderCost ?? 0) + orCost
+						}
 						if (toolCalls?.length) {
 							for (const tc of toolCalls) {
 								collectedToolCalls.push({ toolName: tc.toolName, input: sanitizeForLog((tc as any).input ?? {}) })
@@ -1174,6 +1192,7 @@ Important: Post at least one progress comment before your final result so the us
 					agentId: session.agentId,
 					channelId: session.channelId,
 					cachedPromptTokens: usage?.inputTokenDetails?.cacheReadTokens,
+					providerCostUsd: accumulatedProviderCost ?? undefined,
 				})
 
 				if (config.debug) {
@@ -1429,7 +1448,7 @@ ${keptHistoryText}`
 
 			const compProviderOpts = buildProviderOptions(connection?.provider ?? '', '', session.id)
 
-			const { object, usage } = await generateObject({
+			const { object, usage, providerMetadata: compactProviderMeta } = await generateObject({
 				model: compactionModel,
 				schema: z.object({
 					summary: z.string().describe('3-4 dense paragraphs summarizing outcomes, key variables (paths/IDs/names), and user tone/persona preferences from the old history. Will be prepended to the active chat buffer as SESSION BACKSTORY.'),
@@ -1468,6 +1487,9 @@ ${keptHistoryText}`
 					{ role: 'user', content: `Current history to compact:\n${JSON.stringify(session.messages)}` }
 				],
 				response: JSON.stringify(object),
+				providerCostUsd: typeof (compactProviderMeta as any)?.openrouter?.usage?.cost === 'number'
+					? (compactProviderMeta as any).openrouter.usage.cost
+					: undefined,
 			})
 
 			session.summary = object.summary

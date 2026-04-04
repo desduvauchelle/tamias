@@ -448,6 +448,150 @@ describe('VectorStore — Data Integrity', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// VECTOR STORE — List & Browse
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('VectorStore — list()', () => {
+	let testDir: string
+	let store: VectorStore
+
+	beforeEach(async () => {
+		testDir = createTestDir()
+		store = new VectorStore(testDir)
+		await store.init()
+	})
+
+	afterEach(() => {
+		if (existsSync(testDir)) rmSync(testDir, { recursive: true, force: true })
+	})
+
+	test('list returns empty entries and zero total for empty store', () => {
+		const result = store.list()
+		expect(result.entries).toEqual([])
+		expect(result.total).toBe(0)
+	})
+
+	test('list returns all entries when no filters and within limit', async () => {
+		await store.upsert('Memory alpha about cats', 'conversation')
+		await store.upsert('Memory beta about dogs running', 'file')
+
+		const result = store.list()
+		expect(result.entries).toHaveLength(2)
+		expect(result.total).toBe(2)
+	})
+
+	test('list returns entries sorted newest first', async () => {
+		await store.upsert('Older memory about cooking', 'test')
+		// Small delay to ensure different timestamps
+		await new Promise(r => setTimeout(r, 10))
+		await store.upsert('Newer memory about baking', 'test')
+
+		const result = store.list()
+		expect(result.entries[0].text).toBe('Newer memory about baking')
+		expect(result.entries[1].text).toBe('Older memory about cooking')
+	})
+
+	test('list paginates with offset and limit', async () => {
+		await store.upsert('Entry one about alpha topic', 'test')
+		await new Promise(r => setTimeout(r, 10))
+		await store.upsert('Entry two about beta topic', 'test')
+		await new Promise(r => setTimeout(r, 10))
+		await store.upsert('Entry three about gamma topic', 'test')
+
+		const page1 = store.list(0, 2)
+		expect(page1.entries).toHaveLength(2)
+		expect(page1.total).toBe(3)
+
+		const page2 = store.list(2, 2)
+		expect(page2.entries).toHaveLength(1)
+		expect(page2.total).toBe(3)
+	})
+
+	test('list filters by source', async () => {
+		await store.upsert('From conversation about weather', 'conversation')
+		await store.upsert('From a file import about code', 'file')
+		await store.upsert('Another conversation about lunch', 'conversation')
+
+		const result = store.list(0, 50, { source: 'conversation' })
+		expect(result.entries).toHaveLength(2)
+		expect(result.total).toBe(2)
+		expect(result.entries.every(e => e.source === 'conversation')).toBe(true)
+	})
+
+	test('list filters by tag', async () => {
+		await store.upsert('Tagged memory about architecture', 'test', ['architecture', 'design'])
+		await store.upsert('Untagged memory about cooking', 'test', ['recipes'])
+		await store.upsert('Also tagged about microservices', 'test', ['architecture'])
+
+		const result = store.list(0, 50, { tag: 'architecture' })
+		expect(result.entries).toHaveLength(2)
+		expect(result.total).toBe(2)
+		expect(result.entries.every(e => e.tags.includes('architecture'))).toBe(true)
+	})
+
+	test('list combines source and tag filters', async () => {
+		await store.upsert('Conv with arch tag about servers', 'conversation', ['architecture'])
+		await store.upsert('File with arch tag about infra', 'file', ['architecture'])
+		await store.upsert('Conv without tag about weather', 'conversation', ['weather'])
+
+		const result = store.list(0, 50, { source: 'conversation', tag: 'architecture' })
+		expect(result.entries).toHaveLength(1)
+		expect(result.total).toBe(1)
+		expect(result.entries[0].source).toBe('conversation')
+		expect(result.entries[0].tags).toContain('architecture')
+	})
+
+	test('list total reflects filtered count not page size', async () => {
+		for (let i = 0; i < 5; i++) {
+			await store.upsert(`Memory item number ${i} about projects`, 'conversation')
+		}
+		await store.upsert('Different source item about files', 'file')
+
+		const result = store.list(0, 2, { source: 'conversation' })
+		expect(result.entries).toHaveLength(2)
+		expect(result.total).toBe(5)
+	})
+})
+
+describe('VectorStore — getFilters()', () => {
+	let testDir: string
+	let store: VectorStore
+
+	beforeEach(async () => {
+		testDir = createTestDir()
+		store = new VectorStore(testDir)
+		await store.init()
+	})
+
+	afterEach(() => {
+		if (existsSync(testDir)) rmSync(testDir, { recursive: true, force: true })
+	})
+
+	test('getFilters returns empty arrays for empty store', () => {
+		const filters = store.getFilters()
+		expect(filters.sources).toEqual([])
+		expect(filters.tags).toEqual([])
+	})
+
+	test('getFilters returns unique sorted sources', async () => {
+		await store.upsert('Memory from conversation context', 'conversation')
+		await store.upsert('Memory from file import context', 'file')
+		await store.upsert('Another conversation memory context', 'conversation')
+
+		const filters = store.getFilters()
+		expect(filters.sources).toEqual(['conversation', 'file'])
+	})
+
+	test('getFilters returns unique sorted tags', async () => {
+		await store.upsert('Memory one about design patterns', 'test', ['design', 'architecture'])
+		await store.upsert('Memory two about testing mocks', 'test', ['testing', 'architecture'])
+
+		const filters = store.getFilters()
+		expect(filters.tags).toEqual(['architecture', 'design', 'testing'])
+	})
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Cosine Similarity (exported helper)
 // ═══════════════════════════════════════════════════════════════════════════════
 

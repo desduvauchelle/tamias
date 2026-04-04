@@ -1,7 +1,8 @@
-import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync, readFileSync, writeFileSync, unlinkSync, renameSync, readdirSync, statSync, openSync } from 'fs'
 import { createServer } from 'net'
+import { join } from 'path'
+import { getLogFilePath, getLogsDirPath } from './logPaths.ts'
 
 const DAEMON_FILE = join(homedir(), '.tamias', 'daemon.json')
 
@@ -81,8 +82,7 @@ export async function autoStartDaemon(opts: { verbose?: boolean } = {}): Promise
 	// Detection of compiled state
 	const isCompiled = import.meta.dir?.includes('$bunfs') || !existsSync(import.meta.dir || '')
 	const projectRoot = isCompiled ? process.cwd() : join(import.meta.dir, '../..')
-	const tamiasDir = join(homedir(), '.tamias')
-	const logPath = join(tamiasDir, 'daemon.log')
+	const logPath = getLogFilePath('daemon.log')
 
 	// ── Log rotation ──────────────────────────────────────────────────────────
 	// If an existing daemon.log was last written on a previous calendar day,
@@ -95,14 +95,14 @@ export async function autoStartDaemon(opts: { verbose?: boolean } = {}): Promise
 			const fileDay = stat.mtime.toISOString().slice(0, 10)  // "YYYY-MM-DD"
 			const today = new Date().toISOString().slice(0, 10)
 			if (fileDay !== today) {
-				const archivePath = join(tamiasDir, `daemon-${fileDay}.log`)
+				const archivePath = getLogFilePath(`daemon-${fileDay}.log`)
 				renameSync(logPath, archivePath)
 			}
 		}
 
 		// Prune archives older than 1 day (rolling 2-day window)
 		// Keep only the most recent archive file (yesterday's)
-		const archives = readdirSync(tamiasDir)
+		const archives = readdirSync(getLogsDirPath())
 			.filter(entry => /^daemon-\d{4}-\d{2}-\d{2}\.log$/.test(entry))
 			.sort() // chronological
 			.reverse() // newest first
@@ -110,7 +110,7 @@ export async function autoStartDaemon(opts: { verbose?: boolean } = {}): Promise
 		// Prune all but the newest archive
 		for (let i = 1; i < archives.length; i++) {
 			try {
-				unlinkSync(join(tamiasDir, archives[i]))
+				unlinkSync(getLogFilePath(archives[i]))
 			} catch { /* ignore */ }
 		}
 	} catch (err) {

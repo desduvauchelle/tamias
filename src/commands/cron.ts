@@ -4,6 +4,7 @@ import pc from 'picocolors'
 import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync, appendFileSync } from 'fs'
+import { getLogFilePath } from '../utils/logPaths.ts'
 import {
 	loadCronJobs, addCronJob, removeCronJob, updateCronJob,
 	recordCronJobRun, isJobDue, DEFAULT_HEARTBEAT_CONFIG,
@@ -511,13 +512,14 @@ cronCommand
 			const tamiasPath = process.execPath
 
 			const isCompiled = !existsSync(import.meta.dir || '')
+			const cronLogPath = getLogFilePath('cron.log')
 			let cronLine: string
 			if (isCompiled) {
-				cronLine = `* * * * * ${tamiasPath} cron run >> ${join(homedir(), '.tamias', 'cron.log')} 2>&1`
+				cronLine = `* * * * * ${tamiasPath} cron run >> ${cronLogPath} 2>&1`
 			} else {
 				const bunPath = process.argv[0]
 				const indexPath = join(import.meta.dir, '..', 'index.ts')
-				cronLine = `* * * * * ${bunPath} ${indexPath} cron run >> ${join(homedir(), '.tamias', 'cron.log')} 2>&1`
+				cronLine = `* * * * * ${bunPath} ${indexPath} cron run >> ${cronLogPath} 2>&1`
 			}
 
 			let existing = ''
@@ -538,7 +540,7 @@ cronCommand
 
 			p.outro(pc.green('✅ Crontab entry installed! Tamias cron will run every minute.'))
 			console.log(pc.dim(`Entry: ${cronLine}`))
-			console.log(pc.dim(`Logs:  ${join(homedir(), '.tamias', 'cron.log')}`))
+			console.log(pc.dim(`Logs:  ${cronLogPath}`))
 		} catch (err) {
 			p.log.error(`Failed to install crontab: ${err}`)
 		}

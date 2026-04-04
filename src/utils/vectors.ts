@@ -233,6 +233,32 @@ export class VectorStore {
 		return this.entries.filter(e => e.tags.includes(tag))
 	}
 
+	/** List entries with pagination and optional filters. Returns {entries, total}. */
+	list(offset = 0, limit = 50, filters?: { source?: string; tag?: string }): { entries: VectorEntry[]; total: number } {
+		let filtered = this.entries
+		if (filters?.source) {
+			filtered = filtered.filter(e => e.source === filters.source)
+		}
+		if (filters?.tag) {
+			const tag = filters.tag
+			filtered = filtered.filter(e => e.tags.includes(tag))
+		}
+		const sorted = [...filtered].sort((a, b) =>
+			new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+		)
+		return {
+			entries: sorted.slice(offset, offset + limit),
+			total: filtered.length,
+		}
+	}
+
+	/** Get all unique sources and tags for filtering UI */
+	getFilters(): { sources: string[]; tags: string[] } {
+		const sources = [...new Set(this.entries.map(e => e.source))].sort()
+		const tags = [...new Set(this.entries.flatMap(e => e.tags))].sort()
+		return { sources, tags }
+	}
+
 	/** Delete a specific entry by ID */
 	delete(id: string): boolean {
 		const idx = this.entries.findIndex(e => e.id === id)

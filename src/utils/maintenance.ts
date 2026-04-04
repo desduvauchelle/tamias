@@ -1,16 +1,10 @@
 import { db } from './db'
-import { join } from 'path'
-import { homedir } from 'os'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { runDailyDigestMaintenance } from './dailyDigest'
-
-const ARCHIVE_DIR = join(homedir(), '.tamias', 'archive')
-const ARCHIVE_FILE = join(ARCHIVE_DIR, 'history.json')
 
 /**
  * Runs periodic database maintenance:
  * 1. Prunes detailed text from old logs (older than today).
- * 2. Archives metadata for logs older than 30 days to a JSON file.
+ * 2. Archives metadata for logs older than 30 days to ai_logs_archive table.
  * 3. Deletes archived logs from the database.
  * 4. Cleans up old inactive sessions.
  * 5. Runs VACUUM to optimize disk space.
@@ -33,51 +27,22 @@ export async function runDatabaseMaintenance(): Promise<void> {
 			console.log(`[Maintenance] Pruned text from ${pruneResult.changes} historical logs.`)
 		}
 
-		// 2. Extract metadata for logs older than 30 days for archiving
-		const toArchive = db.query<{
-			timestamp: string,
-			sessionId: string,
-			model: string,
-			provider: string,
-			action: string,
-			durationMs: number,
-			promptTokens: number | null,
-			completionTokens: number | null,
-			totalTokens: number | null,
-			estimatedCostUsd: number | null,
-			tenantId: string | null,
-			agentId: string | null,
-			channelId: string | null
-		}, [string]>(`
-            SELECT timestamp, sessionId, model, provider, action, durationMs,
-                promptTokens, completionTokens, totalTokens,
-                estimatedCostUsd, tenantId, agentId, channelId
-            FROM ai_logs
-            WHERE timestamp < ?
-        `).all(thirtyDaysAgo)
+		// 2. Archive logs older than 30 days into ai_logs_archive table
+		const archiveResult = db.prepare(`
+			INSERT INTO ai_logs_archive (timestamp, sessionId, model, provider, action, durationMs,
+				promptTokens, completionTokens, totalTokens, estimatedCostUsd, tenantId, agentId, channelId)
+			SELECT timestamp, sessionId, model, provider, action, durationMs,
+				promptTokens, completionTokens, totalTokens, estimatedCostUsd, tenantId, agentId, channelId
+			FROM ai_logs WHERE timestamp < ?
+		`).run(thirtyDaysAgo)
+		if (archiveResult.changes > 0) {
+			console.log(`[Maintenance] Archived ${archiveResult.changes} logs older than 30 days to ai_logs_archive.`)
+		}
 
-		if (toArchive.length > 0) {
-			console.log(`[Maintenance] Archiving ${toArchive.length} logs older than 30 days...`)
-
-			if (!existsSync(ARCHIVE_DIR)) {
-				mkdirSync(ARCHIVE_DIR, { recursive: true })
-			}
-
-			let history: any[] = []
-			if (existsSync(ARCHIVE_FILE)) {
-				try {
-					history = JSON.parse(readFileSync(ARCHIVE_FILE, 'utf-8'))
-				} catch (e) {
-					console.error('[Maintenance] Failed to read existing archive, starting fresh:', e)
-				}
-			}
-
-			history.push(...toArchive)
-			writeFileSync(ARCHIVE_FILE, JSON.stringify(history, null, 2), 'utf-8')
-
-			// 3. Delete archived logs from the database
-			const deleteResult = db.prepare('DELETE FROM ai_logs WHERE timestamp < ?').run(thirtyDaysAgo)
-			console.log(`[Maintenance] Deleted ${deleteResult.changes} archived logs from DB.`)
+		// 3. Delete archived logs from the database
+		const deleteResult = db.prepare('DELETE FROM ai_logs WHERE timestamp < ?').run(thirtyDaysAgo)
+		if (deleteResult.changes > 0) {
+			console.log(`[Maintenance] Deleted ${deleteResult.changes} archived logs from ai_logs.`)
 		}
 
 		// 4. Clean up inactive sessions (older than 90 days)

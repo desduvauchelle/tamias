@@ -20,6 +20,8 @@ import { getEstimatedCost } from '../utils/pricing.ts'
 import { runDatabaseMaintenance } from '../utils/maintenance.ts'
 import { buildUsageSummary } from '../utils/usageRolling.ts'
 import { emitLogEvent, listUnifiedLogs, onUnifiedLogEvent, type UnifiedLogRecord, type UnifiedLogSource, type UnifiedLogLevel } from '../utils/unifiedLogging.ts'
+import { getLogFilePath } from '../utils/logPaths.ts'
+import { ensureFfmpegAvailableOnLaunch } from '../utils/ffmpeg.ts'
 import type { DaemonEvent, BridgeMessage } from '../bridge/types.ts'
 
 
@@ -180,7 +182,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	]
 	const dashboardDir = candidatePaths.find((p) => fs.existsSync(p)) ?? ''
 
-	const dashboardLogPath = join(homedir(), '.tamias', 'dashboard.log')
+	const dashboardLogPath = getLogFilePath('dashboard.log')
 	const dashboardLogFd = fs.openSync(dashboardLogPath, 'a')
 
 	if (!dashboardDir) {
@@ -319,7 +321,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 		console.log('\nPaste this token in the dashboard if prompted.')
 	}
 
-	// Log version and binary path so daemon.log always shows which binary is running
+	// Log version and binary path so daemon log always shows which binary is running
 	console.log(`[Daemon v${VERSION}] Starting from ${process.execPath}`)
 	console.log(`[Daemon] TAMIAS_DEBUG=${process.env.TAMIAS_DEBUG ?? '0'}`)
 	const startupConfig = loadConfig()
@@ -383,6 +385,16 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 
 	// Ensure built-in default agents (Coder, etc.) are registered
 	ensureDefaultAgents()
+
+	// Ensure ffmpeg is available for voice transcription.
+	try {
+		const ffmpegReady = await ensureFfmpegAvailableOnLaunch()
+		if (!ffmpegReady) {
+			console.warn('[Daemon] Voice transcription may fail until ffmpeg is installed. Install with: brew install ffmpeg')
+		}
+	} catch (err) {
+		console.warn('[Daemon] Failed to validate/install ffmpeg:', err)
+	}
 
 	// Pre-fetch the Parakeet speech-to-text model in the background so it's ready
 	// when the user first sends a voice message. Silently skips if already present.
@@ -1390,6 +1402,99 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 					return json(result)
 				} catch (err) {
 					return json({ ok: false, message: String(err) })
+				}
+			}
+
+			// ── Vector Store Endpoints ────────────────────────────────
+			// GET  /vectors?offset=&limit=&source=&tag= → paginated list
+			if (method === 'GET' && url.pathname === '/vectors') {
+				try {
+					const { getVectorStore } = await import('../utils/vectors.ts')
+					const { getVectorStoreConfig } = await import('../utils/config.ts')
+					const vsCfg = getVectorStoreConfig()
+					if (!vsCfg.enabled) return json({ error: 'Vector store disabled' }, 400)
+					const vs = await getVectorStore()
+					const offset = parseInt(url.searchParams.get('offset') ?? '0', 10)
+					const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10), 200)
+					const source = url.searchParams.get('source') || undefined
+					const tag = url.searchParams.get('tag') || undefined
+					const result = vs.list(offset, limit, { source, tag })
+					const filters = vs.getFilters()
+					return json({ ...result, filters })
+				} catch (err) {
+					return json({ error: String(err) }, 500)
+				}
+			}
+
+			// GET  /vectors/search?q=&topK=&minScore= → semantic search
+			if (method === 'GET' && url.pathname === '/vectors/search') {
+				try {
+					const { getVectorStore } = await import('../utils/vectors.ts')
+					const { getVectorStoreConfig } = await import('../utils/config.ts')
+					const vsCfg = getVectorStoreConfig()
+					if (!vsCfg.enabled) return json({ error: 'Vector store disabled' }, 400)
+					const vs = await getVectorStore()
+					const q = url.searchParams.get('q') ?? ''
+					if (!q.trim()) return json({ error: 'Query required' }, 400)
+					const topK = Math.min(parseInt(url.searchParams.get('topK') ?? '10', 10), 50)
+					const minScore = parseFloat(url.searchParams.get('minScore') ?? '0.3')
+					const results = await vs.search(q, topK, minScore)
+					return json({
+						results: results.map(r => ({
+							...r.entry,
+							score: Math.round(r.score * 100) / 100,
+						}))
+					})
+				} catch (err) {
+					return json({ error: String(err) }, 500)
+				}
+			}
+
+			// GET  /vectors/stats → store statistics
+			if (method === 'GET' && url.pathname === '/vectors/stats') {
+				try {
+					const { getVectorStore } = await import('../utils/vectors.ts')
+					const { getVectorStoreConfig } = await import('../utils/config.ts')
+					const vsCfg = getVectorStoreConfig()
+					if (!vsCfg.enabled) return json({ error: 'Vector store disabled', enabled: false }, 400)
+					const vs = await getVectorStore()
+					return json({ enabled: true, ...vs.getStats() })
+				} catch (err) {
+					return json({ error: String(err) }, 500)
+				}
+			}
+
+			// POST /vectors → upsert { text, source, tags }
+			if (method === 'POST' && url.pathname === '/vectors') {
+				try {
+					const { getVectorStore } = await import('../utils/vectors.ts')
+					const { getVectorStoreConfig } = await import('../utils/config.ts')
+					const vsCfg = getVectorStoreConfig()
+					if (!vsCfg.enabled) return json({ error: 'Vector store disabled' }, 400)
+					const body = await req.json() as { text?: string; source?: string; tags?: string[] }
+					if (!body.text?.trim()) return json({ error: 'text is required' }, 400)
+					const vs = await getVectorStore()
+					const id = await vs.upsert(body.text, body.source ?? 'manual', body.tags ?? [])
+					return json({ id, success: true })
+				} catch (err) {
+					return json({ error: String(err) }, 500)
+				}
+			}
+
+			// DELETE /vectors?id= → delete by ID
+			if (method === 'DELETE' && url.pathname === '/vectors') {
+				try {
+					const { getVectorStore } = await import('../utils/vectors.ts')
+					const { getVectorStoreConfig } = await import('../utils/config.ts')
+					const vsCfg = getVectorStoreConfig()
+					if (!vsCfg.enabled) return json({ error: 'Vector store disabled' }, 400)
+					const id = url.searchParams.get('id')
+					if (!id) return json({ error: 'id query param required' }, 400)
+					const vs = await getVectorStore()
+					const deleted = vs.delete(id)
+					return json({ success: deleted, message: deleted ? 'Deleted' : 'Not found' })
+				} catch (err) {
+					return json({ error: String(err) }, 500)
 				}
 			}
 

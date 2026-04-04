@@ -90,7 +90,9 @@ export function createImageTools(aiService: AIService, sessionId: string, worksp
 						const result = await generateImage({
 							model: imageModel,
 							prompt: imagePrompt,
-							size: size as any,
+							// Always request exactly one image unless we explicitly expose multi-image generation.
+							n: 1,
+							size,
 						})
 
 						const image = result.image
@@ -162,7 +164,11 @@ function buildImageModel(connection: ConnectionConfig, modelId: string): any {
 	switch (connection.provider) {
 		case 'openai': return createOpenAI({ apiKey }).image(modelId)
 		case 'google': return createGoogleGenerativeAI({ apiKey }).image(modelId)
-		case 'openrouter': return createOpenRouter({ apiKey }).imageModel(modelId)
+		case 'openrouter':
+			return createOpenRouter({ apiKey }).imageModel(modelId, {
+				// Some upstream providers can default to multi-image outputs if omitted.
+				extraBody: { n: 1 },
+			})
 		default:
 			throw new Error(`Provider "${connection.provider}" does not support image generation via Vercel AI SDK (yet).`)
 	}
