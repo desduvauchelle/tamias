@@ -2,6 +2,8 @@ import * as p from '@clack/prompts'
 import pc from 'picocolors'
 import { checkForUpdate, performUpdate } from '../utils/update.ts'
 import { VERSION } from '../utils/version.ts'
+import { runStopCommand } from './stop.ts'
+import { runStartCommand } from './start.ts'
 
 export const runUpdateCommand = async (opts: { force?: boolean; check?: boolean } = {}) => {
 	p.intro(pc.bgBlue(pc.white(' Tamias — Update ')))
@@ -67,17 +69,7 @@ export const runUpdateCommand = async (opts: { force?: boolean; check?: boolean 
 	)
 
 	// ── Stop running daemon first ─────────────────────────────────────────────
-	try {
-		const { isDaemonRunning, readDaemonInfo } = await import('../utils/daemon.ts')
-		if (await isDaemonRunning()) {
-			const info = readDaemonInfo()
-			if (info?.port) {
-				p.log.step('Stopping running daemon…')
-				await fetch(`http://127.0.0.1:${info.port}/daemon`, { method: 'DELETE' }).catch(() => { })
-				await new Promise(r => setTimeout(r, 1500))
-			}
-		}
-	} catch { /* daemon not running, that's fine */ }
+	await runStopCommand()
 
 	// ── Perform update ────────────────────────────────────────────────────────
 	const updateSpinner = p.spinner()
@@ -97,19 +89,7 @@ export const runUpdateCommand = async (opts: { force?: boolean; check?: boolean 
 
 	if (result.success) {
 		updateSpinner.stop(pc.green(`✅ Updated to v${result.latestVersion ?? result.currentVersion}`))
-
-		const restartSpinner = p.spinner()
-		restartSpinner.start('Starting daemon…')
-		try {
-			const { autoStartDaemon } = await import('../utils/daemon.ts')
-			const daemonInfo = await autoStartDaemon()
-			restartSpinner.stop(pc.green(`✅ Daemon restarted (PID: ${daemonInfo.pid}, Port: ${daemonInfo.port})`))
-			p.outro(pc.green(`Done! Tamias is now running on v${result.latestVersion ?? result.currentVersion}.`))
-		} catch (err) {
-			restartSpinner.stop(pc.red(`Updated, but failed to restart daemon: ${err}`))
-			p.note(`Please restart manually with ${pc.bold('tamias start')}.`, pc.yellow('Manual restart required'))
-			process.exit(1)
-		}
+		await runStartCommand()
 	} else {
 		updateSpinner.stop(pc.red(`Update failed: ${result.error}`))
 		process.exit(1)

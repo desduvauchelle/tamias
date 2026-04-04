@@ -22,7 +22,8 @@ import {
 	Activity,
 	KanbanSquare,
 	Plus,
-	Check
+	Check,
+	Code
 } from 'lucide-react'
 
 const navGroups = {
@@ -81,6 +82,11 @@ const navGroups = {
 			href: '/models',
 			label: 'AI Models',
 			icon: <Zap className="w-4 h-4" />,
+		},
+		{
+			href: '/coding',
+			label: 'Coding CLIs',
+			icon: <Code className="w-4 h-4" />,
 		},
 		{
 			href: '/channels',

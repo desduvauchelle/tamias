@@ -2,7 +2,7 @@ import ffmpeg from 'fluent-ffmpeg'
 import ffmpegStatic from 'ffmpeg-static'
 import { Readable } from 'stream'
 import { join, dirname } from 'path'
-import { existsSync, mkdirSync, unlinkSync, chmodSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, unlinkSync, chmodSync, rmSync, statSync } from 'fs'
 import { tmpdir } from 'os'
 import { randomBytes } from 'crypto'
 import { getConfigFilePath } from './config.ts'
@@ -59,15 +59,35 @@ function getParakeetDir(): string {
 	return join(dirname(getConfigFilePath()), 'models', 'parakeet')
 }
 
+function getMissingOrInvalidFiles(dir: string): string[] {
+	const invalid: string[] = []
+	for (const file of REQUIRED_FILES) {
+		const abs = join(dir, file)
+		if (!existsSync(abs)) {
+			invalid.push(file)
+			continue
+		}
+		try {
+			const stat = statSync(abs)
+			if (!stat.isFile() || stat.size <= 0) invalid.push(file)
+		} catch {
+			invalid.push(file)
+		}
+	}
+	return invalid
+}
+
 // ── Model readiness ───────────────────────────────────────────────────────────
 
 export async function ensureModelReady(): Promise<void> {
 	const dir = getParakeetDir()
-	if (REQUIRED_FILES.every(f => existsSync(join(dir, f)))) return
+	const missingOrInvalid = getMissingOrInvalidFiles(dir)
+	if (missingOrInvalid.length === 0) return
 	if (_downloadState.promise) {
 		console.log('[Transcription] Model download already in progress — waiting for it to complete...')
 		return _downloadState.promise
 	}
+	console.log(`[Transcription] Missing or invalid model files: ${missingOrInvalid.join(', ')}`)
 	_downloadState.promise = _downloadParakeet(dir).catch(err => {
 		_downloadState.promise = null // allow retry after failure
 		throw err
@@ -81,9 +101,14 @@ export async function ensureModelReady(): Promise<void> {
  */
 export function prefetchModelInBackground(): void {
 	const dir = getParakeetDir()
-	if (REQUIRED_FILES.every(f => existsSync(join(dir, f)))) return
+	const missingOrInvalid = getMissingOrInvalidFiles(dir)
+	if (missingOrInvalid.length === 0) {
+		console.log('[Transcription] Parakeet model already installed — skipping download')
+		return
+	}
 	if (_downloadState.promise) return
-	_downloadState.promise = _downloadParakeet(dir, { silent: true }).catch(err => {
+	console.log(`[Transcription] Missing or invalid model files: ${missingOrInvalid.join(', ')}`)
+	_downloadState.promise = _downloadParakeet(dir).catch(err => {
 		_downloadState.promise = null
 		console.log('[Transcription] Background model pre-fetch failed (will retry on first voice message):', err instanceof Error ? err.message : err)
 	})
@@ -114,7 +139,10 @@ async function _downloadParakeet(dir: string, opts: { silent?: boolean } = {}): 
 	progress(`[Transcription] Downloading binary (${binaryAsset.name})...`)
 	const tmpBin = join(tmpdir(), `tamias-sherpa-bin-${randomBytes(4).toString('hex')}.tar.bz2`)
 	try {
-		await _fetchToFile(binaryAsset.browser_download_url, tmpBin)
+		await _fetchToFile(binaryAsset.browser_download_url, tmpBin, {
+			logPrefix: '[Transcription] Binary download',
+			silent: opts.silent,
+		})
 		await _extractBinary(tmpBin, dir)
 	} finally {
 		try { unlinkSync(tmpBin) } catch {}
@@ -124,7 +152,10 @@ async function _downloadParakeet(dir: string, opts: { silent?: boolean } = {}): 
 	progress('[Transcription] Downloading model weights (~640MB)...')
 	const tmpModel = join(tmpdir(), `tamias-sherpa-model-${randomBytes(4).toString('hex')}.tar.bz2`)
 	try {
-		await _fetchToFile(MODEL_ARCHIVE_URL, tmpModel)
+		await _fetchToFile(MODEL_ARCHIVE_URL, tmpModel, {
+			logPrefix: '[Transcription] Model download',
+			silent: opts.silent,
+		})
 		await _extractModelFiles(tmpModel, dir)
 	} finally {
 		try { unlinkSync(tmpModel) } catch {}
@@ -133,10 +164,42 @@ async function _downloadParakeet(dir: string, opts: { silent?: boolean } = {}): 
 	console.log('[Transcription] Parakeet model download complete ✓')
 }
 
-async function _fetchToFile(url: string, dest: string): Promise<void> {
+async function _fetchToFile(url: string, dest: string, opts: { logPrefix: string; silent?: boolean }): Promise<void> {
 	const res = await _httpFetch.fn(url)
 	if (!res.ok) throw new Error(`Download failed (${res.status}): ${url}`)
-	await Bun.write(dest, res)
+	const log = opts.silent ? () => {} : console.log.bind(console)
+	const body = res.body
+	if (!body) throw new Error(`Download response had no body: ${url}`)
+
+	const total = Number(res.headers.get('content-length') ?? '0')
+	const hasTotal = Number.isFinite(total) && total > 0
+	const reader = body.getReader()
+	const chunks: Uint8Array[] = []
+	let downloaded = 0
+	let nextPercentLog = 10
+	let nextBytesLog = 25 * 1024 * 1024
+
+	while (true) {
+		const { done, value } = await reader.read()
+		if (done) break
+		if (!value) continue
+		chunks.push(value)
+		downloaded += value.byteLength
+
+		if (hasTotal) {
+			const percent = Math.floor((downloaded / total) * 100)
+			if (percent >= nextPercentLog) {
+				log(`${opts.logPrefix}: ${percent}% (${Math.round(downloaded / 1024 / 1024)}MB/${Math.round(total / 1024 / 1024)}MB)`)
+				nextPercentLog += 10
+			}
+		} else if (downloaded >= nextBytesLog) {
+			log(`${opts.logPrefix}: downloaded ${Math.round(downloaded / 1024 / 1024)}MB`)
+			nextBytesLog += 25 * 1024 * 1024
+		}
+	}
+
+	await Bun.write(dest, Buffer.concat(chunks))
+	log(`${opts.logPrefix}: complete (${Math.round(downloaded / 1024 / 1024)}MB)`)
 }
 
 async function _extractBinary(tarPath: string, dir: string): Promise<void> {

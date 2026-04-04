@@ -100,7 +100,7 @@ function getParakeetDir(): string {
 function createModelFiles(): void {
 	const dir = getParakeetDir()
 	mkdirSync(dir, { recursive: true })
-	for (const f of REQUIRED_FILES) writeFileSync(join(dir, f), '')
+	for (const f of REQUIRED_FILES) writeFileSync(join(dir, f), 'ok')
 }
 
 function makeMockProc(stdout: string, exitCode = 0, stderr = '') {
@@ -234,6 +234,33 @@ describe('ensureModelReady', () => {
 			await ensureModelReady()
 		} catch {
 			// Expected — the fake extraction path doesn't exist
+		}
+
+		expect(calledUrls[0]).toContain('api.github.com')
+	})
+
+	test('treats zero-byte model files as invalid and re-downloads', async () => {
+		const dir = getParakeetDir()
+		mkdirSync(dir, { recursive: true })
+		for (const f of REQUIRED_FILES) writeFileSync(join(dir, f), '')
+
+		const calledUrls: string[] = []
+		_httpFetch.fn = mock(async (url: string | URL | Request) => {
+			const stringUrl = typeof url === 'string' ? url : url.toString()
+			calledUrls.push(stringUrl)
+			if (stringUrl.includes('api.github.com')) {
+				return new Response(JSON.stringify({
+					assets: [{ name: 'sherpa-onnx-v1.0.0-osx-arm64.tar.bz2', browser_download_url: 'https://example.com/bin.tar.bz2' }]
+				}), { status: 200 })
+			}
+			return new Response(new Uint8Array(0), { status: 200 })
+		})
+		_bunSpawn.fn = mock(() => makeMockProc('some/path/sherpa-onnx-offline'))
+
+		try {
+			await ensureModelReady()
+		} catch {
+			// Expected due to mocked extraction path.
 		}
 
 		expect(calledUrls[0]).toContain('api.github.com')

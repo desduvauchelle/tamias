@@ -57,7 +57,15 @@ describe("Logger", () => {
 		expect(lastLog.providerCostUsd).toBe(0.000321)
 		expect(lastLog.estimatedCostUsd).toBe(0.000321)
 
+		const unifiedRow = db.query<{ source: string; type: string; message: string } | null, [number]>(
+			'SELECT source, type, message FROM unified_logs WHERE aiLogId = ? LIMIT 1'
+		).get(lastLog.id)
+		expect(unifiedRow?.source).toBe('ai')
+		expect(unifiedRow?.type).toBe('request_chat')
+		expect(unifiedRow?.message).toContain('AI chat completed')
+
 		// Cleanup: remove the test row we just inserted
+		db.prepare('DELETE FROM unified_logs WHERE aiLogId = ?').run(lastLog.id)
 		db.prepare('DELETE FROM ai_logs WHERE id = ?').run(lastLog.id)
 	})
 })

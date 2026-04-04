@@ -103,6 +103,35 @@ const migrations = [
 	ALTER TABLE ai_logs ADD COLUMN usageJson TEXT;
 	CREATE INDEX IF NOT EXISTS idx_ai_logs_provider ON ai_logs(provider);
 	CREATE INDEX IF NOT EXISTS idx_ai_logs_model ON ai_logs(model);
+	`,
+	// Version 7: Unified logs table for daemon/channel/message/ai/tool/error timeline
+	`
+	CREATE TABLE IF NOT EXISTS unified_logs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		timestamp TEXT NOT NULL,
+		source TEXT NOT NULL,
+		type TEXT NOT NULL,
+		level TEXT NOT NULL DEFAULT 'info',
+		sessionId TEXT,
+		channelId TEXT,
+		channelUserId TEXT,
+		agentId TEXT,
+		tenantId TEXT,
+		message TEXT NOT NULL,
+		metadataJson TEXT,
+		aiLogId INTEGER,
+		FOREIGN KEY(aiLogId) REFERENCES ai_logs(id) ON DELETE SET NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_unified_logs_timestamp ON unified_logs(timestamp);
+	CREATE INDEX IF NOT EXISTS idx_unified_logs_source ON unified_logs(source);
+	CREATE INDEX IF NOT EXISTS idx_unified_logs_type ON unified_logs(type);
+	CREATE INDEX IF NOT EXISTS idx_unified_logs_level ON unified_logs(level);
+	CREATE INDEX IF NOT EXISTS idx_unified_logs_sessionId ON unified_logs(sessionId);
+	CREATE INDEX IF NOT EXISTS idx_unified_logs_channelId ON unified_logs(channelId);
+	CREATE INDEX IF NOT EXISTS idx_unified_logs_channelUserId ON unified_logs(channelUserId);
+	CREATE INDEX IF NOT EXISTS idx_unified_logs_agentId ON unified_logs(agentId);
+	CREATE INDEX IF NOT EXISTS idx_unified_logs_tenantId ON unified_logs(tenantId);
+	CREATE INDEX IF NOT EXISTS idx_unified_logs_source_type ON unified_logs(source, type);
 	`
 ]
 

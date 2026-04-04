@@ -142,3 +142,34 @@ export function resolveAgentModelChain(agent: AgentDefinition): string[] {
 	if (agent.modelFallbacks?.length) chain.push(...agent.modelFallbacks)
 	return chain
 }
+
+// ─── Built-in default agents ────────────────────────────────────────────────
+
+const DEFAULT_CODER_AGENT: Omit<AgentDefinition, 'id' | 'enabled'> = {
+	name: 'Coder',
+	slug: 'coder',
+	instructions: `You are Tamias's coding specialist. When given a coding task:
+1. Check available coding providers with coding_cli__check_coding_providers
+2. Assess task complexity (simple fix → normal, large feature/refactor → smart)
+3. Use coding_cli__delegate_coding_task to send work to the best available coding CLI
+4. If no CLI providers are configured, handle the task in-process using terminal/workspace tools
+5. Always verify the result: run tests, check types
+6. Report back with a summary of changes made`,
+	allowedTools: ['coding_cli', 'terminal', 'workspace', 'github', 'subagent', 'projects'],
+}
+
+/**
+ * Ensure built-in default agents exist. Call once on startup.
+ * Does NOT overwrite agents the user has already customised.
+ */
+export function ensureDefaultAgents(): void {
+	const agents = loadAgents()
+	const defaults = [DEFAULT_CODER_AGENT]
+
+	for (const def of defaults) {
+		const exists = agents.some(a => a.slug === def.slug)
+		if (!exists) {
+			addAgent(def)
+		}
+	}
+}

@@ -54,7 +54,19 @@ interface LogEntry {
 	estimatedCostUsd?: number
 	providerCostUsd?: number
 	finalCostUsd?: number
+	source?: string
+	type?: string
 	fullHistory: HistoryRecord[]
+}
+
+interface RelatedEvent {
+	id: number
+	timestamp: string
+	source: string
+	type: string
+	level: string
+	message: string
+	metadata?: unknown
 }
 
 function HistoryContent() {
@@ -62,7 +74,9 @@ function HistoryContent() {
 	const [loading, setLoading] = useState(true)
 	const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null)
 	const [isModalOpen, setIsModalOpen] = useState(false)
+	const [relatedEvents, setRelatedEvents] = useState<RelatedEvent[]>([])
 	const [filter, setFilter] = useState('')
+	const [sourceFilter, setSourceFilter] = useState<string>('')
 	const searchParams = useSearchParams()
 	const logIdParam = searchParams.get('log')
 
@@ -78,6 +92,24 @@ function HistoryContent() {
 			}
 		}
 	}, [logIdParam, logs])
+
+	useEffect(() => {
+		const session = selectedLog?.sessionId
+		if (!isModalOpen || !session) {
+			setRelatedEvents([])
+			return
+		}
+		const fetchRelated = async () => {
+			try {
+				const res = await fetch(`/api/logs?sessionId=${encodeURIComponent(session)}&limit=30`)
+				const data = await res.json()
+				if (Array.isArray(data.logs)) setRelatedEvents(data.logs)
+			} catch {
+				setRelatedEvents([])
+			}
+		}
+		void fetchRelated()
+	}, [isModalOpen, selectedLog?.sessionId])
 
 	const fetchLogs = async () => {
 		try {
@@ -95,10 +127,12 @@ function HistoryContent() {
 		const promptText = typeof l.prompt === 'string' ? l.prompt : extractText(l.prompt as unknown)
 		const responseText = typeof l.response === 'string' ? l.response : extractText(l.response as unknown)
 		const f = filter.toLowerCase()
-		return promptText?.toLowerCase().includes(f) ||
+		const matchesText = promptText?.toLowerCase().includes(f) ||
 			responseText?.toLowerCase().includes(f) ||
 			l.sessionId?.toLowerCase().includes(f) ||
 			l.model?.toLowerCase().includes(f)
+		const matchesSource = !sourceFilter || l.source === sourceFilter
+		return matchesText && matchesSource
 	})
 
 	const openModal = (log: LogEntry) => {
@@ -142,8 +176,22 @@ function HistoryContent() {
 					<h1 className="text-2xl font-bold text-success font-mono">Episodic History</h1>
 					<p className="text-xs text-base-content/50 font-mono mt-1 uppercase tracking-tighter">Audit trail of AI interactions and tool usage</p>
 				</div>
-				<div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-					<div className="relative flex-1 min-w-[200px] sm:flex-none">
+					<div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+						<select
+							data-testid="history-source-filter"
+							className="select select-bordered select-sm font-mono text-xs"
+							value={sourceFilter}
+							onChange={e => setSourceFilter(e.target.value)}
+						>
+							<option value="">All sources</option>
+							<option value="ai">AI</option>
+							<option value="message">Message</option>
+							<option value="daemon">Daemon</option>
+							<option value="channel">Channel</option>
+							<option value="tool">Tool</option>
+							<option value="error">Error</option>
+						</select>
+						<div className="relative flex-1 min-w-[200px] sm:flex-none">
 						<Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/30" />
 						<input
 							data-testid="history-filter-input"
@@ -379,6 +427,25 @@ function HistoryContent() {
 						</div>
 						<div className="bg-base-300/40 p-4 rounded-lg border border-base-300 text-[11px] font-mono whitespace-pre-wrap text-base-content/70 max-h-55 overflow-y-auto">
 							{JSON.stringify(selectedLog?.usage ?? {}, null, 2)}
+						</div>
+					</div>
+
+					{/* Related Timeline Events */}
+					<div className="space-y-3 pb-4">
+						<div className="text-xs uppercase font-bold text-primary/60 flex items-center gap-2">
+							<div className="w-1.5 h-1.5 rounded-full bg-primary/60" /> Related Timeline Events ({relatedEvents.length})
+						</div>
+						<div className="bg-base-300/40 p-4 rounded-lg border border-base-300 text-[11px] font-mono max-h-64 overflow-y-auto space-y-2">
+							{relatedEvents.length === 0 ? (
+								<div className="opacity-40 italic">No related events found.</div>
+							) : (
+								relatedEvents.map((event) => (
+									<div key={event.id} className="border border-base-300 rounded p-2 bg-base-100/40">
+										<div className="text-[10px] opacity-60">{new Date(event.timestamp).toLocaleString()} • {event.source}/{event.type} • {event.level}</div>
+										<div className="mt-1">{event.message}</div>
+									</div>
+								))
+							)}
 						</div>
 					</div>
 				</div>

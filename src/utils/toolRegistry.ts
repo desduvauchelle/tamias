@@ -20,6 +20,7 @@ import { skillsTools, SKILLS_TOOL_NAME } from '../tools/skills.ts'
 import { createWebsearchTools, WEBSEARCH_TOOL_NAME } from '../tools/websearch.ts'
 import { createFirecrawlTools, FIRECRAWL_TOOL_NAME } from '../tools/firecrawl.ts'
 import { createProjectTools, PROJECTS_TOOL_NAME } from '../tools/projects.ts'
+import { createCodingCliTools, CODING_CLI_TOOL_NAME } from '../tools/codingCli.ts'
 import { INTERNAL_TOOL_NAMES, getAllInternalToolNames } from '../tools/internalToolNames.ts'
 import { buildToolsForDomain } from '../core/adapters/ai-tools.ts'
 import { getDomains } from '../core/registry.ts'
@@ -108,6 +109,7 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 			sessionProjectSlug: session?.projectSlug,
 			channelUserId: session?.channelUserId,
 		}) as ToolSet,
+		[CODING_CLI_TOOL_NAME]: createCodingCliTools(aiService, sessionId) as ToolSet,
 	}
 
 	// ── Auto-wire registry-backed domains ────────────────────────────────────

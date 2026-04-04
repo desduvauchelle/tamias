@@ -8,6 +8,8 @@ export const dynamic = 'force-dynamic'
 interface DaemonLogEntry {
 	id: string
 	timestamp: string
+	source?: string
+	type?: string
 	initiator?: string
 	sessionId?: string
 	model: string
@@ -36,6 +38,8 @@ interface DaemonLogEntry {
 interface DashboardLogEntry {
 	id: string
 	timestamp: string
+	source?: string
+	type?: string
 	sessionId?: string
 	model: string
 	provider: string
@@ -94,6 +98,8 @@ export async function GET(request: Request) {
 		const mappedLogs: DashboardLogEntry[] = daemonLogs.map((l: DaemonLogEntry) => ({
 			id: l.id,
 			timestamp: l.timestamp,
+			source: l.source ?? 'ai',
+			type: l.type ?? 'request_chat',
 			sessionId: l.initiator ?? l.sessionId,
 			model: l.model,
 			provider: l.provider ?? 'unknown',

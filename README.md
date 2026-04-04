@@ -282,7 +282,7 @@ bun run type-check   # Validate TypeScript
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.04.37)
+### Latest Version (v26.04.04.38)
 
 ### Features
-- add ngrok configuration and functionality
+- update changelog for version v26.04.04.36; enhance cron job management and add ngrok support

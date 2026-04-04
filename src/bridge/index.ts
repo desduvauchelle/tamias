@@ -1,5 +1,6 @@
 import type { TamiasConfig } from '../utils/config.ts'
 import type { BridgeMessage, DaemonEvent, IBridge } from './types.ts'
+import { emitLogEvent } from '../utils/unifiedLogging.ts'
 
 /**
  * Manages the lifecycle of multiple translation bridges (e.g., terminal, discord).
@@ -65,8 +66,30 @@ export class BridgeManager {
 			await bridge.initialize(config, onMessage)
 			this.activeBridges.set(bridge.name, bridge)
 			console.log(`[Bridge Manager] Loaded bridge: ${bridge.name}`)
+			emitLogEvent({
+				source: 'channel',
+				type: 'bridge_initialized',
+				level: 'info',
+				channelId: bridge.name,
+				message: `Bridge initialized: ${bridge.name}`,
+				metadata: {
+					platform: bridge.platform,
+					platformAccountId: bridge.platformAccountId ?? null,
+				},
+			})
 		} catch (err) {
 			console.error(`[Bridge Manager] Failed to load bridge ${bridge.name}:`, err)
+			emitLogEvent({
+				source: 'error',
+				type: 'bridge_init_failed',
+				level: 'error',
+				channelId: bridge.name,
+				message: `Bridge failed to initialize: ${bridge.name}`,
+				metadata: {
+					platform: bridge.platform,
+					error: err instanceof Error ? err.message : String(err),
+				},
+			})
 		}
 	}
 
@@ -76,9 +99,32 @@ export class BridgeManager {
 	async dispatchEvent(channelId: string, event: DaemonEvent, sessionContext: any) {
 		const bridge = this.activeBridges.get(channelId)
 		if (bridge) {
+			if (event.type !== 'chunk') {
+				emitLogEvent({
+					source: 'channel',
+					type: `daemon_event_${event.type}`,
+					level: event.type === 'error' ? 'error' : 'info',
+					sessionId: sessionContext?.id,
+					channelId,
+					channelUserId: sessionContext?.channelUserId,
+					agentId: sessionContext?.agentId,
+					message: `Dispatched ${event.type} event to ${channelId}`,
+					metadata: event,
+				})
+			}
 			await bridge.handleDaemonEvent(event, sessionContext)
 		} else {
 			console.warn(`[Bridge Manager] dispatchEvent: no bridge found for channelId="${channelId}" (event=${event.type}). Active bridges: [${Array.from(this.activeBridges.keys()).join(', ')}]`)
+			emitLogEvent({
+				source: 'error',
+				type: 'bridge_not_found',
+				level: 'warn',
+				channelId,
+				sessionId: sessionContext?.id,
+				channelUserId: sessionContext?.channelUserId,
+				message: `No bridge found for channel ${channelId}`,
+				metadata: { eventType: event.type, activeBridges: Array.from(this.activeBridges.keys()) },
+			})
 		}
 	}
 
@@ -90,8 +136,27 @@ export class BridgeManager {
 			try {
 				await bridge.destroy()
 				console.log(`[Bridge Manager] Stopped bridge: ${name}`)
+				emitLogEvent({
+					source: 'channel',
+					type: 'bridge_stopped',
+					level: 'info',
+					channelId: name,
+					message: `Bridge stopped: ${name}`,
+					metadata: { platform: bridge.platform },
+				})
 			} catch (err) {
 				console.error(`[Bridge Manager] Error stopping bridge ${name}:`, err)
+				emitLogEvent({
+					source: 'error',
+					type: 'bridge_stop_failed',
+					level: 'error',
+					channelId: name,
+					message: `Bridge stop failed: ${name}`,
+					metadata: {
+						platform: bridge.platform,
+						error: err instanceof Error ? err.message : String(err),
+					},
+				})
 			}
 		}
 		this.activeBridges.clear()

@@ -154,6 +154,36 @@ export const NgrokConfigSchema = z.object({
 
 export type NgrokConfig = z.infer<typeof NgrokConfigSchema>
 
+// ─── Coding Provider Config ──────────────────────────────────────────────────
+
+export const CodingProviderSchema = z.object({
+	/** Unique name for this provider, e.g. "claude-code", "copilot-cli", "aider" */
+	name: z.string().min(1),
+	enabled: z.boolean().default(true),
+	/** Lower priority = tried first. Providers are sorted ascending by this. */
+	priority: z.number().int().default(0),
+	/** Base CLI command, e.g. "claude", "gh copilot", "aider" */
+	command: z.string().min(1),
+	/** Model alias for complex tasks, e.g. "opus" for Claude Code */
+	smartModel: z.string().optional(),
+	/** Model alias for standard tasks, e.g. "sonnet" for Claude Code */
+	normalModel: z.string().optional(),
+	/** Flag(s) to auto-accept file edits, e.g. "--permission-mode bypassPermissions" */
+	autoAcceptFlag: z.string().optional(),
+	/** Flag(s) for structured output, e.g. "--output-format stream-json -p" */
+	outputFlag: z.string().optional(),
+	/** Any additional CLI flags appended to every invocation */
+	additionalFlags: z.string().optional(),
+	/** Maximum seconds before the CLI process is killed (default 300 = 5 min) */
+	timeout: z.number().int().positive().default(300),
+	/** How many times to retry this provider on transient failure (default 1) */
+	maxRetries: z.number().int().min(0).default(1),
+	/** Complexity score threshold: score > this → smart model, else normal (default 50) */
+	complexityThreshold: z.number().int().min(0).default(50),
+})
+
+export type CodingProvider = z.infer<typeof CodingProviderSchema>
+
 export const TamiasConfigSchema = z.object({
 	version: z.literal('1.0'),
 	connections: z.record(z.string(), ConnectionConfigSchema),
@@ -226,6 +256,8 @@ export const TamiasConfigSchema = z.object({
 	}).optional(),
 	firecrawl: FirecrawlConfigSchema.optional(),
 	ngrok: NgrokConfigSchema.default({ enabled: false }),
+	/** Ordered list of external coding CLIs for task delegation (Claude Code, Copilot, Aider, etc.) */
+	codingProviders: z.array(CodingProviderSchema).optional(),
 })
 
 export type TamiasConfig = z.infer<typeof TamiasConfigSchema>
@@ -526,6 +558,13 @@ export const getBridgesConfig = (): BridgesConfig => {
 export const getSandboxConfig = () => {
 	const config = loadConfig()
 	return config.sandbox ?? { engine: 'none' as const, image: 'ubuntu:22.04', memoryLimit: '512m', cpuLimit: '1.0', networkEnabled: false, timeout: 30 }
+}
+
+/** Get coding providers sorted by priority (ascending — lower number = tried first) */
+export const getCodingProviders = (): CodingProvider[] => {
+	const config = loadConfig()
+	const providers = config.codingProviders ?? []
+	return providers.filter(p => p.enabled).sort((a, b) => a.priority - b.priority)
 }
 
 /** Get the bot token for a specific named instance */

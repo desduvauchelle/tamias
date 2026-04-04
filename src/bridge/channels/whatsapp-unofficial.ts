@@ -71,6 +71,7 @@ export class WhatsAppUnofficialBridge implements IBridge {
 	private currentQr: string | null = null
 	private reconnectAttempt = 0
 	private shouldReconnect = true
+	private isDestroying = false
 	private availableGroups: AvailableGroup[] = []
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -175,8 +176,10 @@ export class WhatsAppUnofficialBridge implements IBridge {
 						this.reconnectAttempt++
 						console.log(`[WA-Unofficial:${this.instanceKey}] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt}/${RECONNECT.maxAttempts})`)
 						this.reconnectTimer = setTimeout(() => this.connectSocket(), delay)
+					} else if (!this.shouldReconnect || this.isDestroying) {
+						console.log(`[WA-Unofficial:${this.instanceKey}] Connection closed — reconnect disabled`)
 					} else {
-						console.error(`[WA-Unofficial:${this.instanceKey}] Max reconnect attempts reached or reconnect disabled`)
+						console.warn(`[WA-Unofficial:${this.instanceKey}] Max reconnect attempts reached (${RECONNECT.maxAttempts})`)
 					}
 				}
 
@@ -615,6 +618,7 @@ export class WhatsAppUnofficialBridge implements IBridge {
 	 * Unlink: disconnect, clear auth, remove config entry.
 	 */
 	async unlink(): Promise<void> {
+		this.isDestroying = true
 		this.shouldReconnect = false
 		if (this.sock) {
 			try { await this.sock.logout() } catch { /* ignore */ }
@@ -636,12 +640,14 @@ export class WhatsAppUnofficialBridge implements IBridge {
 				setBridgesConfig(bridges)
 			}
 		} catch { /* ignore */ }
+		this.isDestroying = false
 	}
 
 	// ─── Lifecycle ──────────────────────────────────────────────────────────────
 
 	async destroy(): Promise<void> {
 		console.log(`[WA-Unofficial:${this.instanceKey}] Bridge destroying...`)
+		this.isDestroying = true
 		this.shouldReconnect = false
 		if (this.reconnectTimer) {
 			clearTimeout(this.reconnectTimer)
@@ -654,5 +660,6 @@ export class WhatsAppUnofficialBridge implements IBridge {
 		this.messageBuffer.clear()
 		this.connectionStatus = 'disconnected'
 		console.log(`[WA-Unofficial:${this.instanceKey}] Bridge destroyed`)
+		this.isDestroying = false
 	}
 }

@@ -27,6 +27,7 @@ export const INTERNAL_TOOL_NAMES = [
 	'websearch',
 	'firecrawl',
 	'projects',
+	'coding_cli',
 ] as const
 
 export type InternalToolName = (typeof INTERNAL_TOOL_NAMES)[number]

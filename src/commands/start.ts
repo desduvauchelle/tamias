@@ -14,11 +14,12 @@ import { runCronJobsOnce, buildPrompt } from './cron.ts'
 import { getProjects, getProjectCrons, updateProjectCron, getProjectByDiscordChannel } from '../core/projects.ts'
 import { scaffoldFromTemplates, isOnboarded } from '../utils/memory.ts'
 import { prefetchModelInBackground } from '../utils/transcription.ts'
-import { loadAgents } from '../utils/agentsStore.ts'
+import { loadAgents, ensureDefaultAgents } from '../utils/agentsStore.ts'
 import { db } from '../utils/db.ts'
 import { getEstimatedCost } from '../utils/pricing.ts'
 import { runDatabaseMaintenance } from '../utils/maintenance.ts'
 import { buildUsageSummary } from '../utils/usageRolling.ts'
+import { emitLogEvent, listUnifiedLogs, onUnifiedLogEvent, type UnifiedLogRecord, type UnifiedLogSource, type UnifiedLogLevel } from '../utils/unifiedLogging.ts'
 import type { DaemonEvent, BridgeMessage } from '../bridge/types.ts'
 
 
@@ -45,6 +46,24 @@ function json(data: unknown, status = 200): Response {
 		status,
 		headers: cors({ 'Content-Type': 'application/json' }),
 	})
+}
+
+function parseLogSource(value: string | null): UnifiedLogSource | undefined {
+	if (!value) return undefined
+	const normalized = value.trim().toLowerCase()
+	if (normalized === 'daemon' || normalized === 'channel' || normalized === 'message' || normalized === 'ai' || normalized === 'tool' || normalized === 'error') {
+		return normalized
+	}
+	return undefined
+}
+
+function parseLogLevel(value: string | null): UnifiedLogLevel | undefined {
+	if (!value) return undefined
+	const normalized = value.trim().toLowerCase()
+	if (normalized === 'debug' || normalized === 'info' || normalized === 'warn' || normalized === 'error') {
+		return normalized
+	}
+	return undefined
 }
 
 export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolean; ngrok?: boolean } = {}) => {
@@ -308,6 +327,18 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	console.log(`[Daemon] Connections in config: [${startupConns.join(', ') || 'NONE'}]`)
 	const startupDefaults = startupConfig.defaultModels ?? []
 	console.log(`[Daemon] Default models: [${startupDefaults.join(', ') || 'NONE (will auto-select)'}]`)
+	emitLogEvent({
+		source: 'daemon',
+		type: 'daemon_starting',
+		level: 'info',
+		message: `Daemon v${VERSION} starting`,
+		metadata: {
+			execPath: process.execPath,
+			debug: process.env.TAMIAS_DEBUG ?? '0',
+			connections: startupConns,
+			defaultModels: startupDefaults,
+		},
+	})
 
 	// Initialize components
 	const bridgeManager = new BridgeManager()
@@ -349,6 +380,9 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 
 	// Ensure memory files (HEARTBEAT.md, AGENTS.md, etc.) exist before cron starts
 	scaffoldFromTemplates()
+
+	// Ensure built-in default agents (Coder, etc.) are registered
+	ensureDefaultAgents()
 
 	// Pre-fetch the Parakeet speech-to-text model in the background so it's ready
 	// when the user first sends a voice message. Silently skips if already present.
@@ -468,6 +502,21 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 
 	const onBridgeMessage = async (msg: BridgeMessage): Promise<boolean> => {
 		console.log(`[Bridge] Message from ${msg.channelId}:${msg.channelUserId} (${msg.channelName}) - "${msg.content.slice(0, 80)}"`)
+		emitLogEvent({
+			source: 'message',
+			type: 'message_received',
+			level: 'info',
+			channelId: msg.channelId,
+			channelUserId: msg.channelUserId,
+			message: `Message received from ${msg.channelId}:${msg.channelUserId}`,
+			metadata: {
+				channelName: msg.channelName ?? null,
+				authorId: msg.authorId ?? null,
+				authorName: msg.authorName ?? null,
+				content: msg.content,
+				attachments: msg.attachments ?? [],
+			},
+		})
 
 		// Built-in diagnostic command — works regardless of AI config
 		const trimmed = msg.content.trim().toLowerCase()
@@ -538,6 +587,17 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				})
 			}
 			await aiService.enqueueMessage(agentSession.id, msg.content, msg.authorName, msg.attachments, { source: 'from-chat' })
+			emitLogEvent({
+				source: 'message',
+				type: 'message_enqueued',
+				level: 'info',
+				sessionId: agentSession.id,
+				channelId: msg.channelId,
+				channelUserId: msg.channelUserId,
+				agentId: agentSession.agentId,
+				message: `Message queued for session ${agentSession.id}`,
+				metadata: { route: 'channel-bound-agent' },
+			})
 			return true
 		}
 
@@ -568,6 +628,17 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				})
 			}
 			await aiService.enqueueMessage(agentSession.id, stripped, msg.authorName, msg.attachments, { source: 'from-chat' })
+			emitLogEvent({
+				source: 'message',
+				type: 'message_enqueued',
+				level: 'info',
+				sessionId: agentSession.id,
+				channelId: msg.channelId,
+				channelUserId: msg.channelUserId,
+				agentId: agentSession.agentId,
+				message: `Message queued for session ${agentSession.id}`,
+				metadata: { route: 'mention-agent' },
+			})
 			return true
 		}
 		// ─────────────────────────────────────────────────────────────────────────
@@ -582,6 +653,16 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				channelName: msg.channelName,
 				projectSlug: linkedProject?.id,
 			})
+			emitLogEvent({
+				source: 'daemon',
+				type: 'session_created',
+				level: 'info',
+				sessionId: session.id,
+				channelId: msg.channelId,
+				channelUserId: msg.channelUserId,
+				message: `Session created: ${session.id}`,
+				metadata: { channelName: msg.channelName ?? null, projectSlug: linkedProject?.id ?? null },
+			})
 		} else {
 			console.log(`[Bridge] Reusing existing session ${session.id} for ${msg.channelId}:${msg.channelUserId}`)
 			if (msg.channelName && session.channelName !== msg.channelName) {
@@ -590,6 +671,17 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			}
 		}
 		await aiService.enqueueMessage(session.id, msg.content, msg.authorName, msg.attachments, { source: 'from-chat' })
+		emitLogEvent({
+			source: 'message',
+			type: 'message_enqueued',
+			level: 'info',
+			sessionId: session.id,
+			channelId: msg.channelId,
+			channelUserId: msg.channelUserId,
+			agentId: session.agentId,
+			message: `Message queued for session ${session.id}`,
+			metadata: { route: 'default' },
+		})
 		return true // Message accepted for AI processing
 	}
 	await bridgeManager.initializeAll(config, onBridgeMessage).catch(console.error)
@@ -763,6 +855,85 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				return json({ logs })
 			}
 
+			if (method === 'GET' && url.pathname === '/logs') {
+				const limitValue = Number.parseInt(url.searchParams.get('limit') ?? '200', 10)
+				const offsetValue = Number.parseInt(url.searchParams.get('offset') ?? '0', 10)
+				const logs = listUnifiedLogs({
+					limit: Number.isFinite(limitValue) ? limitValue : 200,
+					offset: Number.isFinite(offsetValue) ? offsetValue : 0,
+					source: parseLogSource(url.searchParams.get('source')),
+					type: url.searchParams.get('type') ?? undefined,
+					level: parseLogLevel(url.searchParams.get('level')),
+					sessionId: url.searchParams.get('sessionId') ?? undefined,
+					channelId: url.searchParams.get('channelId') ?? undefined,
+					channelUserId: url.searchParams.get('channelUserId') ?? undefined,
+					agentId: url.searchParams.get('agentId') ?? undefined,
+					tenantId: url.searchParams.get('tenantId') ?? undefined,
+					q: url.searchParams.get('q') ?? undefined,
+					from: url.searchParams.get('from') ?? undefined,
+					to: url.searchParams.get('to') ?? undefined,
+				})
+				return json({ logs })
+			}
+
+			if (method === 'GET' && url.pathname === '/logs/stream') {
+				const sourceFilter = parseLogSource(url.searchParams.get('source'))
+				const typeFilter = url.searchParams.get('type') ?? undefined
+				const levelFilter = parseLogLevel(url.searchParams.get('level'))
+				const sessionIdFilter = url.searchParams.get('sessionId') ?? undefined
+				const channelIdFilter = url.searchParams.get('channelId') ?? undefined
+				const channelUserIdFilter = url.searchParams.get('channelUserId') ?? undefined
+				const agentIdFilter = url.searchParams.get('agentId') ?? undefined
+				const qFilter = url.searchParams.get('q')?.trim().toLowerCase() ?? ''
+
+				const matchesFilter = (record: UnifiedLogRecord): boolean => {
+					if (sourceFilter && record.source !== sourceFilter) return false
+					if (typeFilter && record.type !== typeFilter) return false
+					if (levelFilter && record.level !== levelFilter) return false
+					if (sessionIdFilter && record.sessionId !== sessionIdFilter) return false
+					if (channelIdFilter && record.channelId !== channelIdFilter) return false
+					if (channelUserIdFilter && record.channelUserId !== channelUserIdFilter) return false
+					if (agentIdFilter && record.agentId !== agentIdFilter) return false
+					if (qFilter) {
+						const metadataText = record.metadata ? JSON.stringify(record.metadata).toLowerCase() : ''
+						const haystack = `${record.message} ${metadataText}`.toLowerCase()
+						if (!haystack.includes(qFilter)) return false
+					}
+					return true
+				}
+
+				const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
+				const writer = writable.getWriter()
+				const send = async (event: string, data: unknown) => writer.write(sseEvent(event, data)).catch(() => { })
+
+				const recentLimit = Number.parseInt(url.searchParams.get('recent') ?? '50', 10)
+				const recent = listUnifiedLogs({ limit: Number.isFinite(recentLimit) ? recentLimit : 50 })
+					.reverse()
+					.filter(matchesFilter)
+				for (const record of recent) {
+					await send('log', record)
+				}
+
+				const unsubscribe = onUnifiedLogEvent((record) => {
+					if (!matchesFilter(record)) return
+					void send('log', record)
+				})
+
+				const heartbeatTimer = setInterval(async () => {
+					await send('heartbeat', {})
+				}, 15_000)
+
+				req.signal?.addEventListener('abort', () => {
+					unsubscribe()
+					clearInterval(heartbeatTimer)
+					void writer.close()
+				})
+
+				return new Response(readable, {
+					headers: cors({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' }),
+				})
+			}
+
 			if (method === 'GET' && url.pathname === '/usage') {
 				return json(buildUsageSummary())
 			}
@@ -770,6 +941,16 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			if ((method === 'GET' || method === 'POST') && url.pathname === '/session') {
 				const body = await req.json() as any
 				const session = aiService.createSession({ id: body.id, model: body.model, channelId: body.channelId, channelUserId: body.channelUserId, agentId: body.agentId })
+				emitLogEvent({
+					source: 'daemon',
+					type: 'session_created',
+					level: 'info',
+					sessionId: session.id,
+					channelId: session.channelId,
+					channelUserId: session.channelUserId,
+					agentId: session.agentId,
+					message: `Session created via API: ${session.id}`,
+				})
 				return json({ sessionId: session.id, model: session.model })
 			}
 
@@ -781,7 +962,18 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 
 			if (method === 'DELETE' && url.pathname.startsWith('/session/') && !url.pathname.endsWith('/stream')) {
 				const id = url.pathname.split('/')[2]!
+				const existing = aiService.getSession(id)
 				aiService.deleteSession(id)
+				emitLogEvent({
+					source: 'daemon',
+					type: 'session_deleted',
+					level: 'info',
+					sessionId: id,
+					channelId: existing?.channelId,
+					channelUserId: existing?.channelUserId,
+					agentId: existing?.agentId,
+					message: `Session deleted: ${id}`,
+				})
 				return json({ ok: true })
 			}
 

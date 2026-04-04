@@ -1,6 +1,7 @@
 import { db } from './db'
 import { getEstimatedCost } from './pricing'
 import { recordUsage } from './usageRolling'
+import { emitLogEvent } from './unifiedLogging'
 
 export interface AiLogPayload {
 	timestamp: string
@@ -80,6 +81,8 @@ export function logAiRequest(payload: AiLogPayload): number | undefined {
 			providerCostUsd,
 		)
 
+		const aiLogId = result.lastInsertRowid as number
+
 		// Increment rolling 30-day usage summary
 		recordUsage({
 			model: payload.model,
@@ -91,7 +94,32 @@ export function logAiRequest(payload: AiLogPayload): number | undefined {
 			agentId: payload.agentId,
 		})
 
-		return result.lastInsertRowid as number
+		emitLogEvent({
+			timestamp: payload.timestamp,
+			source: 'ai',
+			type: `request_${payload.action}`,
+			level: 'info',
+			sessionId: payload.sessionId,
+			channelId: payload.channelId,
+			agentId: payload.agentId,
+			tenantId: payload.tenantId,
+			aiLogId,
+			message: `AI ${payload.action} completed on ${payload.model}`,
+			metadata: {
+				model: payload.model,
+				provider: payload.provider,
+				durationMs: payload.durationMs,
+				tokens: payload.tokens ?? {},
+				estimatedCostUsd: finalCostUsd,
+				systemPromptText: payload.systemPromptText ?? null,
+				requestInputMessages: payload.requestInputMessages ?? [],
+				toolCalls: payload.toolCalls ?? [],
+				toolResults: payload.toolResults ?? [],
+				response: payload.response,
+			},
+		})
+
+		return aiLogId
 	} catch (err) {
 		console.error('⚠️  Failed to write AI request log:', err)
 		return undefined

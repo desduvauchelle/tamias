@@ -21,6 +21,7 @@ import { buildSystemPrompt, updatePersonaFiles, writePersonaFile, appendDailyLog
 import { saveSessionToDisk, type SessionPersist, listAllStoredSessions, loadSessionFromDisk } from '../utils/sessions'
 import { db } from '../utils/db'
 import { logAiRequest } from '../utils/logger'
+import { emitLogEvent } from '../utils/unifiedLogging'
 import type { DaemonEvent, BridgeMessage } from '../bridge/types'
 import { BridgeManager } from '../bridge'
 import { findAgent, getAgentDir, resolveAgentModelChain } from '../utils/agentsStore'
@@ -1075,6 +1076,17 @@ Important: Post at least one progress comment before your final result so the us
 							for (const tc of toolCalls) {
 								collectedToolCalls.push({ toolName: tc.toolName, input: sanitizeForLog((tc as any).input ?? {}) })
 								session.emitter.emit('event', { type: 'tool_call', name: tc.toolName, input: (tc as any).input ?? {} } as DaemonEvent)
+								emitLogEvent({
+									source: 'tool',
+									type: 'tool_call',
+									level: 'info',
+									sessionId: session.id,
+									channelId: session.channelId,
+									channelUserId: session.channelUserId,
+									agentId: session.agentId,
+									message: `Tool called: ${tc.toolName}`,
+									metadata: { input: sanitizeForLog((tc as any).input ?? {}) },
+								})
 							}
 						}
 						if (toolResults?.length) {
@@ -1082,6 +1094,17 @@ Important: Post at least one progress comment before your final result so the us
 								collectedToolResults.push({ toolName: tr.toolName, result: sanitizeForLog(tr.result) })
 								// Emit tool_result event
 								session.emitter.emit('event', { type: 'tool_result', name: tr.toolName, result: tr.result } as DaemonEvent)
+								emitLogEvent({
+									source: 'tool',
+									type: 'tool_result',
+									level: 'info',
+									sessionId: session.id,
+									channelId: session.channelId,
+									channelUserId: session.channelUserId,
+									agentId: session.agentId,
+									message: `Tool result: ${tr.toolName}`,
+									metadata: { result: sanitizeForLog(tr.result) },
+								})
 
 								// Also emit file events for tools returning { __tamias_file__: true, name, buffer, mimeType }
 								const res = tr?.result
