@@ -1,10 +1,13 @@
 # Changelog
 
-## [Unreleased]
+## [v26.04.04.49] - 2026-04-04
 
 ### Features
 - update changelog for version v26.04.04.46; enhance WhatsAppUnofficialBridge with group discovery rate-limit handling and improve error logging in start command
 - update changelog for version v26.04.04.42; add afterAll cleanup in ffmpeg tests
+
+### Refactors
+- update changelog; reorganize feature entries and improve test isolation in auto-recall and coder-agent tests
 
 ## [v26.04.04.46] - 2026-04-04
 

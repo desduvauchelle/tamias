@@ -322,7 +322,19 @@ function convertToWav(inputBuffer: Buffer): Promise<Buffer> {
 			.audioFrequency(16000)
 			.audioChannels(1)
 			.on('error', (err) => reject(new Error(`FFmpeg error: ${err.message}. Install ffmpeg or set FFMPEG_PATH to a valid ffmpeg binary.`)))
-			.on('end', () => resolve(Buffer.concat(buffers)))
+			.on('end', () => {
+				const wav = Buffer.concat(buffers)
+				// ffmpeg piping can't seek, so RIFF/data sizes may be 0xFFFFFFFF.
+				// Patch them so sherpa-onnx-offline reads the correct sample count.
+				if (wav.length >= 44) {
+					wav.writeUInt32LE(wav.length - 8, 4)          // RIFF chunk size
+					const dataOffset = wav.indexOf('data')
+					if (dataOffset >= 0 && dataOffset + 8 <= wav.length) {
+						wav.writeUInt32LE(wav.length - dataOffset - 8, dataOffset + 4)
+					}
+				}
+				resolve(wav)
+			})
 		const stream = command.pipe()
 		stream.on('data', (chunk: Buffer) => buffers.push(chunk))
 	})
