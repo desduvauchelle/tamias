@@ -24,6 +24,8 @@ export const ConnectionConfigSchema = z.object({
 	provider: ProviderEnum,
 	/** The name of the environment variable (in .env) that holds the API key or Access Token */
 	envKeyName: z.string().optional(),
+	/** User-facing description (e.g. "Personal token from OpenRouter dashboard") */
+	description: z.string().optional(),
 
 	baseUrl: z.string().url().optional().or(z.literal('')),
 	// User-selected models for this connection

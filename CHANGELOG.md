@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.04.05.2] - 2026-04-05
+
+### Features
+- update changelog for version v26.04.04.50; enhance transcription logic to handle JSON output format and add test for text extraction
+
 ## [v26.04.05.1] - 2026-04-05
 
 ### Features

@@ -91,6 +91,16 @@ Manage recurring cron jobs and heartbeats
 | `tamias cron install` | Install the system crontab entry to run cron jobs every minute |
 | `tamias cron uninstall` | Remove the system crontab entry |
 
+### `tamias ollama`
+
+Manage local Ollama models
+
+| Command | Description |
+|---|---|
+| `tamias ollama` | Manage local Ollama models |
+| `tamias ollama list` | List locally available Ollama models (`-c, --connection <name>`) |
+| `tamias ollama pull <model>` | Pull (download) an Ollama model (`-c, --connection <name>`) |
+
 ### `tamias inspect`
 
 Generate a debug report of the current system prompt, tools, and config
@@ -284,7 +294,7 @@ Runtime logs are centralized under `~/.tamias/logs/` (for example `daemon.log`, 
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.05.1)
+### Latest Version (v26.04.05.2)
 
 ### Features
-- update changelog for version v26.04.04.49; enhance README and transcription logic with refactor for WAV buffer handling
+- update changelog for version v26.04.04.50; enhance transcription logic to handle JSON output format and add test for text extraction

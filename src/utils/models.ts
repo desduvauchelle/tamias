@@ -109,7 +109,7 @@ const fetchOpenRouterModels = async (apiKey: string): Promise<ProviderModel[]> =
 		.sort((a, b) => a.id.localeCompare(b.id))
 }
 
-const fetchOllamaModels = async (baseUrl?: string): Promise<ProviderModel[]> => {
+export const fetchOllamaModels = async (baseUrl?: string): Promise<ProviderModel[]> => {
 	const base = baseUrl || 'http://127.0.0.1:11434'
 	const normalizedBase = base.replace(/\/$/, '')
 
@@ -125,5 +125,59 @@ const fetchOllamaModels = async (baseUrl?: string): Promise<ProviderModel[]> => 
 		if (!res.ok) throw new Error(`Ollama API error: ${res.status}`)
 		const data = await res.json() as { models: { name: string }[] }
 		return data.models.map((m) => ({ id: m.name, name: m.name }))
+	}
+}
+
+export interface OllamaPullProgress {
+	status: string
+	digest?: string
+	total?: number
+	completed?: number
+}
+
+/**
+ * Pull (download) a model from the Ollama registry.
+ * Ollama's POST /api/pull is a streaming NDJSON endpoint.
+ * Returns an async generator yielding progress objects.
+ */
+export async function* pullOllamaModel(
+	modelName: string,
+	baseUrl?: string
+): AsyncGenerator<OllamaPullProgress> {
+	const base = (baseUrl || 'http://127.0.0.1:11434').replace(/\/$/, '')
+	const res = await fetch(`${base}/api/pull`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ name: modelName, stream: true }),
+	})
+	if (!res.ok) {
+		throw new Error(`Ollama pull failed: ${res.status} ${res.statusText}`)
+	}
+	if (!res.body) {
+		throw new Error('Ollama pull response has no body')
+	}
+
+	const reader = res.body.getReader()
+	const decoder = new TextDecoder()
+	let buffer = ''
+
+	while (true) {
+		const { done, value } = await reader.read()
+		if (done) break
+		buffer += decoder.decode(value, { stream: true })
+		const lines = buffer.split('\n')
+		buffer = lines.pop() ?? ''
+		for (const line of lines) {
+			const trimmed = line.trim()
+			if (!trimmed) continue
+			try {
+				yield JSON.parse(trimmed) as OllamaPullProgress
+			} catch { /* skip malformed JSON lines */ }
+		}
+	}
+	if (buffer.trim()) {
+		try {
+			yield JSON.parse(buffer.trim()) as OllamaPullProgress
+		} catch { /* ignore */ }
 	}
 }

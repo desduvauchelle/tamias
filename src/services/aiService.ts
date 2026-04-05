@@ -1345,7 +1345,7 @@ Important: Post at least one progress comment before your final result so the us
 				})
 			}
 			case 'ollama': {
-				let baseURL = (connection as any).baseUrl || 'http://127.0.0.1:11434'
+				let baseURL = connection.baseUrl || 'http://127.0.0.1:11434'
 				baseURL = baseURL.replace(/\/$/, '')
 				if (!baseURL.endsWith('/v1')) baseURL += '/v1'
 				return createOpenAI({ baseURL, apiKey: apiKey || 'ollama' }).chat(modelId)

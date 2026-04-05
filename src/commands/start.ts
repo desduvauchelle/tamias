@@ -1503,6 +1503,72 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				}
 			}
 
+			// ── Ollama Endpoints ─────────────────────────────────────
+
+			// GET /ollama/models — list locally available Ollama models
+			if (method === 'GET' && url.pathname === '/ollama/models') {
+				try {
+					const nickname = url.searchParams.get('connection')
+					const cfg = loadConfig()
+					let baseUrl = 'http://127.0.0.1:11434'
+					if (nickname) {
+						const conn = cfg.connections[nickname]
+						if (!conn) return json({ error: `Connection '${nickname}' not found` }, 404)
+						if (conn.provider !== 'ollama') return json({ error: `Connection '${nickname}' is not an Ollama connection` }, 400)
+						if (conn.baseUrl) baseUrl = conn.baseUrl
+					}
+					const { fetchOllamaModels } = await import('../utils/models.ts')
+					const models = await fetchOllamaModels(baseUrl)
+					return json({ models })
+				} catch (err) {
+					return json({ error: String(err) }, 500)
+				}
+			}
+
+			// POST /ollama/pull — stream model pull progress as NDJSON
+			if (method === 'POST' && url.pathname === '/ollama/pull') {
+				try {
+					const body = await req.json() as { model?: string; connection?: string }
+					if (!body.model) return json({ error: 'model is required' }, 400)
+
+					const cfg = loadConfig()
+					let baseUrl = 'http://127.0.0.1:11434'
+					if (body.connection) {
+						const conn = cfg.connections[body.connection]
+						if (!conn) return json({ error: `Connection '${body.connection}' not found` }, 404)
+						if (conn.provider !== 'ollama') return json({ error: 'Not an Ollama connection' }, 400)
+						if (conn.baseUrl) baseUrl = conn.baseUrl
+					}
+
+					const { pullOllamaModel } = await import('../utils/models.ts')
+					const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
+					const writer = writable.getWriter()
+					const enc = new TextEncoder()
+
+					;(async () => {
+						try {
+							for await (const progress of pullOllamaModel(body.model!, baseUrl)) {
+								await writer.write(enc.encode(JSON.stringify(progress) + '\n'))
+							}
+						} catch (err) {
+							await writer.write(enc.encode(JSON.stringify({ status: 'error', error: String(err) }) + '\n'))
+						} finally {
+							await writer.close()
+						}
+					})()
+
+					return new Response(readable, {
+						status: 200,
+						headers: cors({
+							'Content-Type': 'application/x-ndjson',
+							'Cache-Control': 'no-cache',
+						}),
+					})
+				} catch (err) {
+					return json({ error: String(err) }, 500)
+				}
+			}
+
 			return json({ error: 'Not found' }, 404)
 		},
 	})

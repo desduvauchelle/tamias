@@ -5,6 +5,7 @@ import { runStatusCommand } from './commands/status.ts'
 import { runDoctorCommand } from './commands/doctor.ts'
 import { runUpdateCommand } from './commands/update.ts'
 import { cronCommand } from './commands/cron.ts'
+import { ollamaCommand } from './commands/ollama.ts'
 import { runInspectCommand } from './commands/inspect.ts'
 import { VERSION } from './utils/version.ts'
 
@@ -16,6 +17,7 @@ program
 	.version(VERSION, '-v, --version')
 
 program.addCommand(cronCommand)
+program.addCommand(ollamaCommand)
 
 // ─── tamias inspect ───────────────────────────────────────────────────────────
 program
