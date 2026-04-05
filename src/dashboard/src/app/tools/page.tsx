@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Modal } from '../_components/Modal'
+import { moveModelPreference, reorderModelPreferences } from './modelPreferences'
 
 export type ToolFunctionConfig = {
 	enabled: boolean
@@ -669,6 +670,7 @@ function ImageToolCard({
 }) {
 	const [newModel, setNewModel] = useState('')
 	const [isModalOpen, setIsModalOpen] = useState(false)
+	const [draggingModelIndex, setDraggingModelIndex] = useState<number | null>(null)
 
 	const toggleFunction = (fnName: string, fnConfig: ToolFunctionConfig) => {
 		const updatedFns = { ...(config.functions || {}), [fnName]: fnConfig }
@@ -687,12 +689,21 @@ function ImageToolCard({
 	}
 
 	const moveModel = (index: number, direction: -1 | 1) => {
-		const next = [...defaultImageModels]
-		const target = index + direction
-		if (target < 0 || target >= next.length) return
-		const [item] = next.splice(index, 1)
-		next.splice(target, 0, item)
-		onModelsChange(next)
+		onModelsChange(moveModelPreference(defaultImageModels, index, direction))
+	}
+
+	const startDraggingModel = (index: number) => {
+		setDraggingModelIndex(index)
+	}
+
+	const clearDraggingModel = () => {
+		setDraggingModelIndex(null)
+	}
+
+	const dropModelAt = (targetIndex: number) => {
+		if (draggingModelIndex === null) return
+		onModelsChange(reorderModelPreferences(defaultImageModels, draggingModelIndex, targetIndex))
+		setDraggingModelIndex(null)
 	}
 
 	return (
@@ -734,32 +745,54 @@ function ImageToolCard({
 						<label className="text-[10px] uppercase font-bold text-base-content/40 ml-1">Default Image Models (priority order)</label>
 						<div className="space-y-1.5">
 							{defaultImageModels.map((model, index) => (
-								<div key={`${model}-${index}`} className="flex items-center gap-1.5 p-2 bg-base-300/30 rounded-lg border border-base-content/5">
-									<span className="text-[10px] font-mono text-base-content/60 w-5 text-center">{index + 1}</span>
-									<span className="font-mono text-xs flex-1 truncate">{model}</span>
-									<button
-										onClick={() => moveModel(index, -1)}
-										className="btn btn-xs btn-ghost btn-square"
-										disabled={index === 0}
-										title="Move up"
-									>
-										↑
-									</button>
-									<button
-										onClick={() => moveModel(index, 1)}
-										className="btn btn-xs btn-ghost btn-square"
-										disabled={index === defaultImageModels.length - 1}
-										title="Move down"
-									>
-										↓
-									</button>
-									<button
-										onClick={() => removeModel(index)}
-										className="btn btn-xs btn-ghost btn-square text-error"
-										title="Remove"
-									>
-										✕
-									</button>
+								<div
+									key={`${model}-${index}`}
+									draggable
+									onDragStart={() => startDraggingModel(index)}
+									onDragOver={e => e.preventDefault()}
+									onDrop={() => dropModelAt(index)}
+									onDragEnd={clearDraggingModel}
+									className={`p-2 bg-base-300/30 rounded-lg border transition-colors ${draggingModelIndex === index ? 'border-primary/50 bg-primary/5 opacity-70' : 'border-base-content/5'}`}
+								>
+									<div className="flex items-center gap-1.5">
+										<span className="text-[10px] font-mono text-base-content/60 w-5 text-center">{index + 1}</span>
+										<button
+											type="button"
+											className="btn btn-xs btn-ghost btn-square cursor-grab active:cursor-grabbing"
+											title="Drag to reorder"
+											aria-label={`Drag model ${model}`}
+										>
+											⋮⋮
+										</button>
+										<button
+											onClick={() => removeModel(index)}
+											className="btn btn-xs btn-ghost btn-square text-error ml-auto"
+											title="Remove"
+										>
+											✕
+										</button>
+									</div>
+									<div className="mt-1 px-1">
+										<span className="font-mono text-xs break-all">{model}</span>
+									</div>
+									<div className="mt-2 flex justify-end gap-1.5">
+										<button
+											onClick={() => moveModel(index, -1)}
+											className="btn btn-xs btn-ghost"
+											disabled={index === 0}
+											title="Move up"
+										>
+											Move up
+										</button>
+										<button
+											onClick={() => moveModel(index, 1)}
+											className="btn btn-xs btn-ghost"
+											disabled={index === defaultImageModels.length - 1}
+											title="Move down"
+										>
+											Move down
+										</button>
+									</div>
 								</div>
 							))}
 						</div>
@@ -1247,6 +1280,27 @@ export default function ToolsPage() {
 							onChange={(u) => updateInternalTool(id, u)}
 						/>
 					))}
+				</div>
+
+				<div className="card bg-base-200 border border-primary/20">
+					<div className="card-body p-4">
+						<div className="flex items-center justify-between mb-2">
+							<h3 className="font-mono font-bold text-sm text-primary uppercase">Model Preferences</h3>
+							<span className="text-[10px] text-base-content/50 uppercase">{defaultImageModels.length} models</span>
+						</div>
+						<div className="space-y-2">
+							{defaultImageModels.length === 0 && (
+								<div className="text-xs text-base-content/50">No preferred image models configured.</div>
+							)}
+							{defaultImageModels.map((model, index) => (
+								<div key={`row-${model}-${index}`} className="p-2 rounded-lg bg-base-300/30 border border-base-content/5">
+									<div className="text-[10px] text-base-content/50 font-mono mb-1">#{index + 1}</div>
+									<div className="font-mono text-xs break-all">{model}</div>
+								</div>
+							))}
+						</div>
+						<p className="text-[10px] text-base-content/40 mt-3">Edit and reorder in Image Generation → Edit Details (drag and drop).</p>
+					</div>
 				</div>
 			</section>
 

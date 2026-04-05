@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.04.05.1] - 2026-04-05
+
+### Features
+- update changelog for version v26.04.04.49; enhance README and transcription logic with refactor for WAV buffer handling
+
 ## [v26.04.04.50] - 2026-04-04
 
 ### Features

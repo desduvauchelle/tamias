@@ -284,7 +284,7 @@ Runtime logs are centralized under `~/.tamias/logs/` (for example `daemon.log`, 
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.04.50)
+### Latest Version (v26.04.05.1)
 
 ### Features
-- enhance transcription logic to handle dylib load failures by deleting the binary and resetting download state
+- update changelog for version v26.04.04.49; enhance README and transcription logic with refactor for WAV buffer handling
