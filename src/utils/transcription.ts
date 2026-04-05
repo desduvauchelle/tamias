@@ -372,6 +372,12 @@ export async function transcribeAudioBuffer(buffer: Buffer): Promise<string> {
 		const code = await proc.exited
 		if (code !== 0) {
 			const stderr = await new Response(proc.stderr ?? new ReadableStream()).text()
+			// If dylib is missing, the binary is a shared build — delete it so next call re-downloads static
+			if (stderr.includes('Library not loaded') || stderr.includes('libonnxruntime')) {
+				console.log('[Transcription] Detected missing shared library — deleting binary to force static re-download')
+				try { unlinkSync(join(dir, 'sherpa-onnx-offline')) } catch { }
+				_downloadState.promise = null
+			}
 			throw new Error(`sherpa-onnx-offline failed (exit ${code}): ${stderr}`)
 		}
 

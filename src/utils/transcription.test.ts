@@ -11,7 +11,7 @@
 
 import { describe, test, expect, mock, beforeEach } from 'bun:test'
 import { PassThrough } from 'stream'
-import { mkdirSync, writeFileSync, readdirSync, rmSync } from 'fs'
+import { mkdirSync, writeFileSync, readdirSync, rmSync, existsSync } from 'fs'
 import { join, dirname } from 'path'
 import { tmpdir } from 'os'
 import { getConfigFilePath } from './config.ts'
@@ -72,7 +72,7 @@ const ffmpegFactory = function (_input: any) {
 	mockFfmpegCommand._errHandler = null
 	return mockFfmpegCommand
 } as any
-ffmpegFactory.setFfmpegPath = () => {}
+ffmpegFactory.setFfmpegPath = () => { }
 
 mock.module('fluent-ffmpeg', () => ({ default: ffmpegFactory }))
 mock.module('ffmpeg-static', () => ({ default: '/usr/bin/ffmpeg' }))
@@ -295,6 +295,20 @@ describe('transcribeAudioBuffer', () => {
 				.rejects.toThrow('sherpa-onnx-offline failed')
 		})
 
+		test('deletes binary and resets download state on dylib load failure', async () => {
+			_bunSpawn.fn = mock(() => makeMockProc('', 134,
+				'dyld[123]: Library not loaded: @rpath/libonnxruntime.1.23.2.dylib'))
+
+			const dir = getParakeetDir()
+
+			await expect(transcribeAudioBuffer(Buffer.from('fake ogg')))
+				.rejects.toThrow('sherpa-onnx-offline failed')
+
+			// Binary should have been deleted so next call re-downloads the static build
+			expect(existsSync(join(dir, 'sherpa-onnx-offline'))).toBe(false)
+			expect(_downloadState.promise).toBeNull()
+		})
+
 		test('temp wav file is deleted even when subprocess throws', async () => {
 			_bunSpawn.fn = mock(() => { throw new Error('spawn failed') })
 
@@ -327,7 +341,7 @@ describe('ensureModelReady', () => {
 		let fetchCallCount = 0
 		_httpFetch.fn = mock(async () => {
 			fetchCallCount++
-			return new Promise<Response>(() => {}) // never resolves — holds download open
+			return new Promise<Response>(() => { }) // never resolves — holds download open
 		})
 
 		// Start two concurrent calls (no await — we're inspecting mid-flight state)
@@ -442,7 +456,7 @@ describe('prefetchModelInBackground', () => {
 	})
 
 	test('sets _downloadState.promise when model files are absent', () => {
-		_httpFetch.fn = mock(async () => new Promise<Response>(() => {})) // never resolves
+		_httpFetch.fn = mock(async () => new Promise<Response>(() => { })) // never resolves
 
 		prefetchModelInBackground()
 
@@ -453,7 +467,7 @@ describe('prefetchModelInBackground', () => {
 		let fetchCallCount = 0
 		_httpFetch.fn = mock(async () => {
 			fetchCallCount++
-			return new Promise<Response>(() => {})
+			return new Promise<Response>(() => { })
 		})
 
 		prefetchModelInBackground()
@@ -468,7 +482,7 @@ describe('prefetchModelInBackground', () => {
 		prefetchModelInBackground()
 		expect(_downloadState.promise).not.toBeNull()
 
-		await _downloadState.promise?.catch(() => {})
+		await _downloadState.promise?.catch(() => { })
 		await new Promise(r => setTimeout(r, 0))
 
 		expect(_downloadState.promise).toBeNull()
