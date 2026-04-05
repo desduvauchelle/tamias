@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+- implement log pagination and README management
+
 ## [v26.04.05.4] - 2026-04-05
 
 ### Features

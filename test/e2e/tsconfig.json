@@ -6,7 +6,7 @@
 			"node"
 		],
 		"moduleResolution": "node",
-		"allowImportingTsExtensions": false,
+		"allowImportingTsExtensions": true,
 		"verbatimModuleSyntax": false
 	},
 	"include": [

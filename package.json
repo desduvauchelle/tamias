@@ -1,6 +1,6 @@
 {
 	"name": "tamias",
-	"version": "26.04.05.6",
+	"version": "26.04.05.7",
 	"module": "src/index.ts",
 	"type": "module",
 	"bin": {
@@ -24,6 +24,7 @@
 		"test": "bun test --preload ./src/tests/setup.ts src/tests/*.test.ts src/utils/*.test.ts",
 		"test:e2e": "bunx playwright test",
 		"test:coverage": "bun test --coverage --preload ./src/tests/setup.ts src/tests/*.test.ts src/utils/*.test.ts",
+		"coverage": "bun run test:coverage",
 		"test:integration": "./test/integration/run.sh",
 		"test:onboarding": "./docker/test-onboarding.sh",
 		"test:onboarding:rebuild": "./docker/test-onboarding.sh --rebuild",
