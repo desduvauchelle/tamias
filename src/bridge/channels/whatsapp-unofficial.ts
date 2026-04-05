@@ -48,6 +48,17 @@ const RECONNECT = {
 	maxAttempts: 12,
 }
 
+// ─── Group Discovery Policy ──────────────────────────────────────────────────
+
+const GROUP_DISCOVERY = {
+	/** Minimum interval between successful discovery calls (ms) */
+	minIntervalMs: 5 * 60_000,
+	/** After this many consecutive 429 failures, stop automatic discovery */
+	maxConsecutive429: 3,
+	/** Cooldown after hitting the circuit breaker (ms) */
+	cooldownMs: 30 * 60_000,
+}
+
 function computeBackoff(attempt: number): number {
 	const base = Math.min(RECONNECT.initialMs * Math.pow(RECONNECT.factor, attempt), RECONNECT.maxMs)
 	const jitter = base * RECONNECT.jitter * (Math.random() * 2 - 1)
@@ -77,6 +88,9 @@ export class WhatsAppUnofficialBridge implements IBridge {
 	private isDestroying = false
 	private availableGroups: AvailableGroup[] = []
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+	private lastGroupDiscoveryAt = 0
+	private consecutive429s = 0
+	private groupDiscoveryCooldownUntil = 0
 
 	constructor(instanceKey: string) {
 		this.instanceKey = instanceKey
@@ -306,8 +320,23 @@ export class WhatsAppUnofficialBridge implements IBridge {
 
 	// ─── Group Discovery ────────────────────────────────────────────────────────
 
+	/**
+	 * Returns true if group discovery is currently allowed based on
+	 * throttle interval and circuit-breaker state.
+	 */
+	private isGroupDiscoveryAllowed(): boolean {
+		const now = Date.now()
+		if (this.groupDiscoveryCooldownUntil > now) return false
+		if (now - this.lastGroupDiscoveryAt < GROUP_DISCOVERY.minIntervalMs) return false
+		return true
+	}
+
 	async discoverGroups(): Promise<AvailableGroup[]> {
 		if (!this.sock || this.connectionStatus !== 'connected') {
+			return this.availableGroups
+		}
+
+		if (!this.isGroupDiscoveryAllowed()) {
 			return this.availableGroups
 		}
 
@@ -319,12 +348,37 @@ export class WhatsAppUnofficialBridge implements IBridge {
 				participantCount: meta.participants?.length ?? 0,
 			}))
 
+			// Success — reset circuit breaker and record timestamp
+			this.consecutive429s = 0
+			this.lastGroupDiscoveryAt = Date.now()
 			console.log(`[WA-Unofficial:${this.instanceKey}] Discovered ${this.availableGroups.length} groups`)
 			return this.availableGroups
-		} catch (err) {
-			console.error(`[WA-Unofficial:${this.instanceKey}] Group discovery failed:`, err)
+		} catch (err: unknown) {
+			// Detect 429 rate-limit errors
+			const is429 = this.isRateLimitError(err)
+			if (is429) {
+				this.consecutive429s++
+				console.warn(`[WA-Unofficial:${this.instanceKey}] Group discovery rate-limited (429) — consecutive: ${this.consecutive429s}/${GROUP_DISCOVERY.maxConsecutive429}`)
+				if (this.consecutive429s >= GROUP_DISCOVERY.maxConsecutive429) {
+					this.groupDiscoveryCooldownUntil = Date.now() + GROUP_DISCOVERY.cooldownMs
+					console.warn(`[WA-Unofficial:${this.instanceKey}] Group discovery paused for ${GROUP_DISCOVERY.cooldownMs / 60_000}min after ${this.consecutive429s} consecutive 429s`)
+				}
+			} else {
+				console.error(`[WA-Unofficial:${this.instanceKey}] Group discovery failed:`, err)
+			}
 			return this.availableGroups
 		}
+	}
+
+	private isRateLimitError(err: unknown): boolean {
+		if (!err || typeof err !== 'object') return false
+		const str = String(err)
+		if (str.includes('rate-overlimit') || str.includes('429')) return true
+		const anyErr = err as Record<string, unknown>
+		if (anyErr.statusCode === 429) return true
+		const output = (anyErr as any).output
+		if (output && typeof output === 'object' && output.statusCode === 429) return true
+		return false
 	}
 
 	listAvailableGroups(): AvailableGroup[] {
@@ -656,6 +710,8 @@ export class WhatsAppUnofficialBridge implements IBridge {
 		this.connectionStatus = 'disconnected'
 		this.currentQr = null
 		this.availableGroups = []
+		this.consecutive429s = 0
+		this.groupDiscoveryCooldownUntil = 0
 
 		// Remove from config
 		try {

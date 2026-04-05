@@ -233,7 +233,7 @@ function NavContent({ onNewProject }: NavContentProps) {
 					<div className="w-7 h-7 rounded-md bg-success flex items-center justify-center">
 						<Cpu className="w-4 h-4 text-success-content" />
 					</div>
-					<span className="font-bold text-base-content tracking-wide font-mono">TamiasOS <small className="opacity-20">i4</small></span>
+					<span className="font-bold text-base-content tracking-wide font-mono">TamiasOS <small className="opacity-20">i5</small></span>
 				</div>
 			</div>
 

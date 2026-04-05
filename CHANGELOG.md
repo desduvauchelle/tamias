@@ -1,8 +1,9 @@
 # Changelog
 
-## [Unreleased]
+## [v26.04.04.46] - 2026-04-04
 
 ### Features
+- update changelog; fix ffmpeg configuration logic and add retry mechanism in transcription tests
 - update changelog for version v26.04.04.42; enhance LiveLogsPage with pagination and live toggle functionality
 - Implement list and filter functionality in VectorStore
 

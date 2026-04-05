@@ -211,3 +211,178 @@ describe('WhatsAppUnofficialBridge mention-only filtering', () => {
 		expect(onMessage).toHaveBeenCalledTimes(1)
 	})
 })
+
+describe('WhatsAppUnofficialBridge group discovery rate-limit handling', () => {
+	let authDir = ''
+	let logSpy: ReturnType<typeof spyOn>
+	let warnSpy: ReturnType<typeof spyOn>
+	let errorSpy: ReturnType<typeof spyOn>
+
+	beforeEach(() => {
+		createdSockets.length = 0
+		authDir = join(tmpdir(), `tamias-wa-auth-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+		if (!existsSync(authDir)) mkdirSync(authDir, { recursive: true })
+		writeFileSync(join(authDir, 'creds.json'), JSON.stringify({ me: 'ok' }))
+		logSpy = spyOn(console, 'log').mockImplementation(() => { })
+		warnSpy = spyOn(console, 'warn').mockImplementation(() => { })
+		errorSpy = spyOn(console, 'error').mockImplementation(() => { })
+	})
+
+	afterEach(() => {
+		logSpy.mockRestore()
+		warnSpy.mockRestore()
+		errorSpy.mockRestore()
+		rmSync(authDir, { recursive: true, force: true })
+	})
+
+	function makeBridge() {
+		return new WhatsAppUnofficialBridge('default')
+	}
+
+	function resetThrottle(bridge: WhatsAppUnofficialBridge) {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const b = bridge as any
+		b.lastGroupDiscoveryAt = 0
+	}
+
+	function setConnected(bridge: WhatsAppUnofficialBridge) {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const b = bridge as any
+		b.connectionStatus = 'connected'
+	}
+
+	async function initBridge(bridge: WhatsAppUnofficialBridge) {
+		await bridge.initialize({
+			version: '1.0',
+			connections: {},
+			debug: false,
+			ngrok: { enabled: false },
+			bridges: {
+				terminal: { enabled: true },
+				whatsappUnofficials: {
+					default: { enabled: true, authDir },
+				},
+			},
+		}, async () => true)
+	}
+
+	test('throttles group discovery within minInterval', async () => {
+		const bridge = makeBridge()
+		await initBridge(bridge)
+		expect(createdSockets.length).toBe(1)
+
+		let fetchCount = 0
+		createdSockets[0].groupFetchAllParticipating = async () => {
+			fetchCount++
+			return { 'group1@g.us': { subject: 'Test', participants: [] } }
+		}
+
+		// Simulate connection open to trigger first discovery
+		await createdSockets[0].ev.emit('connection.update', { connection: 'open' })
+		expect(fetchCount).toBe(1)
+
+		// Second call immediately — should be throttled
+		const groups = await bridge.discoverGroups()
+		expect(fetchCount).toBe(1) // Not incremented
+		expect(groups.length).toBe(1) // Returns cached data
+	})
+
+	test('detects 429 rate-limit errors and logs warning instead of error', async () => {
+		const bridge = makeBridge()
+		await initBridge(bridge)
+
+		createdSockets[0].groupFetchAllParticipating = async () => {
+			throw new Error('rate-overlimit')
+		}
+
+		// Simulate connection open — triggers discoverGroups which hits 429
+		await createdSockets[0].ev.emit('connection.update', { connection: 'open' })
+
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('rate-limited (429)'))
+		// Should NOT log via console.error for 429
+		const errorCalls = errorSpy.mock.calls.filter(
+			(args: unknown[]) => typeof args[0] === 'string' && args[0].includes('Group discovery failed')
+		)
+		expect(errorCalls.length).toBe(0)
+	})
+
+	test('activates circuit breaker after consecutive 429 failures', async () => {
+		const bridge = makeBridge()
+		await initBridge(bridge)
+
+		let fetchCount = 0
+		createdSockets[0].groupFetchAllParticipating = async () => {
+			fetchCount++
+			throw new Error('rate-overlimit')
+		}
+
+		// First call — triggers on connection open
+		await createdSockets[0].ev.emit('connection.update', { connection: 'open' })
+		expect(fetchCount).toBe(1) // 1st 429
+
+		// Manually call discoverGroups to simulate further 429s
+		// After 429 failure, connectionStatus may revert and throttle blocks,
+		// so we use helpers to reset state for testing the circuit breaker logic.
+		resetThrottle(bridge)
+		setConnected(bridge)
+		await bridge.discoverGroups() // 2nd 429
+		expect(fetchCount).toBe(2)
+
+		resetThrottle(bridge)
+		setConnected(bridge)
+		await bridge.discoverGroups() // 3rd 429 — should trigger circuit breaker
+		expect(fetchCount).toBe(3)
+
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Group discovery paused'))
+
+		// 4th attempt should be blocked by circuit breaker (cooldownUntil is in the future)
+		resetThrottle(bridge)
+		setConnected(bridge)
+		await bridge.discoverGroups()
+		expect(fetchCount).toBe(3) // Still 3, not called again
+	})
+
+	test('resets circuit breaker state on successful discovery', async () => {
+		const bridge = makeBridge()
+		await initBridge(bridge)
+
+		// Simulate 2 consecutive 429 failures
+		let shouldFail = true
+		createdSockets[0].groupFetchAllParticipating = async () => {
+			if (shouldFail) throw new Error('rate-overlimit')
+			return { 'g1@g.us': { subject: 'GroupA', participants: [] } }
+		}
+
+		await createdSockets[0].ev.emit('connection.update', { connection: 'open' })
+		expect((bridge as any).consecutive429s).toBe(1)
+
+		// Now succeed
+		shouldFail = false
+		resetThrottle(bridge)
+		setConnected(bridge)
+		const groups = await bridge.discoverGroups()
+
+		expect((bridge as any).consecutive429s).toBe(0)
+		expect(groups.length).toBe(1)
+		expect(groups[0].name).toBe('GroupA')
+	})
+
+	test('skips discovery silently on reconnect when recently discovered', async () => {
+		const bridge = makeBridge()
+		await initBridge(bridge)
+
+		let fetchCount = 0
+		createdSockets[0].groupFetchAllParticipating = async () => {
+			fetchCount++
+			return { 'g1@g.us': { subject: 'Test', participants: [] } }
+		}
+
+		// First connection open — discovery happens
+		await createdSockets[0].ev.emit('connection.update', { connection: 'open' })
+		expect(fetchCount).toBe(1)
+
+		// Simulate reconnect (close + open) — discovery should be throttled
+		await createdSockets[0].ev.emit('connection.update', { connection: 'open' })
+		expect(fetchCount).toBe(1) // Throttled — not called again
+	})
+})

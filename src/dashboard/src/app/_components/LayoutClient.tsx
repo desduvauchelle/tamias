@@ -11,10 +11,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 	const pathname = usePathname()
 	const { success, error } = useToast()
 
-	// Onboarding gets a clean layout — no sidebar, no drawer
-	if (pathname?.startsWith('/onboarding')) {
-		return <>{children}</>
-	}
+
 	const [isModalOpen, setIsModalOpen] = useState(false)
 	const [channels, setChannels] = useState<{ id: string, name: string, guildName: string, guildId: string }[]>([])
 
@@ -34,6 +31,11 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 				.catch(console.error)
 		}
 	}, [isModalOpen])
+
+	// Onboarding gets a clean layout — no sidebar, no drawer
+	if (pathname?.startsWith('/onboarding')) {
+		return <>{children}</>
+	}
 
 	const handleNameChange = (value: string) => {
 		setFormName(value)
@@ -80,8 +82,12 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 				const errorData = await res.json()
 				error(errorData.error || "Failed to save project")
 			}
-		} catch (err: any) {
-			error(err.message || "An error occurred")
+		} catch (err: unknown) {
+			if (err instanceof Error) {
+				error(err.message || "An error occurred")
+			} else {
+				error("An unknown error occurred")
+			}
 		}
 	}
 

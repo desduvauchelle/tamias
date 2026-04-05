@@ -284,7 +284,9 @@ Runtime logs are centralized under `~/.tamias/logs/` (for example `daemon.log`, 
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.04.42)
+### Latest Version (v26.04.04.46)
 
 ### Features
-- enhance LiveLogsPage with pagination and live toggle functionality; update changelog
+- update changelog; fix ffmpeg configuration logic and add retry mechanism in transcription tests
+- update changelog for version v26.04.04.42; enhance LiveLogsPage with pagination and live toggle functionality
+- Implement list and filter functionality in VectorStore

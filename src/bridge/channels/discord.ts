@@ -76,110 +76,122 @@ export class DiscordBridge implements IBridge {
 			],
 		})
 
+		this.client.on('error', (err) => {
+			console.error(`[Discord Bridge] Client error:`, err)
+		})
+
+		this.client.on('warn', (warning) => {
+			console.warn(`[Discord Bridge] Client warning:`, warning)
+		})
+
 		this.client.on(Events.MessageCreate, async (message) => {
-			if (message.author.bot) return
-			if (allowedChannels?.length && !allowedChannels.includes(message.channelId)) return
-
-			// Mode enforcement:
-			// - 'listen-only': never respond (bridge is destroyed, but guard here too)
-			// - 'mention-only': only respond when bot is mentioned
-			// - 'full' (default): respond to all messages
-			if (mode === 'listen-only') return
-			if (mode === 'mention-only') {
-				const botId = this.client?.user?.id
-				const mentioned = botId && message.mentions.users.has(botId)
-				if (!mentioned) return
-			}
-
-			// Guard against duplicate Discord gateway events (e.g. reconnect replays)
-			if (this.seenMessageIds.has(message.id)) {
-				console.warn(`[Discord Bridge] Duplicate MessageCreate for ${message.id} — ignoring`)
-				return
-			}
-			this.seenMessageIds.add(message.id)
-			// Keep the set bounded to the last 1000 messages
-			if (this.seenMessageIds.size > 1000) {
-				const oldest = this.seenMessageIds.values().next().value
-				if (oldest) this.seenMessageIds.delete(oldest)
-			}
-
-			const channelId = message.channelId
-			console.log(`[Discord Bridge] Message received in channel ${channelId} from ${message.author.username}: "${message.content.slice(0, 80)}"`)
-
-			const sessionKey = this.channelSessions.get(channelId) ?? `dc_${channelId}`
-			this.channelSessions.set(channelId, sessionKey)
-
-			// Add to queue for this channel
-			let state = this.channelStates.get(channelId)
-			if (!state) {
-				state = { queue: [], buffer: '', pendingSubagents: 0 }
-				this.channelStates.set(channelId, state)
-			}
-			state.queue.push(message)
-
-			// Queue-aware receipt reaction: 👀 when next-up, ⏳ when queued
-			const isQueued = !!state.currentMessage || state.queue.length > 1
 			try {
-				await message.react(isQueued ? '⏳' : '👀')
-			} catch { }
+				if (message.author.bot) return
+				if (allowedChannels?.length && !allowedChannels.includes(message.channelId)) return
 
-			const channelRef = message.channel
-			const discordChannelName = 'name' in channelRef ? (channelRef as { name: string }).name : null
-			const guildName = message.guild?.name ?? null
-			const channelName = discordChannelName
-				? guildName
-					? `#${discordChannelName} (${guildName})`
-					: `#${discordChannelName}`
-				: 'DM'
+				// Mode enforcement:
+				// - 'listen-only': never respond (bridge is destroyed, but guard here too)
+				// - 'mention-only': only respond when bot is mentioned
+				// - 'full' (default): respond to all messages
+				if (mode === 'listen-only') return
+				if (mode === 'mention-only') {
+					const botId = this.client?.user?.id
+					const mentioned = botId && message.mentions.users.has(botId)
+					if (!mentioned) return
+				}
 
-			const attachments: BridgeMessage['attachments'] = []
-			if (message.attachments.size > 0) {
-				for (const [_, attachment] of message.attachments) {
-					try {
-						const response = await fetch(attachment.url)
-						if (!response.ok) throw new Error(`Failed to download attachment: ${response.statusText}`)
-						const arrayBuffer = await response.arrayBuffer()
-						const buffer = Buffer.from(arrayBuffer)
+				// Guard against duplicate Discord gateway events (e.g. reconnect replays)
+				if (this.seenMessageIds.has(message.id)) {
+					console.warn(`[Discord Bridge] Duplicate MessageCreate for ${message.id} — ignoring`)
+					return
+				}
+				this.seenMessageIds.add(message.id)
+				// Keep the set bounded to the last 1000 messages
+				if (this.seenMessageIds.size > 1000) {
+					const oldest = this.seenMessageIds.values().next().value
+					if (oldest) this.seenMessageIds.delete(oldest)
+				}
 
-						const mimeType = attachment.contentType || 'application/octet-stream'
-						const attachmentName = attachment.name ?? ''
-						const isAudioByExtension = /\.(ogg|mp3|m4a|wav|flac|aac|opus|weba|webm)$/i.test(attachmentName)
-						const attachType = mimeType.startsWith('image/')
-							? 'image'
-							: (mimeType.startsWith('audio/') || mimeType === 'application/ogg' || isAudioByExtension)
-								? 'audio'
-								: 'file'
-						console.log(`[Discord Bridge] Attachment classified: name=${attachmentName || 'unknown'} type=${attachType} mime=${mimeType} size=${buffer.byteLength}`)
-						attachments.push({
-							type: attachType,
-							url: attachment.url,
-							buffer,
-							mimeType
-						})
-					} catch (err) {
-						console.error(`[Discord Bridge] Failed to download attachment ${attachment.name}:`, err)
+				const channelId = message.channelId
+				console.log(`[Discord Bridge] Message received in channel ${channelId} from ${message.author.username}: "${message.content.slice(0, 80)}"`)
+
+				const sessionKey = this.channelSessions.get(channelId) ?? `dc_${channelId}`
+				this.channelSessions.set(channelId, sessionKey)
+
+				// Add to queue for this channel
+				let state = this.channelStates.get(channelId)
+				if (!state) {
+					state = { queue: [], buffer: '', pendingSubagents: 0 }
+					this.channelStates.set(channelId, state)
+				}
+				state.queue.push(message)
+
+				// Queue-aware receipt reaction: 👀 when next-up, ⏳ when queued
+				const isQueued = !!state.currentMessage || state.queue.length > 1
+				try {
+					await message.react(isQueued ? '⏳' : '👀')
+				} catch { }
+
+				const channelRef = message.channel
+				const discordChannelName = 'name' in channelRef ? (channelRef as { name: string }).name : null
+				const guildName = message.guild?.name ?? null
+				const channelName = discordChannelName
+					? guildName
+						? `#${discordChannelName} (${guildName})`
+						: `#${discordChannelName}`
+					: 'DM'
+
+				const attachments: BridgeMessage['attachments'] = []
+				if (message.attachments.size > 0) {
+					for (const [_, attachment] of message.attachments) {
+						try {
+							const response = await fetch(attachment.url)
+							if (!response.ok) throw new Error(`Failed to download attachment: ${response.statusText}`)
+							const arrayBuffer = await response.arrayBuffer()
+							const buffer = Buffer.from(arrayBuffer)
+
+							const mimeType = attachment.contentType || 'application/octet-stream'
+							const attachmentName = attachment.name ?? ''
+							const isAudioByExtension = /\.(ogg|mp3|m4a|wav|flac|aac|opus|weba|webm)$/i.test(attachmentName)
+							const attachType = mimeType.startsWith('image/')
+								? 'image'
+								: (mimeType.startsWith('audio/') || mimeType === 'application/ogg' || isAudioByExtension)
+									? 'audio'
+									: 'file'
+							console.log(`[Discord Bridge] Attachment classified: name=${attachmentName || 'unknown'} type=${attachType} mime=${mimeType} size=${buffer.byteLength}`)
+							attachments.push({
+								type: attachType,
+								url: attachment.url,
+								buffer,
+								mimeType
+							})
+						} catch (err) {
+							console.error(`[Discord Bridge] Failed to download attachment ${attachment.name}:`, err)
+						}
 					}
 				}
-			}
 
-			const bridgeMsg: BridgeMessage = {
-				channelId: this.name,
-				channelUserId: channelId,
-				channelName,
-				authorId: message.author.id,
-				authorName: message.author.username,
-				content: message.content,
-				attachments
-			}
+				const bridgeMsg: BridgeMessage = {
+					channelId: this.name,
+					channelUserId: channelId,
+					channelName,
+					authorId: message.author.id,
+					authorName: message.author.username,
+					content: message.content,
+					attachments
+				}
 
-			console.log(`[Discord Bridge] Dispatching to onMessage with channelUserId=${channelId}${attachments.length ? ` and ${attachments.length} attachments` : ''}`)
-			const handled = await this.onMessage?.(bridgeMsg, sessionKey)
-			if (handled === false && state.queue.includes(message)) {
-				state.queue = state.queue.filter(m => m !== message)
-				console.log(`[Discord Bridge] Message rejected by onMessage, removed from queue: "${message.content.slice(0, 40)}"`)
-				// Clear receipt/legacy reactions for rejected messages
-				await this.clearStatusReactions(message)
-				await this.promoteNextQueuedMessage(state)
+				console.log(`[Discord Bridge] Dispatching to onMessage with channelUserId=${channelId}${attachments.length ? ` and ${attachments.length} attachments` : ''}`)
+				const handled = await this.onMessage?.(bridgeMsg, sessionKey)
+				if (handled === false && state.queue.includes(message)) {
+					state.queue = state.queue.filter(m => m !== message)
+					console.log(`[Discord Bridge] Message rejected by onMessage, removed from queue: "${message.content.slice(0, 40)}"`)
+					// Clear receipt/legacy reactions for rejected messages
+					await this.clearStatusReactions(message)
+					await this.promoteNextQueuedMessage(state)
+				}
+			} catch (err) {
+				console.error(`[Discord Bridge] Unhandled error in MessageCreate handler:`, err)
 			}
 		})
 

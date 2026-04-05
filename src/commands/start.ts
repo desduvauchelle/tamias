@@ -712,6 +712,11 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 		port,
 		hostname: '127.0.0.1',
 		idleTimeout: 0,
+		error(err) {
+			console.error('[Daemon HTTP] Unhandled server error:', err)
+			emitLogEvent({ source: 'error', type: 'http_server_error', level: 'error', message: `HTTP server error: ${err instanceof Error ? err.message : String(err)}` })
+			return new Response('Internal Server Error', { status: 500 })
+		},
 		async fetch(req) {
 			const url = new URL(req.url)
 			const method = req.method
@@ -1502,19 +1507,45 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 		},
 	})
 
-	process.on('SIGTERM', () => {
+	// --- Crash logging: write to file so we can diagnose daemon deaths ---
+	const crashLogPath = getLogFilePath('crash.log')
+	function writeCrashLog(label: string, err: unknown) {
+		const ts = new Date().toISOString()
+		const msg = err instanceof Error ? `${err.message}\n${err.stack}` : String(err)
+		const entry = `[${ts}] ${label}: ${msg}\n`
+		console.error(entry)
+		try { require('fs').appendFileSync(crashLogPath, entry) } catch { /* best effort */ }
+		emitLogEvent({
+			source: 'error',
+			type: label.toLowerCase().replace(/\s+/g, '_'),
+			level: 'error',
+			message: `${label}: ${msg}`,
+		})
+	}
+
+	process.on('uncaughtException', (err) => {
+		writeCrashLog('Uncaught Exception', err)
+		// Attempt graceful shutdown
+		bridgeManager.destroyAll().catch(() => {})
+		clearDaemonInfo()
+		process.exit(1)
+	})
+
+	process.on('unhandledRejection', (reason) => {
+		writeCrashLog('Unhandled Rejection', reason)
+	})
+
+	const gracefulShutdown = async (signal: string) => {
+		console.log(`[Daemon] Received ${signal}, shutting down...`)
 		clearInterval(cronSchedulerTimer)
+		await bridgeManager.destroyAll().catch((err) => console.error('[Daemon] Error during bridge teardown:', err))
 		if (dashboardProc) { try { dashboardProc.kill() } catch { /* ignore */ } }
 		if (ngrokProc) { try { ngrokProc.kill() } catch { /* ignore */ } }
 		clearDaemonInfo()
 		process.exit(0)
-	})
-	process.on('SIGINT', () => {
-		clearInterval(cronSchedulerTimer)
-		if (dashboardProc) { try { dashboardProc.kill() } catch { /* ignore */ } }
-		if (ngrokProc) { try { ngrokProc.kill() } catch { /* ignore */ } }
-		clearDaemonInfo()
-		process.exit(0)
-	})
+	}
+	process.on('SIGTERM', () => { gracefulShutdown('SIGTERM') })
+	process.on('SIGINT', () => { gracefulShutdown('SIGINT') })
+
 	await new Promise<void>(() => { })
 }

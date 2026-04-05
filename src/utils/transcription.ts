@@ -85,9 +85,19 @@ function pickMacArm64BinaryAsset(
 	const isTarBz2 = (name: string) => /\.tar\.bz2$/i.test(name)
 	const hasArm64 = (name: string) => /(arm64|aarch64)/i.test(name)
 	const hasDarwinTag = (name: string) => /(darwin|macos|osx)/i.test(name)
+	const isStatic = (name: string) => /\bstatic\b/i.test(name)
+	const isLibOnly = (name: string) => /-lib\.tar\.bz2$/i.test(name)
+	const isNoTts = (name: string) => /\bno-tts\b/i.test(name)
 
-	return assets.find(a => isTarBz2(a.name) && hasArm64(a.name) && hasDarwinTag(a.name))
-		?? assets.find(a => isTarBz2(a.name) && hasArm64(a.name))
+	// Filter to macOS arm64 tar.bz2 assets, excluding lib-only and no-tts variants
+	const candidates = assets.filter(a =>
+		isTarBz2(a.name) && hasArm64(a.name) && hasDarwinTag(a.name) && !isLibOnly(a.name) && !isNoTts(a.name)
+	)
+
+	// Prefer static builds — they bundle onnxruntime and need no dylibs
+	return candidates.find(a => isStatic(a.name))
+		?? candidates[0]
+		?? assets.find(a => isTarBz2(a.name) && hasArm64(a.name) && !isLibOnly(a.name) && !isNoTts(a.name))
 }
 
 // ── Path helper ───────────────────────────────────────────────────────────────
@@ -155,7 +165,7 @@ export function prefetchModelInBackground(): void {
 // ── Download logic ────────────────────────────────────────────────────────────
 
 async function _downloadParakeet(dir: string, opts: { silent?: boolean } = {}): Promise<void> {
-	const progress = opts.silent ? () => {} : console.log.bind(console)
+	const progress = opts.silent ? () => { } : console.log.bind(console)
 	console.log('[Transcription] Parakeet model not found — downloading (~640MB), this may take a few minutes...')
 	mkdirSync(dir, { recursive: true })
 
@@ -183,7 +193,7 @@ async function _downloadParakeet(dir: string, opts: { silent?: boolean } = {}): 
 		})
 		await _extractBinary(tmpBin, dir)
 	} finally {
-		try { unlinkSync(tmpBin) } catch {}
+		try { unlinkSync(tmpBin) } catch { }
 	}
 
 	// 3. Download and extract model weights
@@ -196,7 +206,7 @@ async function _downloadParakeet(dir: string, opts: { silent?: boolean } = {}): 
 		})
 		await _extractModelFiles(tmpModel, dir)
 	} finally {
-		try { unlinkSync(tmpModel) } catch {}
+		try { unlinkSync(tmpModel) } catch { }
 	}
 
 	console.log('[Transcription] Parakeet model download complete ✓')
@@ -205,7 +215,7 @@ async function _downloadParakeet(dir: string, opts: { silent?: boolean } = {}): 
 async function _fetchToFile(url: string, dest: string, opts: { logPrefix: string; silent?: boolean }): Promise<void> {
 	const res = await _httpFetch.fn(url)
 	if (!res.ok) throw new Error(`Download failed (${res.status}): ${url}`)
-	const log = opts.silent ? () => {} : console.log.bind(console)
+	const log = opts.silent ? () => { } : console.log.bind(console)
 	const body = res.body
 	if (!body) throw new Error(`Download response had no body: ${url}`)
 
@@ -241,7 +251,7 @@ async function _fetchToFile(url: string, dest: string, opts: { logPrefix: string
 }
 
 async function _extractBinary(tarPath: string, dir: string): Promise<void> {
-	// Extract full archive to a temp dir, then find and copy the binary
+	// Extract full archive to a temp dir, then find and copy the binary + shared libs
 	const tmpExtract = join(tmpdir(), `tamias-sherpa-ext-${randomBytes(4).toString('hex')}`)
 	mkdirSync(tmpExtract, { recursive: true })
 	try {
@@ -266,8 +276,21 @@ async function _extractBinary(tarPath: string, dir: string): Promise<void> {
 		const destBin = join(dir, 'sherpa-onnx-offline')
 		await Bun.write(destBin, Bun.file(foundPath))
 		chmodSync(destBin, 0o755)
+
+		// Copy any shared libraries (dylib/so) next to the binary so @rpath resolves
+		const findLibsProc = _bunSpawn.fn(
+			['find', tmpExtract, '-type', 'f', '(', '-name', '*.dylib', '-o', '-name', '*.so', ')'],
+			{ stdout: 'pipe' }
+		)
+		await findLibsProc.exited
+		const libPaths = (await new Response(findLibsProc.stdout ?? new ReadableStream()).text())
+			.trim().split('\n').filter(Boolean)
+		for (const libPath of libPaths) {
+			const libName = libPath.split('/').pop()!
+			await Bun.write(join(dir, libName), Bun.file(libPath))
+		}
 	} finally {
-		try { rmSync(tmpExtract, { recursive: true, force: true }) } catch {}
+		try { rmSync(tmpExtract, { recursive: true, force: true }) } catch { }
 	}
 }
 
@@ -340,7 +363,11 @@ export async function transcribeAudioBuffer(buffer: Buffer): Promise<string> {
 			`--tokens=${join(dir, 'tokens.txt')}`,
 			'--num-threads=4',
 			tmpWav,
-		], { stdout: 'pipe', stderr: 'pipe' })
+		], {
+			stdout: 'pipe',
+			stderr: 'pipe',
+			env: { ...process.env, DYLD_LIBRARY_PATH: dir },
+		})
 
 		const code = await proc.exited
 		if (code !== 0) {
@@ -351,6 +378,6 @@ export async function transcribeAudioBuffer(buffer: Buffer): Promise<string> {
 		const stdout = await new Response(proc.stdout ?? new ReadableStream()).text()
 		return parseSherpaOutput(stdout)
 	} finally {
-		try { unlinkSync(tmpWav) } catch {}
+		try { unlinkSync(tmpWav) } catch { }
 	}
 }
