@@ -1,193 +1,246 @@
-import { expect, test, describe, beforeEach, afterEach, mock, spyOn } from 'bun:test'
-import * as daemonUtils from '../utils/daemon.ts'
+import { expect, test, describe } from 'bun:test'
+import { createBrowserCommand, type BrowserCommandDeps } from '../commands/browser.ts'
 
-// ── Helpers ──────────────────────────────────────────────────────────
-let fetchSpy: ReturnType<typeof spyOn>
-let isDaemonRunningSpy: ReturnType<typeof spyOn>
-let getDaemonUrlSpy: ReturnType<typeof spyOn>
-let readDaemonInfoSpy: ReturnType<typeof spyOn>
-
-function mockDaemonRunning(running = true) {
-	isDaemonRunningSpy = spyOn(daemonUtils, 'isDaemonRunning').mockResolvedValue(running)
-	getDaemonUrlSpy = spyOn(daemonUtils, 'getDaemonUrl').mockReturnValue('http://127.0.0.1:9001')
-	readDaemonInfoSpy = spyOn(daemonUtils, 'readDaemonInfo').mockReturnValue({
-		pid: 1234,
-		port: 9001,
-		startedAt: new Date().toISOString(),
-		token: 'test-token-abc',
-	})
+interface PromptLogStore {
+	error: string[]
+	success: string[]
+	info: string[]
+	warn: string[]
 }
 
-function mockFetchJson(data: unknown, ok = true) {
-	fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(
-		new Response(JSON.stringify(data), {
-			status: ok ? 200 : 500,
-			headers: { 'Content-Type': 'application/json' },
-		})
-	)
+function createPromptMocks() {
+	const logs: PromptLogStore = {
+		error: [],
+		success: [],
+		info: [],
+		warn: [],
+	}
+
+	let spinnerState: { started: string[]; stopped: string[] } = { started: [], stopped: [] }
+
+	const prompts: BrowserCommandDeps['prompts'] = {
+		intro: () => { },
+		outro: () => { },
+		log: {
+			error: (msg: string) => logs.error.push(msg),
+			success: (msg: string) => logs.success.push(msg),
+			info: (msg: string) => logs.info.push(msg),
+			warn: (msg: string) => logs.warn.push(msg),
+			step: () => { },
+			message: () => { },
+		},
+		spinner: () => {
+			const state = { started: [] as string[], stopped: [] as string[] }
+			spinnerState = state
+			return {
+				start: (msg: string) => state.started.push(msg),
+				stop: (msg: string) => state.stopped.push(msg),
+				message: () => { },
+			}
+		},
+	} as BrowserCommandDeps['prompts']
+
+	return { prompts, logs, getSpinnerState: () => spinnerState }
 }
 
-afterEach(() => {
-	mock.restore()
-})
+function createDeps(overrides: Partial<BrowserCommandDeps> = {}) {
+	const fetchCalls: Array<{ url: string; init?: RequestInit }> = []
+	const fetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
+		fetchCalls.push({ url: String(input), init })
+		return new Response('{}', { status: 200 })
+	}
+	const promptMocks = createPromptMocks()
 
-// ── Import the functions we're testing ────────────────────────────────
-// We import the command module to access the subcommands. Since Commander
-// actions are closures calling fetch → daemon, we test via the actual
-// subcommand invocation using program.parseAsync.
-import { browserCommand } from '../commands/browser.ts'
+	const deps: BrowserCommandDeps = {
+		getDaemonUrl: () => 'http://127.0.0.1:9001',
+		isDaemonRunning: async () => true,
+		readDaemonInfo: () => ({ token: 'test-token-abc' }),
+		fetch: fetchMock,
+		prompts: promptMocks.prompts,
+		...overrides,
+	}
 
-// Helper to run a subcommand silently (suppress clack output)
-async function runSubcommand(args: string[]) {
-	// Suppress console output from @clack/prompts
-	const origLog = console.log
-	const origWarn = console.warn
-	const origError = console.error
-	console.log = () => { }
-	console.warn = () => { }
-	console.error = () => { }
-	try {
-		await browserCommand.parseAsync(args, { from: 'user' })
-	} finally {
-		console.log = origLog
-		console.warn = origWarn
-		console.error = origError
+	return {
+		deps,
+		fetchCalls,
+		logs: promptMocks.logs,
+		getSpinnerState: promptMocks.getSpinnerState,
 	}
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────
+async function runSubcommand(deps: BrowserCommandDeps, args: string[]) {
+	const command = createBrowserCommand(deps)
+	await command.parseAsync(args, { from: 'user' })
+}
 
 describe('tamias browser status', () => {
-	test.serial('calls GET /browser/status with token', async () => {
-		mockDaemonRunning(true)
-		mockFetchJson({ installed: true, headedOpen: false })
+	test('calls GET /browser/status with token', async () => {
+		const { deps, fetchCalls } = createDeps({
+			fetch: async (input) => {
+				fetchCalls.push({ url: String(input) })
+				return new Response(JSON.stringify({ installed: true, headedOpen: false }))
+			},
+		})
 
-		await runSubcommand(['status'])
+		await runSubcommand(deps, ['status'])
 
-		expect(fetchSpy).toHaveBeenCalledTimes(1)
-		const calledUrl = fetchSpy!.mock.calls[0][0] as string
-		expect(calledUrl).toContain('/browser/status')
-		expect(calledUrl).toContain('token=test-token-abc')
+		expect(fetchCalls.length).toBe(1)
+		const calledUrl = fetchCalls[0]?.url
+		expect(calledUrl).toBe('http://127.0.0.1:9001/browser/status?token=test-token-abc')
 	})
 
-	test.serial('reports installed and closed state', async () => {
-		mockDaemonRunning(true)
-		mockFetchJson({ installed: true, headedOpen: false })
+	test('reports installed and closed state', async () => {
+		const { deps, logs } = createDeps({
+			fetch: async () => new Response(JSON.stringify({ installed: true, headedOpen: false })),
+		})
 
-		// Should not throw
-		await runSubcommand(['status'])
-		expect(fetchSpy).toHaveBeenCalledTimes(1)
+		await runSubcommand(deps, ['status'])
+		expect(logs.info.some((m) => m.includes('installed'))).toBe(true)
+		expect(logs.info.some((m) => m.includes('closed'))).toBe(true)
 	})
 
-	test.serial('reports not installed state', async () => {
-		mockDaemonRunning(true)
-		mockFetchJson({ installed: false, headedOpen: false })
+	test('reports not installed state', async () => {
+		const { deps, logs } = createDeps({
+			fetch: async () => new Response(JSON.stringify({ installed: false, headedOpen: false })),
+		})
 
-		await runSubcommand(['status'])
-		expect(fetchSpy).toHaveBeenCalledTimes(1)
+		await runSubcommand(deps, ['status'])
+		expect(logs.warn.some((m) => m.includes('Install Playwright'))).toBe(true)
 	})
 
-	test.serial('handles daemon not running', async () => {
-		mockDaemonRunning(false)
-		mockFetchJson({}) // setup spy so we can verify it was NOT called
+	test('handles daemon not running', async () => {
+		const { deps, logs, fetchCalls } = createDeps({
+			isDaemonRunning: async () => false,
+		})
 
-		await runSubcommand(['status'])
-		expect(fetchSpy!.mock.calls.length).toBe(0)
+		await runSubcommand(deps, ['status'])
+		expect(fetchCalls.length).toBe(0)
+		expect(logs.error.some((m) => m.includes('Daemon is not running'))).toBe(true)
 	})
 })
 
 describe('tamias browser open', () => {
-	test.serial('calls POST /browser/launch without url', async () => {
-		mockDaemonRunning(true)
-		mockFetchJson({ ok: true, message: 'Browser launched.' })
+	test('calls POST /browser/launch without url', async () => {
+		const { deps, fetchCalls } = createDeps({
+			fetch: async (input, init) => {
+				fetchCalls.push({ url: String(input), init })
+				return new Response(JSON.stringify({ ok: true, message: 'Browser launched.' }))
+			},
+		})
 
-		await runSubcommand(['open'])
+		await runSubcommand(deps, ['open'])
 
-		expect(fetchSpy).toHaveBeenCalledTimes(1)
-		const calledUrl = fetchSpy!.mock.calls[0][0] as string
-		expect(calledUrl).toContain('/browser/launch')
-		expect(calledUrl).toContain('token=test-token-abc')
+		expect(fetchCalls.length).toBe(1)
+		const calledUrl = fetchCalls[0]?.url
+		expect(calledUrl).toBe('http://127.0.0.1:9001/browser/launch?token=test-token-abc')
 
-		const calledOpts = fetchSpy!.mock.calls[0][1] as RequestInit
-		expect(calledOpts.method).toBe('POST')
-		const body = JSON.parse(calledOpts.body as string)
+		const calledOpts = fetchCalls[0]?.init
+		expect(calledOpts).toBeDefined()
+		const requestInit = calledOpts!
+		expect(requestInit.method).toBe('POST')
+		const body = JSON.parse(String(requestInit.body))
 		expect(body).toEqual({})
 	})
 
-	test.serial('passes url in body when provided', async () => {
-		mockDaemonRunning(true)
-		mockFetchJson({ ok: true, message: 'Browser launched.' })
+	test('passes url in body when provided', async () => {
+		const { deps, fetchCalls } = createDeps({
+			fetch: async (input, init) => {
+				fetchCalls.push({ url: String(input), init })
+				return new Response(JSON.stringify({ ok: true, message: 'Browser launched.' }))
+			},
+		})
 
-		await runSubcommand(['open', 'https://example.com'])
+		await runSubcommand(deps, ['open', 'https://example.com'])
 
-		expect(fetchSpy).toHaveBeenCalledTimes(1)
-		const calledOpts = fetchSpy!.mock.calls[0][1] as RequestInit
-		const body = JSON.parse(calledOpts.body as string)
+		expect(fetchCalls.length).toBe(1)
+		const calledOpts = fetchCalls[0]?.init
+		expect(calledOpts).toBeDefined()
+		const body = JSON.parse(String(calledOpts!.body))
 		expect(body).toEqual({ url: 'https://example.com' })
 	})
 
-	test.serial('handles daemon not running', async () => {
-		mockDaemonRunning(false)
-		mockFetchJson({})
+	test('handles daemon not running', async () => {
+		const { deps, logs, fetchCalls } = createDeps({
+			isDaemonRunning: async () => false,
+		})
 
-		await runSubcommand(['open'])
-		expect(fetchSpy!.mock.calls.length).toBe(0)
+		await runSubcommand(deps, ['open'])
+		expect(fetchCalls.length).toBe(0)
+		expect(logs.error.some((m) => m.includes('Daemon is not running'))).toBe(true)
 	})
 
-	test.serial('handles launch failure response', async () => {
-		mockDaemonRunning(true)
-		mockFetchJson({ ok: false, message: 'Playwright not installed' })
+	test('handles launch failure response', async () => {
+		const { deps, logs, getSpinnerState } = createDeps({
+			fetch: async () => new Response(JSON.stringify({ ok: false, message: 'Playwright not installed' })),
+		})
 
-		await runSubcommand(['open'])
-		expect(fetchSpy).toHaveBeenCalledTimes(1)
+		await runSubcommand(deps, ['open'])
+		expect(getSpinnerState().stopped).toContain('Failed')
+		expect(logs.error.some((m) => m.includes('Playwright not installed'))).toBe(true)
 	})
 
-	test.serial('handles network error', async () => {
-		mockDaemonRunning(true)
-		fetchSpy = spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Connection refused'))
+	test('handles network error', async () => {
+		const { deps, logs, getSpinnerState } = createDeps({
+			fetch: async () => {
+				throw new Error('Connection refused')
+			},
+		})
 
-		await runSubcommand(['open'])
-		expect(fetchSpy).toHaveBeenCalledTimes(1)
+		await runSubcommand(deps, ['open'])
+		expect(getSpinnerState().stopped).toContain('Failed')
+		expect(logs.error.some((m) => m.includes('Could not reach the daemon'))).toBe(true)
 	})
 })
 
 describe('tamias browser close', () => {
-	test.serial('calls POST /browser/close with token', async () => {
-		mockDaemonRunning(true)
-		mockFetchJson({ ok: true })
+	test('calls POST /browser/close with token', async () => {
+		const { deps, fetchCalls } = createDeps({
+			fetch: async (input, init) => {
+				fetchCalls.push({ url: String(input), init })
+				return new Response(JSON.stringify({ ok: true }))
+			},
+		})
 
-		await runSubcommand(['close'])
+		await runSubcommand(deps, ['close'])
 
-		expect(fetchSpy).toHaveBeenCalledTimes(1)
-		const calledUrl = fetchSpy!.mock.calls[0][0] as string
-		expect(calledUrl).toContain('/browser/close')
-		expect(calledUrl).toContain('token=test-token-abc')
+		expect(fetchCalls.length).toBe(1)
+		const calledUrl = fetchCalls[0]?.url
+		expect(calledUrl).toBe('http://127.0.0.1:9001/browser/close?token=test-token-abc')
 
-		const calledOpts = fetchSpy!.mock.calls[0][1] as RequestInit
-		expect(calledOpts.method).toBe('POST')
+		const calledOpts = fetchCalls[0]?.init
+		expect(calledOpts).toBeDefined()
+		expect(calledOpts!.method).toBe('POST')
 	})
 
-	test.serial('handles daemon not running', async () => {
-		mockDaemonRunning(false)
-		mockFetchJson({})
+	test('handles daemon not running', async () => {
+		const { deps, logs, fetchCalls } = createDeps({
+			isDaemonRunning: async () => false,
+		})
 
-		await runSubcommand(['close'])
-		expect(fetchSpy!.mock.calls.length).toBe(0)
+		await runSubcommand(deps, ['close'])
+		expect(fetchCalls.length).toBe(0)
+		expect(logs.error.some((m) => m.includes('Daemon is not running'))).toBe(true)
 	})
 
-	test.serial('handles close failure response', async () => {
-		mockDaemonRunning(true)
-		mockFetchJson({ ok: false })
+	test('handles close failure response', async () => {
+		const { deps, logs, getSpinnerState } = createDeps({
+			fetch: async () => new Response(JSON.stringify({ ok: false })),
+		})
 
-		await runSubcommand(['close'])
-		expect(fetchSpy).toHaveBeenCalledTimes(1)
+		await runSubcommand(deps, ['close'])
+		expect(getSpinnerState().stopped).toContain('Failed')
+		expect(logs.error.some((m) => m.includes('Failed to close browser'))).toBe(true)
 	})
 
-	test.serial('handles network error', async () => {
-		mockDaemonRunning(true)
-		fetchSpy = spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Connection refused'))
+	test('handles network error', async () => {
+		const { deps, logs, getSpinnerState } = createDeps({
+			fetch: async () => {
+				throw new Error('Connection refused')
+			},
+		})
 
-		await runSubcommand(['close'])
-		expect(fetchSpy).toHaveBeenCalledTimes(1)
+		await runSubcommand(deps, ['close'])
+		expect(getSpinnerState().stopped).toContain('Failed')
+		expect(logs.error.some((m) => m.includes('Could not reach the daemon'))).toBe(true)
 	})
 })
