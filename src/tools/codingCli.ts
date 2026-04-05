@@ -11,7 +11,6 @@ import { getCodingProviders, type CodingProvider } from '../utils/config.ts'
 import { estimateComplexity } from '../utils/complexityEstimator.ts'
 import { spawnProcess, type ProcessResult } from '../utils/processManager.ts'
 import { existsSync } from 'fs'
-import { execSync } from 'child_process'
 
 export const CODING_CLI_TOOL_NAME = 'coding_cli'
 export const CODING_CLI_TOOL_LABEL = '🖥️ Coding CLI (delegate to external coding tools)'
@@ -72,8 +71,10 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
  */
 export function isCommandAvailable(detectCommand: string): boolean {
 	try {
-		execSync(detectCommand, { encoding: 'utf-8', timeout: 5000, stdio: 'pipe' })
-		return true
+		const args = detectCommand.split(/\s+/)
+		const cmd = args.shift()!
+		const result = Bun.spawnSync([cmd, ...args], { stdout: 'pipe', stderr: 'pipe' })
+		return result.exitCode === 0
 	} catch {
 		return false
 	}

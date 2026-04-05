@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, afterEach, mock, spyOn } from 'bun:test'
+import { describe, expect, test, beforeEach } from 'bun:test'
 
 /**
  * Tests for the auto-recall feature in aiService.ts.
@@ -6,6 +6,9 @@ import { describe, expect, test, beforeEach, afterEach, mock, spyOn } from 'bun:
  * The auto-recall block runs on every user message (except sub-agents),
  * builds a composite query from the current message + session context,
  * and prepends relevant vector memories into projectContext.
+ *
+ * Uses dependency injection instead of mock.module() to avoid
+ * cross-file mock contamination in the bun test runner.
  */
 
 // ─── Mock vector store ──────────────────────────────────────────────────────
@@ -27,17 +30,6 @@ const mockVectorStore = {
 	},
 }
 
-mock.module('../utils/vectors', () => ({
-	getVectorStore: async () => mockVectorStore,
-	resetVectorStore: () => { },
-}))
-
-mock.module('../utils/config', () => ({
-	getVectorStoreConfig: () => ({ enabled: vectorStoreEnabled }),
-	TAMIAS_DIR: '/tmp/tamias-test',
-	loadConfig: () => ({}),
-}))
-
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 interface AutoRecallContext {
@@ -55,7 +47,7 @@ interface AutoRecallContext {
 
 /**
  * Simulate the auto-recall block from aiService.ts.
- * This is extracted from the actual code to test in isolation.
+ * Uses injected dependencies instead of dynamic imports to avoid mock.module().
  */
 async function runAutoRecall(ctx: AutoRecallContext): Promise<string | undefined> {
 	let projectContext = ctx.projectContext
@@ -63,11 +55,9 @@ async function runAutoRecall(ctx: AutoRecallContext): Promise<string | undefined
 
 	if (!session.isSubagent) {
 		try {
-			const { getVectorStore } = await import('../utils/vectors')
-			const { getVectorStoreConfig } = await import('../utils/config')
-			const vsCfg = getVectorStoreConfig()
+			const vsCfg = { enabled: vectorStoreEnabled }
 			if (vsCfg.enabled) {
-				const vs = await getVectorStore()
+				const vs = mockVectorStore
 				if (vs.count > 0) {
 					const queryParts: string[] = []
 					const msgText = typeof job.content === 'string' ? job.content.trim() : ''

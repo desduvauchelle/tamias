@@ -1,31 +1,29 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
-import { join } from 'path'
-import { tmpdir } from 'os'
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'fs'
+import { describe, test, expect, beforeEach } from 'bun:test'
 import { ensureDefaultAgents, loadAgents, saveAgents, findAgent, type AgentDefinition } from '../utils/agentsStore.ts'
 
 /**
- * These tests use a temp directory to isolate from real user agents.
- * We mock the agents file path by manipulating the file directly.
+ * The agentsStore module reads from ~/.tamias/agents.json.
+ * These tests save and restore the original state to avoid side effects.
  */
 
-let tempDir: string
-let agentsFile: string
-
-// The agentsStore module reads from ~/.tamias/agents.json,
-// so we test the ensureDefaultAgents logic by checking behaviour
-// on the real file system through the public API.
+let savedAgents: AgentDefinition[]
 
 describe('ensureDefaultAgents', () => {
-	// ── Happy path ─────────────────────────────────────────────────────
+	beforeEach(() => {
+		// Snapshot current state so we can restore after each test
+		savedAgents = loadAgents()
+	})
+
+	const restore = () => saveAgents(savedAgents)
+
 	test('ensureDefaultAgents is a callable function', () => {
 		expect(typeof ensureDefaultAgents).toBe('function')
 	})
 
 	test('creates coder agent if none exists', () => {
-		// Call ensure — it should create the coder if missing
-		const beforeAgents = loadAgents()
-		const hadCoder = beforeAgents.some(a => a.slug === 'coder')
+		// Remove any existing coder to test fresh creation
+		const withoutCoder = loadAgents().filter(a => a.slug !== 'coder')
+		saveAgents(withoutCoder)
 
 		ensureDefaultAgents()
 
@@ -36,17 +34,10 @@ describe('ensureDefaultAgents', () => {
 		expect(coder!.enabled).toBe(true)
 		expect(coder!.instructions).toContain('coding_cli')
 
-		// Clean up: if we created it, remove it
-		if (!hadCoder) {
-			const cleaned = afterAgents.filter(a => a.slug !== 'coder')
-			saveAgents(cleaned)
-		}
+		restore()
 	})
 
 	test('does not duplicate coder agent on repeated calls', () => {
-		const before = loadAgents()
-		const hadCoder = before.some(a => a.slug === 'coder')
-
 		ensureDefaultAgents()
 		ensureDefaultAgents()
 		ensureDefaultAgents()
@@ -55,17 +46,10 @@ describe('ensureDefaultAgents', () => {
 		const coders = agents.filter(a => a.slug === 'coder')
 		expect(coders.length).toBe(1)
 
-		// Clean up
-		if (!hadCoder) {
-			const cleaned = agents.filter(a => a.slug !== 'coder')
-			saveAgents(cleaned)
-		}
+		restore()
 	})
 
 	test('does not overwrite user-customised coder agent', () => {
-		const before = loadAgents()
-		const hadCoder = before.some(a => a.slug === 'coder')
-
 		// Ensure default exists first
 		ensureDefaultAgents()
 
@@ -85,17 +69,14 @@ describe('ensureDefaultAgents', () => {
 		expect(finalCoder).toBeDefined()
 		expect(finalCoder!.instructions).toBe('My custom coder instructions')
 
-		// Clean up
-		if (!hadCoder) {
-			const cleaned = final.filter(a => a.slug !== 'coder')
-			saveAgents(cleaned)
-		}
+		restore()
 	})
 
 	// ── Coder agent properties ────────────────────────────────────────
 	test('coder agent has coding_cli in allowedTools', () => {
-		const before = loadAgents()
-		const hadCoder = before.some(a => a.slug === 'coder')
+		// Remove existing to test defaults
+		const withoutCoder = loadAgents().filter(a => a.slug !== 'coder')
+		saveAgents(withoutCoder)
 
 		ensureDefaultAgents()
 
@@ -105,42 +86,25 @@ describe('ensureDefaultAgents', () => {
 		expect(coder!.allowedTools).toContain('terminal')
 		expect(coder!.allowedTools).toContain('workspace')
 
-		if (!hadCoder) {
-			const cleaned = agents.filter(a => a.slug !== 'coder')
-			saveAgents(cleaned)
-		}
+		restore()
 	})
 
 	test('coder agent is findable by slug', () => {
-		const before = loadAgents()
-		const hadCoder = before.some(a => a.slug === 'coder')
-
 		ensureDefaultAgents()
 
 		const found = findAgent('coder')
 		expect(found).toBeDefined()
 		expect(found!.slug).toBe('coder')
 
-		if (!hadCoder) {
-			const agents = loadAgents()
-			const cleaned = agents.filter(a => a.slug !== 'coder')
-			saveAgents(cleaned)
-		}
+		restore()
 	})
 
 	test('coder agent is findable by name', () => {
-		const before = loadAgents()
-		const hadCoder = before.some(a => a.slug === 'coder')
-
 		ensureDefaultAgents()
 
 		const found = findAgent('Coder')
 		expect(found).toBeDefined()
 
-		if (!hadCoder) {
-			const agents = loadAgents()
-			const cleaned = agents.filter(a => a.slug !== 'coder')
-			saveAgents(cleaned)
-		}
+		restore()
 	})
 })
