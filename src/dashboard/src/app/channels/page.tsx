@@ -396,7 +396,7 @@ export default function ChannelsPage() {
 	}
 
 	return (
-		<div className="p-6 max-w-4xl max-h-screen overflow-y-auto space-y-12 font-mono pb-24 mx-auto">
+		<div className="p-6 max-w-4xl space-y-12 font-mono pb-24 mx-auto">
 			<div className="flex flex-wrap justify-between items-start gap-3">
 				<div>
 					<h1 className="text-3xl font-black text-primary uppercase tracking-tighter">COMMUNICATION CHANNELS</h1>

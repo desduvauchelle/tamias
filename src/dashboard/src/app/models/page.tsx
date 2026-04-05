@@ -30,6 +30,93 @@ const KNOWN_MODELS: Partial<Record<ProviderType, string[]>> = {
 	google: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
 }
 
+/* ─── Drag-and-drop model list ──────────────────────────────────────── */
+
+function DraggableModelList({
+	models,
+	allOptions,
+	onChange,
+	addLabel,
+}: {
+	models: string[]
+	allOptions: string[]
+	onChange: (models: string[]) => void
+	addLabel: string
+}) {
+	const [dragIdx, setDragIdx] = useState<number | null>(null)
+	const [overIdx, setOverIdx] = useState<number | null>(null)
+
+	const handleDragStart = (idx: number) => (e: React.DragEvent) => {
+		setDragIdx(idx)
+		e.dataTransfer.effectAllowed = 'move'
+	}
+
+	const handleDragOver = (idx: number) => (e: React.DragEvent) => {
+		e.preventDefault()
+		e.dataTransfer.dropEffect = 'move'
+		setOverIdx(idx)
+	}
+
+	const handleDrop = (idx: number) => (e: React.DragEvent) => {
+		e.preventDefault()
+		if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setOverIdx(null); return }
+		const updated = [...models]
+		const [moved] = updated.splice(dragIdx, 1)
+		updated.splice(idx, 0, moved)
+		onChange(updated)
+		setDragIdx(null)
+		setOverIdx(null)
+	}
+
+	const handleDragEnd = () => { setDragIdx(null); setOverIdx(null) }
+
+	return (
+		<div className="space-y-1">
+			{models.map((m, i) => (
+				<div
+					key={`${m}-${i}`}
+					draggable
+					onDragStart={handleDragStart(i)}
+					onDragOver={handleDragOver(i)}
+					onDrop={handleDrop(i)}
+					onDragEnd={handleDragEnd}
+					className={`flex items-center gap-2 p-2 rounded-lg border transition-all cursor-grab active:cursor-grabbing ${
+						dragIdx === i ? 'opacity-40 border-primary' :
+						overIdx === i ? 'border-primary bg-primary/10' :
+						'border-base-300 bg-base-100 hover:border-base-content/20'
+					}`}
+				>
+					<span className="text-base-content/30 select-none" title="Drag to reorder">⠿</span>
+					<span className="text-xs font-bold opacity-30 w-4 shrink-0">{i + 1}.</span>
+					<select
+						className="select select-bordered select-sm font-mono flex-1 min-w-0"
+						value={m}
+						onChange={e => {
+							const newModels = [...models]
+							newModels[i] = e.target.value
+							onChange(newModels)
+						}}
+						onClick={e => e.stopPropagation()}
+					>
+						{allOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+					</select>
+					<button
+						onClick={() => onChange(models.filter((_, idx) => idx !== i))}
+						className="btn btn-ghost btn-xs text-error shrink-0"
+					>✕</button>
+				</div>
+			))}
+			<button
+				className="btn btn-ghost btn-xs btn-outline border-dashed uppercase text-[10px] w-full"
+				onClick={() => {
+					const unused = allOptions.find(o => !models.includes(o)) || allOptions[0]
+					if (unused) onChange([...models, unused])
+				}}
+			>{addLabel}</button>
+		</div>
+	)
+}
+
 function ModelPicker({
 	provider,
 	apiKey,
@@ -534,6 +621,8 @@ export default function ModelsPage() {
 	const [connections, setConnections] = useState<ConnectionConfig[]>([])
 	const [defaultModels, setDefaultModels] = useState<string[]>([])
 	const [smartModels, setSmartModels] = useState<string[]>([])
+	const [embeddingModels, setEmbeddingModels] = useState<string[]>([])
+	const [defaultImageModels, setDefaultImageModels] = useState<string[]>([])
 	const [defaultConnection, setDefaultConnection] = useState<string>('')
 	const [saving, setSaving] = useState(false)
 	const [saved, setSaved] = useState(false)
@@ -546,6 +635,8 @@ export default function ModelsPage() {
 				setConnections(d.connections || [])
 				setDefaultModels(d.defaultModels || [])
 				setSmartModels(d.smartModels || [])
+				setEmbeddingModels(d.embeddingModels || [])
+				setDefaultImageModels(d.defaultImageModels || [])
 				setDefaultConnection(d.defaultConnection || '')
 			})
 	}, [])
@@ -555,7 +646,7 @@ export default function ModelsPage() {
 		await fetch('/api/models', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ connections, defaultModels, smartModels, defaultConnection }),
+			body: JSON.stringify({ connections, defaultModels, smartModels, embeddingModels, defaultImageModels, defaultConnection }),
 		})
 		setSaving(false)
 		setSaved(true)
@@ -592,7 +683,7 @@ export default function ModelsPage() {
 		: null
 
 	return (
-		<div className="p-6 max-w-4xl max-h-screen overflow-y-auto space-y-12 font-mono pb-24 mx-auto">
+		<div className="p-6 max-w-4xl space-y-12 font-mono pb-24 mx-auto">
 			{editingConfig && (
 				<EditConnectionModal
 					config={editingConfig}
@@ -604,7 +695,7 @@ export default function ModelsPage() {
 						fetch('/api/models', {
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({ connections: updatedConns, defaultModels, smartModels, defaultConnection }),
+							body: JSON.stringify({ connections: updatedConns, defaultModels, smartModels, embeddingModels, defaultConnection }),
 						}).then(() => {
 							setSaving(false)
 							setSaved(true)
@@ -633,81 +724,59 @@ export default function ModelsPage() {
 			</div>
 
 			<section className="space-y-6">
-				<div className="p-6 bg-base-200 border border-base-300 rounded-2xl space-y-6">
+				<div className="p-6 bg-base-200 border border-base-300 rounded-2xl space-y-8">
 					{/* Normal Models */}
-					<div className="flex flex-col md:flex-row items-start gap-6 justify-between">
-						<div>
-							<h2 className="text-lg font-black uppercase flex items-center gap-2">💬 Normal Models</h2>
-							<p className="text-xs opacity-60">For everyday tasks — chat, summaries, quick answers. Priority order with fallbacks.</p>
-						</div>
-						<div className="flex flex-col gap-2 w-full md:w-80">
-							{defaultModels.map((m, i) => (
-								<div key={i} className="flex items-center gap-2">
-									<span className="text-xs font-bold opacity-30 w-4">{i + 1}.</span>
-									<select
-										className="select select-bordered select-sm font-mono flex-1"
-										value={m}
-										onChange={e => {
-											const newModels = [...defaultModels]
-											newModels[i] = e.target.value
-											setDefaultModels(newModels)
-										}}
-									>
-										{allModelOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-									</select>
-									<button
-										onClick={() => setDefaultModels(defaultModels.filter((_, idx) => idx !== i))}
-										className="btn btn-ghost btn-xs text-error"
-									>✕</button>
-								</div>
-							))}
-							<button
-								className="btn btn-ghost btn-xs btn-outline border-dashed uppercase text-[10px]"
-								onClick={() => {
-									const unused = allModelOptions.find(o => !defaultModels.includes(o)) || allModelOptions[0]
-									if (unused) setDefaultModels([...defaultModels, unused])
-								}}
-							>+ Add Fallback Model</button>
-						</div>
+					<div>
+						<h2 className="text-lg font-black uppercase flex items-center gap-2">Normal Models</h2>
+						<p className="text-xs opacity-60 mb-3">For everyday tasks — chat, summaries, quick answers. Drag to reorder priority. Falls back to next in list.</p>
+						<DraggableModelList
+							models={defaultModels}
+							allOptions={allModelOptions}
+							onChange={setDefaultModels}
+							addLabel="+ Add Fallback Model"
+						/>
 					</div>
 
 					<div className="divider my-0" />
 
 					{/* Smart Models */}
-					<div className="flex flex-col md:flex-row items-start gap-6 justify-between">
-						<div>
-							<h2 className="text-lg font-black uppercase flex items-center gap-2">🧠 Smart Models</h2>
-							<p className="text-xs opacity-60">For complex tasks — coding, deep analysis, prolonged thinking. Falls back to normal models if empty.</p>
-						</div>
-						<div className="flex flex-col gap-2 w-full md:w-80">
-							{smartModels.map((m, i) => (
-								<div key={i} className="flex items-center gap-2">
-									<span className="text-xs font-bold opacity-30 w-4">{i + 1}.</span>
-									<select
-										className="select select-bordered select-sm font-mono flex-1"
-										value={m}
-										onChange={e => {
-											const newModels = [...smartModels]
-											newModels[i] = e.target.value
-											setSmartModels(newModels)
-										}}
-									>
-										{allModelOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-									</select>
-									<button
-										onClick={() => setSmartModels(smartModels.filter((_, idx) => idx !== i))}
-										className="btn btn-ghost btn-xs text-error"
-									>✕</button>
-								</div>
-							))}
-							<button
-								className="btn btn-ghost btn-xs btn-outline border-dashed uppercase text-[10px]"
-								onClick={() => {
-									const unused = allModelOptions.find(o => !smartModels.includes(o)) || allModelOptions[0]
-									if (unused) setSmartModels([...smartModels, unused])
-								}}
-							>+ Add Smart Model</button>
-						</div>
+					<div>
+						<h2 className="text-lg font-black uppercase flex items-center gap-2">Smart Models</h2>
+						<p className="text-xs opacity-60 mb-3">For complex tasks — coding, deep analysis, prolonged thinking. Falls back to normal models if empty.</p>
+						<DraggableModelList
+							models={smartModels}
+							allOptions={allModelOptions}
+							onChange={setSmartModels}
+							addLabel="+ Add Smart Model"
+						/>
+					</div>
+
+					<div className="divider my-0" />
+
+					{/* Embedding Models */}
+					<div>
+						<h2 className="text-lg font-black uppercase flex items-center gap-2">Embedding Models</h2>
+						<p className="text-xs opacity-60 mb-3">For vector storage and semantic search. Used to embed documents, memory, and conversation context.</p>
+						<DraggableModelList
+							models={embeddingModels}
+							allOptions={allModelOptions}
+							onChange={setEmbeddingModels}
+							addLabel="+ Add Embedding Model"
+						/>
+					</div>
+
+					<div className="divider my-0" />
+
+					{/* Image Models */}
+					<div>
+						<h2 className="text-lg font-black uppercase flex items-center gap-2">Image Models</h2>
+						<p className="text-xs opacity-60 mb-3">For AI image generation and editing. Used by the image tool. Priority order with fallbacks.</p>
+						<DraggableModelList
+							models={defaultImageModels}
+							allOptions={allModelOptions}
+							onChange={setDefaultImageModels}
+							addLabel="+ Add Image Model"
+						/>
 					</div>
 				</div>
 

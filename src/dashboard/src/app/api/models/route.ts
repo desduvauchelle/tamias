@@ -20,16 +20,18 @@ export async function GET() {
 			connections,
 			defaultModels: config.defaultModels || [],
 			smartModels: config.smartModels || [],
+			embeddingModels: config.embeddingModels || [],
+			defaultImageModels: config.defaultImageModels || [],
 			defaultConnection: config.defaultConnection || ''
 		})
 	} catch (error) {
-		return NextResponse.json({ connections: [], defaultModels: [], smartModels: [], defaultConnection: '' })
+		return NextResponse.json({ connections: [], defaultModels: [], smartModels: [], embeddingModels: [], defaultImageModels: [], defaultConnection: '' })
 	}
 }
 
 export async function POST(request: Request) {
 	try {
-		const { connections, defaultModels, smartModels, defaultConnection } = await request.json()
+		const { connections, defaultModels, smartModels, embeddingModels, defaultImageModels, defaultConnection } = await request.json()
 		const config = await getTamiasConfig()
 
 		if (!config.connections) config.connections = {}
@@ -62,6 +64,8 @@ export async function POST(request: Request) {
 
 		if (defaultModels !== undefined) config.defaultModels = defaultModels
 		if (smartModels !== undefined) config.smartModels = smartModels
+		if (embeddingModels !== undefined) config.embeddingModels = embeddingModels
+		if (defaultImageModels !== undefined) config.defaultImageModels = defaultImageModels
 		if (defaultConnection !== undefined) config.defaultConnection = defaultConnection
 
 		await saveTamiasConfig(config)

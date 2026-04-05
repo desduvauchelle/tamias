@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- enhance update management; add SidebarUpdater component, remove UpdateBanner, and improve update API error handling
 - update changelog for unreleased features; add log pagination and README management entry feat: add coverage script to package.json fix: enable importing TypeScript extensions in e2e tsconfig
 - update changelog for version v26.04.05.4; integrate new features for Ollama model management and browser authentication
 - implement log pagination and README management

@@ -199,6 +199,8 @@ export const TamiasConfigSchema = z.object({
 	defaultImageModels: z.array(z.string()).optional(),
 	/** Smart models for complex tasks (coding, prolonged thinking). Format: "nickname/modelId" */
 	smartModels: z.array(z.string()).optional(),
+	/** Embedding models for vector storage. Format: "nickname/modelId" */
+	embeddingModels: z.array(z.string()).optional(),
 	/** Model to use for session compaction (cheap model recommended). Format: "nickname/modelId" */
 	compactionModel: z.string().optional(),
 	internalTools: z.record(z.string(), InternalToolConfigSchema).optional(),
@@ -546,6 +548,16 @@ export const getSmartModels = (): string[] => {
 export const setSmartModels = (models: string[]): void => {
 	const c = loadConfig()
 	c.smartModels = models
+	saveConfig(c)
+}
+
+export const getEmbeddingModels = (): string[] => {
+	return loadConfig().embeddingModels || []
+}
+
+export const setEmbeddingModels = (models: string[]): void => {
+	const c = loadConfig()
+	c.embeddingModels = models
 	saveConfig(c)
 }
 
