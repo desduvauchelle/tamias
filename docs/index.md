@@ -45,6 +45,17 @@ Manage local Ollama models
 | `tamias ollama list` | List locally available Ollama models (`-c, --connection <name>`) |
 | `tamias ollama pull <model>` | Pull (download) an Ollama model (`-c, --connection <name>`) |
 
+### `tamias browser`
+
+Manage the authentication browser for accessing gated content
+
+| Command | Description |
+|---|---|
+| `tamias browser` | Manage the authentication browser for accessing gated content |
+| `tamias browser open [url]` | Open a browser window to authenticate on websites (session cookies are saved) |
+| `tamias browser close` | Close the authentication browser and save session cookies |
+| `tamias browser status` | Check browser installation and auth session status |
+
 ### `tamias inspect`
 
 Generate a debug report of the current system prompt, tools, and config

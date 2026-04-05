@@ -306,7 +306,8 @@ Runtime logs are centralized under `~/.tamias/logs/` (for example `daemon.log`, 
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.05.2)
+### Latest Version (v26.04.05.4)
 
 ### Features
-- update changelog for version v26.04.04.50; enhance transcription logic to handle JSON output format and add test for text extraction
+- integrate Ollama model management; add endpoints for model listing and pulling, enhance fetch logic, and implement tests for Ollama integration
+- add model preferences reordering functionality and corresponding tests

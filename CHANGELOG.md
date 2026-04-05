@@ -1,12 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [v26.04.05.4] - 2026-04-05
 
 ### Features
+- integrate Ollama model management; add endpoints for model listing and pulling, enhance fetch logic, and implement tests for Ollama integration
 - add model preferences reordering functionality and corresponding tests
-
-### Refactors
-- **(breaking)** reorganize AI tool namespaces from 20 to 13 groups: merge terminal+workspace+codingCli+gemini→`files`, extract tamias→`config`+`daemon`+`channels`, merge browser+websearch+firecrawl→`web`, merge image+pdf+send_file→`media`, absorb subagent+swarm+session→`agents`, expand `skills` with save/list/delete. Automatic config migration preserves user tool enable/disable settings.
 
 ## [v26.04.05.2] - 2026-04-05
 
