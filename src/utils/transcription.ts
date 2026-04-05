@@ -343,10 +343,18 @@ function convertToWav(inputBuffer: Buffer): Promise<Buffer> {
 // ── Output parsing ────────────────────────────────────────────────────────────
 
 function parseSherpaOutput(stdout: string): string {
-	// sherpa-onnx-offline emits lines like:
-	//   0:00:00.000 --> 0:00:05.120
-	//    Hello, how are you?
-	// Strip timestamp lines, join remaining text lines.
+	// Newer sherpa-onnx-offline versions output JSON: {"text": "...", "timestamps": [...], ...}
+	// Try to extract the text field from any JSON line first.
+	for (const line of stdout.split('\n')) {
+		const trimmed = line.trim()
+		if (trimmed.startsWith('{') && trimmed.includes('"text"')) {
+			try {
+				const parsed = JSON.parse(trimmed) as { text?: string }
+				if (typeof parsed.text === 'string') return parsed.text.trim()
+			} catch { /* not valid JSON, fall through */ }
+		}
+	}
+	// Fallback: older plain-text format with timestamp lines
 	return stdout
 		.split('\n')
 		.map(line => line.trim())

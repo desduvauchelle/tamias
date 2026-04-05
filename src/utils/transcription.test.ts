@@ -275,6 +275,13 @@ describe('transcribeAudioBuffer', () => {
 			expect(result).toBe('Hello world')
 		})
 
+		test('happy path: extracts text from JSON output format', async () => {
+			const jsonOutput = '{"lang": "", "emotion": "", "event": "", "text": "This is a test.", "timestamps": [0.24], "tokens": [" This"]}\n'
+			_bunSpawn.fn = mock(() => makeMockProc(`some config line\nDone!\n\n/path/to/file.wav\n----\nnum threads: 4\n${jsonOutput}`))
+			const result = await transcribeAudioBuffer(Buffer.from('fake ogg'))
+			expect(result).toBe('This is a test.')
+		})
+
 		test('multi-segment output: joins text lines with space', async () => {
 			_bunSpawn.fn = mock(() => makeMockProc(
 				'0:00:00.000 --> 0:00:02.000\n First part\n0:00:02.000 --> 0:00:05.000\n second part\n'

@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.04.04.50] - 2026-04-04
+
+### Features
+- enhance transcription logic to handle dylib load failures by deleting the binary and resetting download state
+
 ## [v26.04.04.49] - 2026-04-04
 
 ### Features

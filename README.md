@@ -284,11 +284,7 @@ Runtime logs are centralized under `~/.tamias/logs/` (for example `daemon.log`, 
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.04.49)
+### Latest Version (v26.04.04.50)
 
 ### Features
-- update changelog for version v26.04.04.46; enhance WhatsAppUnofficialBridge with group discovery rate-limit handling and improve error logging in start command
-- update changelog for version v26.04.04.42; add afterAll cleanup in ffmpeg tests
-
-### Refactors
-- update changelog; reorganize feature entries and improve test isolation in auto-recall and coder-agent tests
+- enhance transcription logic to handle dylib load failures by deleting the binary and resetting download state
