@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- update changelog for version v26.04.05.4; integrate new features for Ollama model management and browser authentication
 - implement log pagination and README management
 
 ## [v26.04.05.4] - 2026-04-05

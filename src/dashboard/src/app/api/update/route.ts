@@ -59,7 +59,12 @@ export async function POST() {
 			method: 'POST',
 			signal: AbortSignal.timeout(10000),
 		})
-		const data = await res.json()
+		let data: unknown
+		try {
+			data = await res.json()
+		} catch {
+			data = { error: `Daemon returned non-JSON response (status ${res.status})` }
+		}
 		return NextResponse.json(data, { status: res.status })
 	} catch (err) {
 		return NextResponse.json({ error: `Failed to reach daemon: ${err}` }, { status: 503 })

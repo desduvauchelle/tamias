@@ -708,6 +708,8 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	runDatabaseMaintenance().catch(console.error)
 	setInterval(() => runDatabaseMaintenance().catch(console.error), 24 * 60 * 60 * 1000)
 
+	let updateInProgress = false
+
 	Bun.serve({
 		port,
 		hostname: '127.0.0.1',
@@ -1208,16 +1210,20 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			// GET  /update → check for updates (cached 24h in ~/.tamias/update-check.json)
 			// POST /update → perform update and restart
 			if (url.pathname === '/update') {
-				const { checkForUpdate, performUpdate } = await import('../utils/update.ts')
+				const { checkForUpdate, performUpdateAndRestart } = await import('../utils/update.ts')
 				const UPDATE_CACHE_FILE = join(homedir(), '.tamias', 'update-check.json')
 
 				if (method === 'GET') {
+					if (updateInProgress) {
+						return json({ updateInProgress: true, message: 'Update is already in progress.' })
+					}
+
 					// Read cache
 					try {
 						const cached = JSON.parse(Bun.file(UPDATE_CACHE_FILE).toString())
 						const age = Date.now() - (cached.checkedAt || 0)
 						if (age < 24 * 60 * 60 * 1000) {
-							return json(cached)
+							return json({ ...cached, updateInProgress: false })
 						}
 					} catch { /* no cache yet */ }
 
@@ -1229,21 +1235,42 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 							currentVersion: result?.currentVersion ?? VERSION,
 							latestVersion: result?.latestVersion ?? VERSION,
 							checkedAt: Date.now(),
+							updateInProgress: false,
 						}
 						Bun.write(UPDATE_CACHE_FILE, JSON.stringify(payload, null, 2)).catch(() => { })
 						return json(payload)
 					} catch (err) {
-						return json({ updateAvailable: false, currentVersion: VERSION, error: String(err) })
+						return json({ updateAvailable: false, currentVersion: VERSION, error: String(err), updateInProgress: false })
 					}
 				}
 
 				if (method === 'POST') {
-					// Respond immediately, then perform update in background
-					const progressLines: string[] = []
-					const onProgress = (p: { message: string; type: string }) => {
-						progressLines.push(`[${p.type}] ${p.message}`)
-						console.log(`[Update] ${p.message}`)
+					if (updateInProgress) {
+						return json({ ok: false, updateInProgress: true, error: 'Update already running.' }, 409)
 					}
+
+					let checkResult: Awaited<ReturnType<typeof checkForUpdate>>
+					try {
+						checkResult = await checkForUpdate()
+					} catch (err) {
+						return json({ ok: false, error: `Failed to check for updates: ${String(err)}` }, 502)
+					}
+
+					if (!checkResult) {
+						return json({ ok: false, error: 'Could not check for updates.' }, 502)
+					}
+
+					if (checkResult.currentVersion === checkResult.latestVersion) {
+						return json({
+							ok: true,
+							updateAvailable: false,
+							message: `Already up to date (v${checkResult.currentVersion}).`,
+							currentVersion: checkResult.currentVersion,
+							latestVersion: checkResult.latestVersion,
+						})
+					}
+
+					updateInProgress = true
 
 					// Notify channels before restart
 					const msg = `🐿️ **Tamias Update Starting**\nUpdate requested via dashboard. Downloading and restarting…`
@@ -1251,13 +1278,29 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 						await bridgeManager.broadcastToChannel(channelId, msg).catch(() => { })
 					}
 
-					performUpdate(onProgress).then(result => {
-						if (result.success) {
-							console.log(`[Update] Updated to v${result.latestVersion}. Restarting...`)
-							clearDaemonInfo()
-							setTimeout(() => process.exit(0), 1500)
+					void performUpdateAndRestart(
+						{
+							channelId: 'dashboard',
+							fromVersion: checkResult.currentVersion,
+							toVersion: checkResult.latestVersion,
+							changelog: 'Update requested from dashboard.',
+						},
+						async () => {
+							const { performUpdate } = await import('../utils/update.ts')
+							return performUpdate((p) => {
+								console.log(`[Update] ${p.message}`)
+							})
 						}
-					}).catch(console.error)
+					)
+						.then(() => {
+							// On failure, performUpdateAndRestart returns without exiting; clear lock.
+							// On success, process exits shortly after, so this is harmless.
+							updateInProgress = false
+						})
+						.catch((err) => {
+							updateInProgress = false
+							console.error('[Update] Dashboard-triggered update failed:', err)
+						})
 
 					return json({ ok: true, message: 'Update started. Daemon will restart.' })
 				}

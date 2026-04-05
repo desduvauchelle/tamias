@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
-import { useToast } from './ToastProvider'
+import SidebarUpdater from './SidebarUpdater'
 
 import {
 	MessageSquare,
@@ -312,6 +312,7 @@ function NavContent({ onNewProject }: NavContentProps) {
 
 					{/* Inline Health Status */}
 					<HealthStatus />
+					<SidebarUpdater />
 				</ul>
 			</div>
 		</aside>

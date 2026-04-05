@@ -58,7 +58,7 @@ async function runSubcommand(args: string[]) {
 // ── Tests ─────────────────────────────────────────────────────────────
 
 describe('tamias browser status', () => {
-	test('calls GET /browser/status with token', async () => {
+	test.serial('calls GET /browser/status with token', async () => {
 		mockDaemonRunning(true)
 		mockFetchJson({ installed: true, headedOpen: false })
 
@@ -70,7 +70,7 @@ describe('tamias browser status', () => {
 		expect(calledUrl).toContain('token=test-token-abc')
 	})
 
-	test('reports installed and closed state', async () => {
+	test.serial('reports installed and closed state', async () => {
 		mockDaemonRunning(true)
 		mockFetchJson({ installed: true, headedOpen: false })
 
@@ -79,7 +79,7 @@ describe('tamias browser status', () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(1)
 	})
 
-	test('reports not installed state', async () => {
+	test.serial('reports not installed state', async () => {
 		mockDaemonRunning(true)
 		mockFetchJson({ installed: false, headedOpen: false })
 
@@ -87,7 +87,7 @@ describe('tamias browser status', () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(1)
 	})
 
-	test('handles daemon not running', async () => {
+	test.serial('handles daemon not running', async () => {
 		mockDaemonRunning(false)
 		mockFetchJson({}) // setup spy so we can verify it was NOT called
 
@@ -97,7 +97,7 @@ describe('tamias browser status', () => {
 })
 
 describe('tamias browser open', () => {
-	test('calls POST /browser/launch without url', async () => {
+	test.serial('calls POST /browser/launch without url', async () => {
 		mockDaemonRunning(true)
 		mockFetchJson({ ok: true, message: 'Browser launched.' })
 
@@ -114,7 +114,7 @@ describe('tamias browser open', () => {
 		expect(body).toEqual({})
 	})
 
-	test('passes url in body when provided', async () => {
+	test.serial('passes url in body when provided', async () => {
 		mockDaemonRunning(true)
 		mockFetchJson({ ok: true, message: 'Browser launched.' })
 
@@ -126,7 +126,7 @@ describe('tamias browser open', () => {
 		expect(body).toEqual({ url: 'https://example.com' })
 	})
 
-	test('handles daemon not running', async () => {
+	test.serial('handles daemon not running', async () => {
 		mockDaemonRunning(false)
 		mockFetchJson({})
 
@@ -134,7 +134,7 @@ describe('tamias browser open', () => {
 		expect(fetchSpy!.mock.calls.length).toBe(0)
 	})
 
-	test('handles launch failure response', async () => {
+	test.serial('handles launch failure response', async () => {
 		mockDaemonRunning(true)
 		mockFetchJson({ ok: false, message: 'Playwright not installed' })
 
@@ -142,7 +142,7 @@ describe('tamias browser open', () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(1)
 	})
 
-	test('handles network error', async () => {
+	test.serial('handles network error', async () => {
 		mockDaemonRunning(true)
 		fetchSpy = spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Connection refused'))
 
@@ -152,7 +152,7 @@ describe('tamias browser open', () => {
 })
 
 describe('tamias browser close', () => {
-	test('calls POST /browser/close with token', async () => {
+	test.serial('calls POST /browser/close with token', async () => {
 		mockDaemonRunning(true)
 		mockFetchJson({ ok: true })
 
@@ -167,7 +167,7 @@ describe('tamias browser close', () => {
 		expect(calledOpts.method).toBe('POST')
 	})
 
-	test('handles daemon not running', async () => {
+	test.serial('handles daemon not running', async () => {
 		mockDaemonRunning(false)
 		mockFetchJson({})
 
@@ -175,7 +175,7 @@ describe('tamias browser close', () => {
 		expect(fetchSpy!.mock.calls.length).toBe(0)
 	})
 
-	test('handles close failure response', async () => {
+	test.serial('handles close failure response', async () => {
 		mockDaemonRunning(true)
 		mockFetchJson({ ok: false })
 
@@ -183,7 +183,7 @@ describe('tamias browser close', () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(1)
 	})
 
-	test('handles network error', async () => {
+	test.serial('handles network error', async () => {
 		mockDaemonRunning(true)
 		fetchSpy = spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Connection refused'))
 

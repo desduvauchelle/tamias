@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation"
 import { Menu, FolderOpen, Check } from "lucide-react"
 import Nav from "./Nav"
 import { useToast } from "./ToastProvider"
-import UpdateBanner from "./UpdateBanner"
 
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
 	const pathname = usePathname()
@@ -92,9 +91,6 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 		<div className="drawer lg:drawer-open h-screen w-full overflow-hidden bg-base-100">
 			<input id="nav-drawer" type="checkbox" className="drawer-toggle" />
 			<div className="drawer-content flex flex-col h-full overflow-hidden relative">
-				{/* Update Banner */}
-				<UpdateBanner />
-
 				{/* Mobile Header */}
 				<header className="lg:hidden flex items-center justify-between p-4 bg-base-200 border-b border-base-300">
 					<div className="flex items-center gap-2">
