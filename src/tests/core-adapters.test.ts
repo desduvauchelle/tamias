@@ -137,16 +137,16 @@ describe('Auto-wiring', () => {
 		const { getAllInternalToolNames } = await import('../tools/internalToolNames.ts')
 		const names = getAllInternalToolNames()
 		expect(names).toContain('agents') // auto-discovered from registry
-		expect(names).toContain('terminal') // legacy
-		expect(names).toContain('swarm') // legacy
+		expect(names).toContain('files') // new namespace
+		expect(names).toContain('web') // new namespace
 	})
 
 	test('registry domains are not in static INTERNAL_TOOL_NAMES', async () => {
 		const { INTERNAL_TOOL_NAMES } = await import('../tools/internalToolNames.ts')
 		// 'agents' should NOT be in the static list — it's auto-discovered
 		expect(INTERNAL_TOOL_NAMES).not.toContain('agents')
-		// legacy tools should remain
-		expect(INTERNAL_TOOL_NAMES).toContain('terminal')
+		// new namespace names should be present
+		expect(INTERNAL_TOOL_NAMES).toContain('files')
 	})
 })
 

@@ -105,7 +105,7 @@ Run `bun test --coverage` to verify coverage. New files should have meaningful n
 - **Bridge pattern:** Implement `IBridge` from `src/bridge/types.ts`
 - **CLI flows:** `@clack/prompts` in `src/commands/`
 - **Dashboard:** Next.js App Router at `src/dashboard/`, DaisyUI/Tailwind
-- **AI tools:** Factory functions in `src/tools/` — `createXTools(aiService, sessionId)`
+- **AI tools:** Factory functions in `src/tools/` organized into 13 namespaces (`files`, `config`, `daemon`, `channels`, `skills`, `memory`, `web`, `media`, `projects`, `github`, `cron`, `email`, `agents`) — `createXTools(aiService, sessionId)`
 
 ## File Naming
 

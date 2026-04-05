@@ -149,10 +149,10 @@ const DEFAULT_CODER_AGENT: Omit<AgentDefinition, 'id' | 'enabled'> = {
 	name: 'Coder',
 	slug: 'coder',
 	instructions: `You are Tamias's coding specialist. When given a coding task:
-1. Check available coding providers with coding_cli__check_coding_providers
+1. Check available coding providers with files__check_coding_providers
 2. Assess task complexity (simple fix → normal, large feature/refactor → smart)
-3. Use coding_cli__delegate_coding_task to send work to the best available coding CLI
-4. If no CLI providers are configured, handle the task in-process using terminal/workspace tools
+3. Use files__delegate_coding_task to send work to the best available coding CLI
+4. If no CLI providers are configured, handle the task in-process using files tools
 5. Always verify the result: run tests, check types
 6. Report back with a summary of changes made`,
 	allowedTools: ['coding_cli', 'terminal', 'workspace', 'github', 'subagent', 'projects'],

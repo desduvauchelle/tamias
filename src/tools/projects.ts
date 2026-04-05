@@ -113,9 +113,11 @@ export const project_create = {
 		path: z.string().optional().describe('The local directory path for the project workspace. Optional.'),
 		discordServerId: z.string().optional().describe('The Discord Server ID to link this project to. (Optional)'),
 		discordChannelId: z.string().optional().describe('The Discord Channel ID to link this project to. (Optional)'),
-		contextFile: z.string().optional().describe('The filename of the context file (e.g. "readme.md"). (Optional)')
+		website: z.string().optional().describe('The project website URL. (Optional)'),
+		techStack: z.string().optional().describe('The technology stack used. (Optional)'),
+		objectives: z.array(z.string()).optional().describe('Project objectives. (Optional)')
 	}),
-	execute: async (args: { name: string; description?: string; path?: string; discordServerId?: string; discordChannelId?: string; contextFile?: string }, _context: any) => {
+	execute: async (args: { name: string; description?: string; path?: string; discordServerId?: string; discordChannelId?: string; website?: string; techStack?: string; objectives?: string[] }, _context: any) => {
 		try {
 			const newProject = addProject({
 				...args,

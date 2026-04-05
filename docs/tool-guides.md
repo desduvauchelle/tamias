@@ -4,7 +4,7 @@ Tools are the hands of the AI. Tamias provides a set of highly specific tools de
 
 ---
 
-## 💻 Terminal Tool
+## 💻 Files Tool
 
 The most versatile tool in the arsenal. It allows the AI to interact with your system directly.
 
@@ -48,9 +48,9 @@ Managed via the `himalaya` CLI, this tool allows the AI to be your gatekeeper.
 
 ---
 
-## 🐿️ Sub-agent Tool
+## 🐿️ Agents Tool
 
-The `subagent__spawn` tool is how Tamias orchestrates multiple brains.
+The `agents__spawn` tool is how Tamias orchestrates multiple brains.
 
 - **Task**: A clear, actionable description of what the sub-agent should do.
 - **Persona**: (Optional) Use a pre-defined agent like "Code Auditor" or "Expert Researcher."
@@ -58,9 +58,9 @@ The `subagent__spawn` tool is how Tamias orchestrates multiple brains.
 
 ---
 
-## 🧵 Session Tool
+## 🧵 Agents — Sessions
 
-Lightweight thread/session orchestration for creating and routing conversation work.
+Lightweight thread/session orchestration for creating and routing conversation work (part of the `agents` namespace).
 
 | Function | Description |
 |---|---|

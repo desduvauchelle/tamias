@@ -29,7 +29,8 @@ export interface Project {
 	path: string
 	discordServerId?: string
 	discordChannelId?: string
-	contextFile?: string
+	website?: string
+	objectives?: string[]
 	kanban: KanbanTask[]
 	preferredConnections?: string[]
 	preferredModel?: string

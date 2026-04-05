@@ -6,6 +6,7 @@ import { runDoctorCommand } from './commands/doctor.ts'
 import { runUpdateCommand } from './commands/update.ts'
 import { cronCommand } from './commands/cron.ts'
 import { ollamaCommand } from './commands/ollama.ts'
+import { browserCommand } from './commands/browser.ts'
 import { runInspectCommand } from './commands/inspect.ts'
 import { VERSION } from './utils/version.ts'
 
@@ -18,6 +19,7 @@ program
 
 program.addCommand(cronCommand)
 program.addCommand(ollamaCommand)
+program.addCommand(browserCommand)
 
 // ─── tamias inspect ───────────────────────────────────────────────────────────
 program

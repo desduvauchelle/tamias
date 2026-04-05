@@ -6,6 +6,8 @@ import type { AgentDefinition } from '../utils/agentsStore'
 import { slugify as slugifyAgent } from '../utils/agentsStore'
 import type { CronJob } from '../utils/cronStore'
 import { CronJobSchema } from '../utils/cronStore'
+import { readProjectReadme, writeProjectReadme, updateProjectFrontmatter, generateReadmeBody } from '../utils/projectReadme'
+import type { ProjectFrontmatter } from '../utils/projectReadme'
 
 export const projectEvents = new EventEmitter()
 
@@ -40,9 +42,10 @@ export interface ProjectConfig {
 	path: string
 	discordServerId?: string
 	discordChannelId?: string
-	contextFile?: string
 	status?: 'active' | 'paused' | 'archived'
 	techStack?: string
+	website?: string
+	objectives?: string[]
 	createdAt?: string
 	updatedAt?: string
 	kanban: KanbanTask[]
@@ -51,24 +54,6 @@ export interface ProjectConfig {
 	/** Model override for this project. Format: "nickname/modelId" */
 	preferredModel?: string
 	/** Model fallback chain for this project */
-	preferredModelFallbacks?: string[]
-}
-
-/** Stored in config.json (no kanban — that's in kanban.json) */
-interface ProjectConfigFile {
-	id: string
-	name: string
-	description?: string
-	path: string
-	discordServerId?: string
-	discordChannelId?: string
-	contextFile?: string
-	status?: 'active' | 'paused' | 'archived'
-	techStack?: string
-	createdAt?: string
-	updatedAt?: string
-	preferredConnections?: string[]
-	preferredModel?: string
 	preferredModelFallbacks?: string[]
 }
 
@@ -93,13 +78,57 @@ export function getProjectDirectory(id: string): string {
 
 // ─── Migration ─────────────────────────────────────────────────────────────────
 
+/** Migrate a project from config.json to README.md frontmatter */
+function migrateConfigJsonToReadme(projectDir: string, dirName: string): void {
+	const configPath = join(projectDir, 'config.json')
+	if (!existsSync(configPath)) return
+
+	try {
+		const raw = JSON.parse(readFileSync(configPath, 'utf-8'))
+		const frontmatter: ProjectFrontmatter = {
+			name: raw.name || dirName,
+			...(raw.description ? { description: raw.description } : {}),
+			...(raw.status ? { status: raw.status } : {}),
+			...(raw.discordServerId ? { discordServerId: raw.discordServerId } : {}),
+			...(raw.discordChannelId ? { discordChannelId: raw.discordChannelId } : {}),
+			...(raw.techStack ? { techStack: raw.techStack } : {}),
+			...(raw.website ? { website: raw.website } : {}),
+			...(raw.preferredConnections?.length ? { preferredConnections: raw.preferredConnections } : {}),
+			...(raw.preferredModel ? { preferredModel: raw.preferredModel } : {}),
+			...(raw.preferredModelFallbacks?.length ? { preferredModelFallbacks: raw.preferredModelFallbacks } : {}),
+			...(raw.objectives?.length ? { objectives: raw.objectives } : {}),
+			...(raw.createdAt ? { createdAt: raw.createdAt } : {}),
+			...(raw.updatedAt ? { updatedAt: raw.updatedAt } : {}),
+		}
+
+		// Preserve existing README.md body if it exists
+		const readmePath = join(projectDir, 'README.md')
+		let body: string
+		if (existsSync(readmePath)) {
+			const existing = readProjectReadme(projectDir)
+			body = existing?.body ?? generateReadmeBody(frontmatter.name, frontmatter.description)
+		} else {
+			// Try context.md as fallback body
+			const contextPath = join(projectDir, 'context.md')
+			body = existsSync(contextPath)
+				? readFileSync(contextPath, 'utf-8')
+				: generateReadmeBody(frontmatter.name, frontmatter.description)
+		}
+
+		writeProjectReadme(projectDir, frontmatter, body)
+		renameSync(configPath, configPath + '.bak')
+	} catch (e) {
+		console.error(`Failed to migrate config.json in ${projectDir}:`, e)
+	}
+}
+
 /** Migrate from old monolithic projects.json to per-project directories */
 export function migrateFromProjectsJson(): boolean {
 	if (!existsSync(OLD_PROJECTS_FILE)) return false
 
 	try {
 		const raw = readFileSync(OLD_PROJECTS_FILE, 'utf-8')
-		const old: Record<string, any> = JSON.parse(raw)
+		const old: Record<string, Record<string, unknown>> = JSON.parse(raw)
 
 		ensureProjectsDir()
 
@@ -110,27 +139,20 @@ export function migrateFromProjectsJson(): boolean {
 			mkdirSync(projectDir, { recursive: true })
 
 			// Separate kanban from config
-			const { kanban, ...config } = project
-			const configData: ProjectConfigFile = {
-				id,
-				name: config.name || id,
-				description: config.description,
-				path: config.path || '',
-				discordServerId: config.discordServerId,
-				discordChannelId: config.discordChannelId,
-				contextFile: config.contextFile,
+			const { kanban, ...config } = project as Record<string, unknown>
+			const frontmatter: ProjectFrontmatter = {
+				name: (config.name as string) || id,
+				...(config.description ? { description: config.description as string } : {}),
+				...(config.discordServerId ? { discordServerId: config.discordServerId as string } : {}),
+				...(config.discordChannelId ? { discordChannelId: config.discordChannelId as string } : {}),
 				status: 'active',
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 			}
 
-			writeFileSync(join(projectDir, 'config.json'), JSON.stringify(configData, null, 2), 'utf-8')
+			const body = generateReadmeBody(frontmatter.name, frontmatter.description)
+			writeProjectReadme(projectDir, frontmatter, body)
 			writeFileSync(join(projectDir, 'kanban.json'), JSON.stringify(kanban || [], null, 2), 'utf-8')
-
-			// Create default context.md
-			if (!existsSync(join(projectDir, 'context.md'))) {
-				writeFileSync(join(projectDir, 'context.md'), `# ${configData.name}\n\n${configData.description || ''}\n`, 'utf-8')
-			}
 
 			// Create skills directory
 			const skillsDir = join(projectDir, 'skills')
@@ -150,14 +172,63 @@ export function migrateFromProjectsJson(): boolean {
 
 // ─── Read Helpers ──────────────────────────────────────────────────────────────
 
-function readProjectConfig(projectDir: string): ProjectConfigFile | null {
-	const configPath = join(projectDir, 'config.json')
-	if (!existsSync(configPath)) return null
-	try {
-		return JSON.parse(readFileSync(configPath, 'utf-8'))
-	} catch {
-		return null
+/**
+ * Read project config from README.md frontmatter.
+ * Falls back to config.json (with auto-migration) for backwards compatibility.
+ * Returns a minimal config (using dir name) for bare directories.
+ */
+function readProjectConfigFromDir(projectDir: string, dirName: string): Omit<ProjectConfig, 'kanban'> {
+	// 1. Try README.md frontmatter first
+	const readme = readProjectReadme(projectDir)
+	if (readme && readme.frontmatter.name) {
+		return {
+			id: dirName,
+			name: readme.frontmatter.name,
+			description: readme.frontmatter.description,
+			path: dirName,
+			discordServerId: readme.frontmatter.discordServerId,
+			discordChannelId: readme.frontmatter.discordChannelId,
+			status: readme.frontmatter.status,
+			techStack: readme.frontmatter.techStack,
+			website: readme.frontmatter.website,
+			objectives: readme.frontmatter.objectives,
+			createdAt: readme.frontmatter.createdAt,
+			updatedAt: readme.frontmatter.updatedAt,
+			preferredConnections: readme.frontmatter.preferredConnections,
+			preferredModel: readme.frontmatter.preferredModel,
+			preferredModelFallbacks: readme.frontmatter.preferredModelFallbacks,
+		}
 	}
+
+	// 2. Try config.json with auto-migration
+	const configPath = join(projectDir, 'config.json')
+	if (existsSync(configPath)) {
+		migrateConfigJsonToReadme(projectDir, dirName)
+		// Re-read after migration
+		const migrated = readProjectReadme(projectDir)
+		if (migrated && migrated.frontmatter.name) {
+			return {
+				id: dirName,
+				name: migrated.frontmatter.name,
+				description: migrated.frontmatter.description,
+				path: dirName,
+				discordServerId: migrated.frontmatter.discordServerId,
+				discordChannelId: migrated.frontmatter.discordChannelId,
+				status: migrated.frontmatter.status,
+				techStack: migrated.frontmatter.techStack,
+				website: migrated.frontmatter.website,
+				objectives: migrated.frontmatter.objectives,
+				createdAt: migrated.frontmatter.createdAt,
+				updatedAt: migrated.frontmatter.updatedAt,
+				preferredConnections: migrated.frontmatter.preferredConnections,
+				preferredModel: migrated.frontmatter.preferredModel,
+				preferredModelFallbacks: migrated.frontmatter.preferredModelFallbacks,
+			}
+		}
+	}
+
+	// 3. Bare directory = project with dir name as name
+	return { id: dirName, name: dirName, path: dirName }
 }
 
 function readKanban(projectDir: string): KanbanTask[] {
@@ -168,10 +239,6 @@ function readKanban(projectDir: string): KanbanTask[] {
 	} catch {
 		return []
 	}
-}
-
-function writeProjectConfig(projectDir: string, config: ProjectConfigFile): void {
-	writeFileSync(join(projectDir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8')
 }
 
 function writeKanban(projectDir: string, kanban: KanbanTask[]): void {
@@ -191,11 +258,12 @@ export function getProjects(): Record<string, ProjectConfig> {
 		const entries = readdirSync(PROJECTS_DIR, { withFileTypes: true })
 		for (const entry of entries) {
 			if (!entry.isDirectory()) continue
+			// Skip hidden directories
+			if (entry.name.startsWith('.')) continue
 			const projectDir = join(PROJECTS_DIR, entry.name)
-			const config = readProjectConfig(projectDir)
-			if (!config) continue
+			const config = readProjectConfigFromDir(projectDir, entry.name)
 
-			result[config.id] = {
+			result[entry.name] = {
 				...config,
 				kanban: readKanban(projectDir),
 			}
@@ -212,9 +280,9 @@ export function getProject(id: string): ProjectConfig | undefined {
 	migrateFromProjectsJson()
 
 	const projectDir = join(PROJECTS_DIR, id)
-	const config = readProjectConfig(projectDir)
-	if (!config) return undefined
+	if (!existsSync(projectDir)) return undefined
 
+	const config = readProjectConfigFromDir(projectDir, id)
 	return {
 		...config,
 		kanban: readKanban(projectDir),
@@ -235,55 +303,29 @@ export function addProject(project: Omit<ProjectConfig, 'id' | 'kanban'>): Proje
 	mkdirSync(projectDir, { recursive: true })
 
 	const now = new Date().toISOString()
-	const configData: ProjectConfigFile = {
-		id: finalId,
+	const frontmatter: ProjectFrontmatter = {
 		name: project.name,
-		description: project.description,
-		path: project.path || finalId,
-		discordServerId: project.discordServerId,
-		discordChannelId: project.discordChannelId,
-		contextFile: project.contextFile,
+		...(project.description ? { description: project.description } : {}),
 		status: project.status || 'active',
-		techStack: project.techStack,
+		...(project.discordServerId ? { discordServerId: project.discordServerId } : {}),
+		...(project.discordChannelId ? { discordChannelId: project.discordChannelId } : {}),
+		...(project.techStack ? { techStack: project.techStack } : {}),
+		...(project.website ? { website: project.website } : {}),
+		...(project.preferredConnections?.length ? { preferredConnections: project.preferredConnections } : {}),
+		...(project.preferredModel ? { preferredModel: project.preferredModel } : {}),
+		...(project.preferredModelFallbacks?.length ? { preferredModelFallbacks: project.preferredModelFallbacks } : {}),
+		...(project.objectives?.length ? { objectives: project.objectives } : {}),
 		createdAt: now,
 		updatedAt: now,
 	}
 
-	writeProjectConfig(projectDir, configData)
+	const body = generateReadmeBody(project.name, project.description)
+	writeProjectReadme(projectDir, frontmatter, body)
 	writeKanban(projectDir, [])
 
 	// Initialize agents and crons as empty arrays
 	writeFileSync(join(projectDir, 'agents.json'), '[]', 'utf-8')
 	writeFileSync(join(projectDir, 'cron.json'), '[]', 'utf-8')
-
-	// Create default context.md
-	writeFileSync(join(projectDir, 'context.md'), `# ${project.name}\n\n${project.description || ''}\n`, 'utf-8')
-
-	// Initialize README.md with a structured template the AI can follow
-	const readmePath = join(projectDir, 'README.md')
-	if (!existsSync(readmePath)) {
-		const readmeContent = `# ${project.name}
-
-${project.description || 'A Tamias project.'}
-
-## Overview
-
-<!-- Describe the purpose and goals of this project -->
-
-## Tasks & Reminders
-
-<!-- Tasks, action items, and reminders go here -->
-
-## Notes
-
-<!-- Freeform notes, links, and reference material -->
-
-## Activity
-
-<!-- Recent updates are logged here automatically -->
-`
-		writeFileSync(readmePath, readmeContent, 'utf-8')
-	}
 
 	// Initialize NOTES.md and ACTIVITY.md
 	writeFileSync(join(projectDir, 'NOTES.md'), `# ${project.name} — Notes\n\n`, 'utf-8')
@@ -293,36 +335,61 @@ ${project.description || 'A Tamias project.'}
 	// Create skills directory
 	mkdirSync(join(projectDir, 'skills'), { recursive: true })
 
-	const newProject: ProjectConfig = { ...configData, kanban: [] }
+	const newProject: ProjectConfig = {
+		id: finalId,
+		name: project.name,
+		description: project.description,
+		path: finalId,
+		discordServerId: project.discordServerId,
+		discordChannelId: project.discordChannelId,
+		status: project.status || 'active',
+		techStack: project.techStack,
+		website: project.website,
+		objectives: project.objectives,
+		createdAt: now,
+		updatedAt: now,
+		preferredConnections: project.preferredConnections,
+		preferredModel: project.preferredModel,
+		preferredModelFallbacks: project.preferredModelFallbacks,
+		kanban: [],
+	}
 	return newProject
 }
 
 export function updateProject(id: string, updates: Partial<Omit<ProjectConfig, 'id'>>, opts?: { source?: string }): ProjectConfig {
 	const projectDir = join(PROJECTS_DIR, id)
-	const config = readProjectConfig(projectDir)
-	if (!config) {
+	if (!existsSync(projectDir)) {
 		throw new Error(`Project ${id} not found`)
 	}
 
+	const currentConfig = readProjectConfigFromDir(projectDir, id)
 	const oldKanban = readKanban(projectDir)
 
 	// Separate kanban updates from config updates
 	const { kanban: newKanban, ...configUpdates } = updates
 
 	if (Object.keys(configUpdates).length > 0) {
-		const updatedConfig: ProjectConfigFile = {
-			...config,
-			...configUpdates,
-			path: id,
+		const fmUpdates: Partial<ProjectFrontmatter> = {
+			...(configUpdates.name !== undefined ? { name: configUpdates.name } : {}),
+			...(configUpdates.description !== undefined ? { description: configUpdates.description } : {}),
+			...(configUpdates.status !== undefined ? { status: configUpdates.status } : {}),
+			...(configUpdates.discordServerId !== undefined ? { discordServerId: configUpdates.discordServerId } : {}),
+			...(configUpdates.discordChannelId !== undefined ? { discordChannelId: configUpdates.discordChannelId } : {}),
+			...(configUpdates.techStack !== undefined ? { techStack: configUpdates.techStack } : {}),
+			...(configUpdates.website !== undefined ? { website: configUpdates.website } : {}),
+			...(configUpdates.objectives !== undefined ? { objectives: configUpdates.objectives } : {}),
+			...(configUpdates.preferredConnections !== undefined ? { preferredConnections: configUpdates.preferredConnections } : {}),
+			...(configUpdates.preferredModel !== undefined ? { preferredModel: configUpdates.preferredModel } : {}),
+			...(configUpdates.preferredModelFallbacks !== undefined ? { preferredModelFallbacks: configUpdates.preferredModelFallbacks } : {}),
 			updatedAt: new Date().toISOString(),
 		}
-		writeProjectConfig(projectDir, updatedConfig)
+		updateProjectFrontmatter(projectDir, fmUpdates)
 	}
 
 	if (newKanban !== undefined) {
 		writeKanban(projectDir, newKanban)
 		projectEvents.emit('kanban_changed', {
-			project: { ...config, kanban: newKanban },
+			project: { ...currentConfig, kanban: newKanban },
 			oldKanban,
 			newKanban,
 			source: opts?.source,
@@ -330,7 +397,7 @@ export function updateProject(id: string, updates: Partial<Omit<ProjectConfig, '
 	}
 
 	// Re-read to return consistent state
-	const finalConfig = readProjectConfig(projectDir)!
+	const finalConfig = readProjectConfigFromDir(projectDir, id)
 	return {
 		...finalConfig,
 		kanban: newKanban !== undefined ? newKanban : oldKanban,
@@ -443,7 +510,7 @@ export function getProjectCrons(id: string): CronJob[] {
 	if (!existsSync(file)) return []
 	try {
 		const raw = JSON.parse(readFileSync(file, 'utf-8'))
-		return (raw as any[]).map(entry => CronJobSchema.parse(entry))
+		return (raw as Record<string, unknown>[]).map(entry => CronJobSchema.parse(entry))
 	} catch {
 		return []
 	}

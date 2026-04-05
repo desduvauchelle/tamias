@@ -52,7 +52,6 @@ describe('CLI Structure', () => {
 			'channels',
 			'emails',
 			'workspace',
-			'browser',
 			'uninstall',
 			'backup',
 			'restore',

@@ -21,7 +21,6 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 	const [pathManuallyEdited, setPathManuallyEdited] = useState(false)
 	const [formDesc, setFormDesc] = useState("")
 	const [formChannel, setFormChannel] = useState("")
-	const [formContext, setFormContext] = useState("readme.md")
 
 	useEffect(() => {
 		if (isModalOpen) {
@@ -63,7 +62,6 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 					path: formPath,
 					discordChannelId: selectedChannel?.id || undefined,
 					discordServerId: selectedChannel?.guildId || undefined,
-					contextFile: formContext
 				})
 			})
 
@@ -75,7 +73,6 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 				setPathManuallyEdited(false)
 				setFormDesc("")
 				setFormChannel("")
-				setFormContext("readme.md")
 				// Notify Nav to refresh its list
 				window.dispatchEvent(new CustomEvent('refreshProjects'))
 			} else {
@@ -169,13 +166,6 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 									))}
 								</select>
 							</div>
-
-							{formChannel && (
-								<div className="form-control bg-base-200/30 p-4 rounded-xl border border-base-300/50 mt-2">
-									<label className="label pt-0"><span className="label-text font-bold text-xs">Context File Path (Relative)</span></label>
-									<input value={formContext} onChange={e => setFormContext(e.target.value)} type="text" className="input input-bordered w-full input-sm font-mono text-xs" placeholder="readme.md" />
-								</div>
-							)}
 						</div>
 
 						<div className="modal-action gap-3 mt-8 border-t border-base-300/50 pt-5">

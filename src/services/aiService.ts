@@ -896,15 +896,15 @@ Important: Post at least one progress comment before your final result so the us
 									}
 								}
 
-								if (project.contextFile && project.path) {
-									const { join } = await import('path')
-									const { existsSync, readFileSync } = await import('fs')
-									const ctxPath = join(project.path, project.contextFile)
-									if (existsSync(ctxPath)) {
-										const content = readFileSync(ctxPath, 'utf-8')
-										projText += `\n### Context File (${project.contextFile}):\n\`\`\`\n${content}\n\`\`\``
+								// Inject README.md body as project context
+								try {
+									const { readProjectReadme } = await import('../utils/projectReadme.ts')
+									const { getProjectDirectory } = await import('../core/projects')
+									const readmeData = readProjectReadme(getProjectDirectory(project.id))
+									if (readmeData?.body?.trim()) {
+										projText += `\n### Project README:\n${readmeData.body}\n`
 									}
-								}
+								} catch { /* ignore */ }
 
 								// Include project agents and crons for context awareness
 								try {
@@ -953,15 +953,15 @@ Important: Post at least one progress comment before your final result so the us
 								}
 							}
 
-							if (linkedProject.contextFile) {
-								const { join } = await import('path')
-								const { existsSync, readFileSync } = await import('fs')
-								const ctxPath = join(linkedProject.path, linkedProject.contextFile)
-								if (existsSync(ctxPath)) {
-									const content = readFileSync(ctxPath, 'utf-8')
-									projText += `\n### Context File: ${linkedProject.contextFile}\n\`\`\`\n${content}\n\`\`\``
+							// Inject README.md body as linked project context
+							try {
+								const { readProjectReadme } = await import('../utils/projectReadme.ts')
+								const { getProjectDirectory } = await import('../core/projects')
+								const readmeData = readProjectReadme(getProjectDirectory(linkedProject.id))
+								if (readmeData?.body?.trim()) {
+									projText += `\n### Project README:\n${readmeData.body}\n`
 								}
-							}
+							} catch { /* ignore */ }
 							parts.push(projText)
 						}
 					} catch (e) {
@@ -1426,8 +1426,8 @@ Stable facts about the human: identity, communication style (the **Style:** fiel
 New preferences for how the AI should behave, new personality traits observed.
 Leave the insights array EMPTY if nothing new was learned. DO NOT repeat existing context.
 
-#### PROJECT-README.md (only if project work was discussed)
-Concise technical summary: architecture, key components, conventions, current state. Include a \`## Todo List\` section — placeholder \`- put todos here\` if no concrete todos.
+#### Project Notes (only if project work was discussed)
+Concise notes about the project work done in this session: architecture decisions, components touched, conventions discovered, current state. This will be appended to the ## Notes section of the project README.
 
 ### EXISTING PERSONA CONTEXT
 ${existingContext}
@@ -1455,7 +1455,7 @@ ${keptHistoryText}`
 					sessionName: z.string().describe('A short, descriptive name for the session.'),
 					memoryUpdate: z.string().describe('Full replacement content for MEMORY.md: ## Last Session (2-3 sentence narrative), ## Lessons Learned (bullets), ## Pending (bullets).'),
 					userUpdate: z.string().describe('Full replacement content for USER.md if genuinely new personal facts were learned. Empty string if nothing new.'),
-					projectReadmeUpdate: z.string().describe('Technical summary of the project worked on in this session (architecture, components, conventions, current state), including a default "## Todo List" section. If no todos are known, include a placeholder like "- put todos here". Empty string if no project work was discussed.'),
+					projectReadmeUpdate: z.string().describe('Concise notes about project work done in this session (architecture, components, conventions, current state). Will be appended to the project README Notes section. Empty string if no project work was discussed.'),
 					insights: z.array(z.object({
 						filename: z.enum(['IDENTITY.md']).describe('The persona file to append a new insight to.'),
 						content: z.string().describe('The new insight to append.')
@@ -1516,26 +1516,21 @@ ${keptHistoryText}`
 				}
 				updatePersonaFiles(insightsRecord, today, session.projectSlug)
 			}
-			// Write PROJECT-README.md if project context was updated
+			// Update README.md Notes section if project context was updated
 			if (object.projectReadmeUpdate?.trim() && session.projectSlug) {
 				try {
-					const { getProjectDir } = await import('../utils/projects')
-					const projectDir = getProjectDir(session.projectSlug)
-					const readmePath = join(projectDir, 'PROJECT-README.md')
+					const { readProjectReadme, writeProjectReadme, updateReadmeSection } = await import('../utils/projectReadme.ts')
+					const { getProjectDirectory } = await import('../core/projects')
+					const projectDir = getProjectDirectory(session.projectSlug)
 					if (existsSync(projectDir)) {
-						let projectReadmeContent = object.projectReadmeUpdate.trim()
-						if (!/\n##\s+Todo List\b/i.test(`\n${projectReadmeContent}`)) {
-							projectReadmeContent += '\n\n## Todo List\n\n- put todos here'
-						} else {
-							projectReadmeContent = projectReadmeContent.replace(
-								/(\n##\s+Todo List\s*\n)(?=\s*(?:##\s+|$))/i,
-								'$1\n- put todos here\n'
-							)
+						const existing = readProjectReadme(projectDir)
+						if (existing) {
+							const updatedBody = updateReadmeSection(existing.body, 'Notes', object.projectReadmeUpdate.trim())
+							writeProjectReadme(projectDir, existing.frontmatter, updatedBody)
 						}
-						writeFileSync(readmePath, projectReadmeContent.trim() + '\n', 'utf-8')
 					}
 				} catch (err) {
-					console.error('[Compaction] Failed to write PROJECT-README.md:', err)
+					console.error('[Compaction] Failed to update README.md Notes section:', err)
 				}
 			}
 			// Apply the pre-computed trim: keep only the recent messages, drop the compacted portion

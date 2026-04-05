@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import { join } from 'path'
 import { mkdtempSync, existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, renameSync } from 'fs'
 import { tmpdir } from 'os'
+import matter from 'gray-matter'
 import { slugifyProject, addProject, getProject, getProjects, deleteProject, updateProject, getProjectSkills } from '../core/projects.ts'
 
 // ─── Temp dir for structure-only tests ─────────────────────────────────────
@@ -19,10 +20,12 @@ afterEach(() => {
 	rmSync(tempDir, { recursive: true, force: true })
 })
 
-function createProjectDir(id: string, config: Record<string, unknown>, kanban: unknown[] = []) {
+function createProjectDir(id: string, frontmatter: Record<string, unknown>, kanban: unknown[] = []) {
 	const dir = join(projectsDir, id)
 	mkdirSync(dir, { recursive: true })
-	writeFileSync(join(dir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8')
+	const body = `# ${frontmatter.name || id}\n\nProject description.\n`
+	const readme = matter.stringify(body, frontmatter)
+	writeFileSync(join(dir, 'README.md'), readme, 'utf-8')
 	writeFileSync(join(dir, 'kanban.json'), JSON.stringify(kanban, null, 2), 'utf-8')
 	return dir
 }
@@ -30,29 +33,27 @@ function createProjectDir(id: string, config: Record<string, unknown>, kanban: u
 // ─── Directory structure tests (filesystem-only, no module side-effects) ───
 
 describe('Project directory structure', () => {
-	test('config.json is valid JSON with required fields', () => {
-		const config = {
-			id: 'test-project',
+	test('README.md has valid YAML frontmatter with required fields', () => {
+		const fm = {
 			name: 'Test Project',
 			description: 'A test',
-			path: '/tmp/test',
 			status: 'active',
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
 		}
-		const dir = createProjectDir('test-project', config)
+		const dir = createProjectDir('test-project', fm)
 
-		const read = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf-8'))
-		expect(read.id).toBe('test-project')
-		expect(read.name).toBe('Test Project')
-		expect(read.description).toBe('A test')
-		expect(read.status).toBe('active')
-		expect(read.createdAt).toBeDefined()
-		expect(read.updatedAt).toBeDefined()
+		const raw = readFileSync(join(dir, 'README.md'), 'utf-8')
+		const parsed = matter(raw)
+		expect(parsed.data.name).toBe('Test Project')
+		expect(parsed.data.description).toBe('A test')
+		expect(parsed.data.status).toBe('active')
+		expect(parsed.data.createdAt).toBeDefined()
+		expect(parsed.data.updatedAt).toBeDefined()
 	})
 
 	test('kanban.json starts as empty array', () => {
-		createProjectDir('empty-kanban', { id: 'empty-kanban', name: 'Empty' })
+		createProjectDir('empty-kanban', { name: 'Empty' })
 		const kanban = JSON.parse(readFileSync(join(projectsDir, 'empty-kanban', 'kanban.json'), 'utf-8'))
 		expect(kanban).toEqual([])
 	})
@@ -69,7 +70,7 @@ describe('Project directory structure', () => {
 			labels: ['bug', 'critical'],
 			order: 0,
 		}]
-		createProjectDir('kanban-test', { id: 'kanban-test', name: 'Test' }, tasks)
+		createProjectDir('kanban-test', { name: 'Test' }, tasks)
 
 		const kanban = JSON.parse(readFileSync(join(projectsDir, 'kanban-test', 'kanban.json'), 'utf-8'))
 		expect(kanban).toHaveLength(1)
@@ -82,7 +83,7 @@ describe('Project directory structure', () => {
 	})
 
 	test('project directory can contain skills subdirectory with SKILL.md files', () => {
-		const dir = createProjectDir('with-skills', { id: 'with-skills', name: 'Skills' })
+		const dir = createProjectDir('with-skills', { name: 'Skills' })
 		const skillDir = join(dir, 'skills', 'custom-skill')
 		mkdirSync(skillDir, { recursive: true })
 		writeFileSync(join(skillDir, 'SKILL.md'), '---\nname: "Custom Skill"\ndescription: "A test skill"\n---\n\n# Custom Skill\n\nDo the thing.', 'utf-8')
@@ -93,18 +94,10 @@ describe('Project directory structure', () => {
 		expect(content).toContain('Do the thing')
 	})
 
-	test('project directory can contain context.md', () => {
-		const dir = createProjectDir('with-context', { id: 'with-context', name: 'Context' })
-		writeFileSync(join(dir, 'context.md'), '# My Project\n\nThis is the project context.', 'utf-8')
-
-		const content = readFileSync(join(dir, 'context.md'), 'utf-8')
-		expect(content).toContain('This is the project context')
-	})
-
 	test('multiple projects co-exist as separate directories', () => {
-		createProjectDir('proj-a', { id: 'proj-a', name: 'A' })
-		createProjectDir('proj-b', { id: 'proj-b', name: 'B' })
-		createProjectDir('proj-c', { id: 'proj-c', name: 'C' })
+		createProjectDir('proj-a', { name: 'A' })
+		createProjectDir('proj-b', { name: 'B' })
+		createProjectDir('proj-c', { name: 'C' })
 
 		const entries = readdirSync(projectsDir)
 		expect(entries).toContain('proj-a')
@@ -113,15 +106,14 @@ describe('Project directory structure', () => {
 		expect(entries).toHaveLength(3)
 	})
 
-	test('config.json does NOT contain kanban data (separation)', () => {
-		const dir = createProjectDir('no-kanban-in-config', {
-			id: 'no-kanban-in-config',
+	test('README.md frontmatter does NOT contain kanban data (separation)', () => {
+		const dir = createProjectDir('no-kanban-in-fm', {
 			name: 'Separate',
-			path: '/tmp/test',
 		})
 
-		const config = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf-8'))
-		expect(config.kanban).toBeUndefined()
+		const raw = readFileSync(join(dir, 'README.md'), 'utf-8')
+		const parsed = matter(raw)
+		expect(parsed.data.kanban).toBeUndefined()
 	})
 })
 
@@ -149,28 +141,27 @@ describe('Migration from projects.json', () => {
 		expect(parsed.abc123.kanban[0].title).toBe('Old task')
 	})
 
-	test('migration output creates config.json without kanban and kanban.json with tasks', () => {
+	test('migration output creates README.md with frontmatter and kanban.json with tasks', () => {
 		const projectDir = join(projectsDir, 'migrated-project')
 		mkdirSync(projectDir, { recursive: true })
 
-		// Simulate migration output
-		const config = { id: 'migrated-project', name: 'Old Project', path: '/old/path', status: 'active' }
+		// Simulate migration output with README.md frontmatter
+		const body = `# Old Project\n\nMigrated\n`
+		const readme = matter.stringify(body, { name: 'Old Project', status: 'active' })
+		writeFileSync(join(projectDir, 'README.md'), readme, 'utf-8')
 		const kanban = [{ id: 't1', title: 'Old task', status: 'todo', createdAt: 1000 }]
-
-		writeFileSync(join(projectDir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8')
 		writeFileSync(join(projectDir, 'kanban.json'), JSON.stringify(kanban, null, 2), 'utf-8')
-		writeFileSync(join(projectDir, 'context.md'), `# Old Project\n\nMigrated\n`, 'utf-8')
 		mkdirSync(join(projectDir, 'skills'), { recursive: true })
 
-		const readConfig = JSON.parse(readFileSync(join(projectDir, 'config.json'), 'utf-8'))
-		expect(readConfig.name).toBe('Old Project')
-		expect(readConfig.kanban).toBeUndefined()
+		const raw = readFileSync(join(projectDir, 'README.md'), 'utf-8')
+		const parsed = matter(raw)
+		expect(parsed.data.name).toBe('Old Project')
+		expect(parsed.data.kanban).toBeUndefined()
 
 		const readKanban = JSON.parse(readFileSync(join(projectDir, 'kanban.json'), 'utf-8'))
 		expect(readKanban).toHaveLength(1)
 		expect(readKanban[0].title).toBe('Old task')
 
-		expect(existsSync(join(projectDir, 'context.md'))).toBe(true)
 		expect(existsSync(join(projectDir, 'skills'))).toBe(true)
 	})
 
@@ -290,7 +281,6 @@ describe('Project CRUD integration', () => {
 		expect(result.id).toBeDefined()
 		expect(result.id).toContain('crud-test-proj')
 		expect(result.name).toBe('CRUD Test Proj')
-		expect(result.path).toBe('/tmp/crud')
 		expect(result.description).toBe('Test desc')
 		expect(result.kanban).toEqual([])
 		expect(result.createdAt).toBeDefined()
@@ -304,7 +294,7 @@ describe('Project CRUD integration', () => {
 		const retrieved = getProject(created.id)
 		expect(retrieved).toBeDefined()
 		expect(retrieved!.name).toBe('Get Test Proj')
-		expect(retrieved!.path).toBe('/tmp/get')
+		expect(retrieved!.id).toContain('get-test-proj')
 	})
 
 	test('getProject returns undefined for non-existent project', () => {
@@ -380,10 +370,15 @@ describe('Project CRUD integration', () => {
 		const { getProjectDirectory } = require('../core/projects')
 		const dir = getProjectDirectory(created.id)
 
-		expect(existsSync(join(dir, 'config.json'))).toBe(true)
+		expect(existsSync(join(dir, 'README.md'))).toBe(true)
 		expect(existsSync(join(dir, 'kanban.json'))).toBe(true)
-		expect(existsSync(join(dir, 'context.md'))).toBe(true)
 		expect(existsSync(join(dir, 'skills'))).toBe(true)
+
+		// Verify README.md has YAML frontmatter
+		const raw = readFileSync(join(dir, 'README.md'), 'utf-8')
+		const parsed = matter(raw)
+		expect(parsed.data.name).toBe('Files Test Proj')
+		expect(parsed.data.status).toBe('active')
 	})
 
 	test('addProject generates unique id when slug already exists', () => {

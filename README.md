@@ -101,6 +101,17 @@ Manage local Ollama models
 | `tamias ollama list` | List locally available Ollama models (`-c, --connection <name>`) |
 | `tamias ollama pull <model>` | Pull (download) an Ollama model (`-c, --connection <name>`) |
 
+### `tamias browser`
+
+Manage the authentication browser for accessing gated content
+
+| Command | Description |
+|---|---|
+| `tamias browser` | Manage the authentication browser for accessing gated content |
+| `tamias browser open [url]` | Open a browser window to authenticate on websites (session cookies are saved) |
+| `tamias browser close` | Close the authentication browser and save session cookies |
+| `tamias browser status` | Check browser installation and auth session status |
+
 ### `tamias inspect`
 
 Generate a debug report of the current system prompt, tools, and config
@@ -268,10 +279,10 @@ You can define reusable "identities" via `tamias agents add`. These contain fixe
 
 ### Using Sub-agents in Chat
 
-The AI can spawn a sub-agent using the `subagent__spawn` tool. You can also prompt it to do so:
+The AI can spawn a sub-agent using the `agents__spawn` tool. You can also prompt it to do so:
 > "Spawn a **Researcher** agent to read the documentation in `~/docs` and summarize the security section."
 
-1. The main AI calls `subagent__spawn` with the task.
+1. The main AI calls `agents__spawn` with the task.
 2. A sub-session is created (inheriting the "Researcher" persona if specified).
 3. The sub-agent performs the task and produces a result.
 4. Tamias **automatically injects** the sub-agent's final report back into your main conversation.
@@ -289,6 +300,7 @@ bun run type-check   # Validate TypeScript
 > All configuration is stored in `~/.tamias/config.json`.
 
 Runtime logs are centralized under `~/.tamias/logs/` (for example `daemon.log`, `dashboard.log`, `cron.log`).
+`daemon.log` is automatically paginated on daemon start: it keeps the latest 200 lines, and older lines are moved into `daemon.page-XXXX.log` files.
 
 ## Changelog
 

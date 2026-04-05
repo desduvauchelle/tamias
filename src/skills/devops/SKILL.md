@@ -56,7 +56,7 @@ Before deploying:
 
 Before modifying any infra config (Dockerfile, CI YAML, nginx conf, etc.):
 
-1. `terminal__read_file` the entire current config
+1. `files__read_file` the entire current config
 2. Understand what it does now
 3. Make the minimum necessary change
 4. Validate syntax if possible (e.g. `docker build --no-cache`, `nginx -t`)

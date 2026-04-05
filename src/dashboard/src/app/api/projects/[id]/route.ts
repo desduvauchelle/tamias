@@ -11,7 +11,7 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
 export async function PUT(req: Request, context: { params: Promise<{ id: string }> }) {
 	try {
 		const { id } = await context.params
-		const body = await req.json()
+		const { contextFile: _unused, ...body } = await req.json()
 		const oldProject = getProject(id)
 		const oldKanban = oldProject?.kanban || []
 

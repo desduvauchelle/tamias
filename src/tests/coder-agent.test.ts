@@ -32,7 +32,7 @@ describe('ensureDefaultAgents', () => {
 		expect(coder).toBeDefined()
 		expect(coder!.name).toBe('Coder')
 		expect(coder!.enabled).toBe(true)
-		expect(coder!.instructions).toContain('coding_cli')
+		expect(coder!.instructions).toContain('delegate_coding_task')
 
 		restore()
 	})

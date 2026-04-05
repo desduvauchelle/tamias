@@ -39,13 +39,13 @@ Then a Markdown body with:
 
 ## Saving a Skill
 
-Use `tamias__save_skill` to persist a new or updated skill to disk. Provide:
+Use `skills__save` to persist a new or updated skill to disk. Provide:
 - `name` — kebab-case
 - `content` — full Markdown with frontmatter
 
 ## Listing Available Skills
 
-Use `skills__load_skill` with `name: "list"` or check `~/.tamias/skills/` and `src/skills/` directly via `terminal__list_dir`.
+Use `skills__list` or check `~/.tamias/skills/` and `src/skills/` directly via `files__list_dir`.
 
 ## Quality Bar for a Good Skill
 

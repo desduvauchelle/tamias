@@ -3,6 +3,7 @@ import { join, dirname } from 'path'
 import { homedir } from 'os'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'fs'
 import { getEnv, setEnv, removeEnv, generateSecureEnvKey } from './env'
+import { TOOL_NAMESPACE_RENAMES, TAMIAS_SUCCESSORS } from '../tools/namespaceMigration'
 
 export const TAMIAS_DIR = join(homedir(), '.tamias')
 export const getConfigFilePath = () => process.env.TAMIAS_CONFIG_PATH || join(TAMIAS_DIR, 'config.json')
@@ -314,6 +315,14 @@ export const loadConfig = (): TamiasConfig => {
 		const rawData = JSON.parse(readFileSync(path, 'utf-8'))
 		const data = TamiasConfigSchema.parse(rawData)
 
+		// Migrate old tool namespace keys to new names
+		if (migrateToolNamespaces(data)) {
+			try {
+				const validated = TamiasConfigSchema.parse(data)
+				writeFileSync(path, JSON.stringify(validated, null, 2), 'utf-8')
+			} catch { /* migration write failed — continue with in-memory migrated config */ }
+		}
+
 		// Cache the loaded config
 		try {
 			const { mtimeMs } = statSync(path)
@@ -328,6 +337,52 @@ export const loadConfig = (): TamiasConfig => {
 		console.error('Failed to load config file, using defaults:', err)
 		return { version: '1.0', connections: {}, bridges: { terminal: { enabled: true } }, debug: false, ngrok: { enabled: false } }
 	}
+}
+
+// ─── Tool Namespace Migration ──────────────────────────────────────────────
+
+/**
+ * Migrate old tool namespace keys in `internalTools` to their new names.
+ * Returns true if any keys were migrated (caller should persist the config).
+ */
+export function migrateToolNamespaces(config: TamiasConfig): boolean {
+	const tools = config.internalTools
+	if (!tools) return false
+
+	let changed = false
+
+	// 1. Handle simple 1:1 renames
+	for (const [oldName, newName] of Object.entries(TOOL_NAMESPACE_RENAMES)) {
+		if (!(oldName in tools)) continue
+
+		const oldCfg = tools[oldName]
+		// Only migrate if the new key does NOT already have explicit config
+		if (!(newName in tools)) {
+			tools[newName] = oldCfg
+		} else if (!oldCfg.enabled && tools[newName].enabled) {
+			// If the old key was explicitly disabled, propagate that
+			tools[newName] = { ...tools[newName], enabled: false }
+		}
+		delete tools[oldName]
+		changed = true
+	}
+
+	// 2. Handle "tamias" → multiple successors
+	if ('tamias' in tools) {
+		const tamiasCfg = tools['tamias']
+		if (!tamiasCfg.enabled) {
+			// If tamias was disabled, disable all its successor namespaces
+			for (const successor of TAMIAS_SUCCESSORS) {
+				if (!(successor in tools)) {
+					tools[successor] = { enabled: false }
+				}
+			}
+		}
+		delete tools['tamias']
+		changed = true
+	}
+
+	return changed
 }
 
 export const saveConfig = (config: TamiasConfig): void => {

@@ -294,13 +294,13 @@ function buildEnvironmentSection(
 			lines.push('```')
 
 			// ── Project snapshots ─────────────────────────────────────────
-			// For each project dir, read PROJECT-README.md or README.md and
+			// For each project dir, read README.md or MEMORY.md and
 			// extract the opening description (up to first ## section, max 5 lines).
 			const snapshots: { name: string; gist: string }[] = []
 			for (const e of projectEntries) {
 				const projectDir = join(workspacePath, e.name)
 				let readmeContent: string | null = null
-				for (const candidate of ['PROJECT-README.md', 'README.md', 'MEMORY.md']) {
+				for (const candidate of ['README.md', 'MEMORY.md']) {
 					const p = join(projectDir, candidate)
 					if (existsSync(p)) {
 						try { readmeContent = readFileSync(p, 'utf-8'); break } catch { /* skip */ }
@@ -535,7 +535,7 @@ export function buildSystemPrompt(
 		}).join('\n')
 		tiers.push({
 			name: 'skills-catalog',
-			content: `## SKILLS CATALOG (ON-DEMAND)\n\nYou have "Expertise Packages." To use one, call \`tamias__load_skill(name)\`.\n\n${skillsList}\n\n- **skill-manager:** Use this to CREATE or EDIT skills in \`~/.tamias/skills/\``,
+			content: `## SKILLS CATALOG (ON-DEMAND)\n\nYou have "Expertise Packages." To use one, call \`skills__load(name)\`.\n\n${skillsList}\n\n- **skill-manager:** Use this to CREATE or EDIT skills in \`~/.tamias/skills/\``,
 			priority: 4,
 			trimmable: true,
 			minContent: `## SKILLS CATALOG\n\n${skills.map(s => `- **${s.name}**: ${s.description}`).join('\n')}`,

@@ -49,9 +49,10 @@ describe('firecrawl config + tool', () => {
 		expect(firecrawl.timeoutMs).toBe(30000)
 	})
 
-	test('FIRECRAWL_TOOL_NAME and registration are wired', () => {
+	test('FIRECRAWL_TOOL_NAME is firecrawl and web namespace is registered', () => {
 		expect(FIRECRAWL_TOOL_NAME).toBe('firecrawl')
-		expect(INTERNAL_TOOL_NAMES).toContain('firecrawl')
+		// firecrawl is now merged into the 'web' namespace
+		expect(INTERNAL_TOOL_NAMES).toContain('web')
 	})
 
 	test('scrape returns disabled error when firecrawl config is off', async () => {

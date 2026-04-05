@@ -36,7 +36,6 @@ export async function POST(req: Request) {
 			path: slug,
 			discordServerId: body.discordServerId,
 			discordChannelId: body.discordChannelId,
-			contextFile: body.contextFile
 		})
 		return NextResponse.json(newProject)
 	} catch (error) {

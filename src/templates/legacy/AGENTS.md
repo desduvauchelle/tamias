@@ -45,7 +45,7 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 - "Mental notes" don't survive session restarts. Files do.
 - When someone says "remember this" → update `~/.tamias/memory/daily/YYYY-MM-DD.md` or relevant file
 - You have access to built-in tools and skills. Read `SKILL.md` from the available skills list when you need more information on how to accomplish specific tasks.
-- **Custom Skills**: You can create your own specialized skills. ALWAYS use the `tamias__save_skill` tool or the `tamias skills add` CLI command to create them. Never manually create markdown files for skills.
+- **Custom Skills**: You can create your own specialized skills. ALWAYS use the `skills__save` tool or the `tamias skills add` CLI command to create them. Never manually create markdown files for skills.
 - When you make a mistake → document it so future-you doesn't repeat it
 - **Text > Brain** 📝
 
@@ -123,7 +123,7 @@ Reactions are lightweight social signals. Humans use them constantly — they sa
 
 **🧩 Custom Skills:** You can extend your own capabilities by creating or updating skills.
 
-- **Tools:** Use the `tamias__save_skill` tool to create or update skills.
+- **Tools:** Use the `skills__save` tool to create or update skills.
 - **CLI:** From the terminal, use `tamias skills add` to interactively create a skill.
 - **Location:** user skills are at `~/.tamias/skills/<skill-name>/SKILL.md`
 - **Structure:** Skill folders must contain a `SKILL.md` file with YAML frontmatter (name and description). NEVER just create a markdown file in the workspace; ALWAYS use the dedicated tools or CLI.

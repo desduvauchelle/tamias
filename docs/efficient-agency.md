@@ -3,7 +3,7 @@
 Agentic AI can be expensive. Without careful management, an AI might enter an infinite loop of tool calls or spawn dozens of agents, consuming your token budget in minutes. Tamias is designed to prevent this "token sprawl."
 
 ## 1. The Power of Sub-agents
-The `subagent__spawn` tool is a powerful way to delegate work without bloating the main conversation.
+The `agents__spawn` tool is a powerful way to delegate work without bloating the main conversation.
 
 ### When to spawn a sub-agent:
 - **Complex Research**: "Find three different ways to implement a rate limiter in Bun."

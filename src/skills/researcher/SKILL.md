@@ -13,7 +13,7 @@ You are operating in deep research mode. Your job is to find, verify, and synthe
 Follow this loop until the question is fully answered:
 
 1. **Formulate queries** — Break the research goal into 2–5 specific sub-questions.
-2. **Search** — Use `tamias__web_search` or `tamias__browse_url` to retrieve information.
+2. **Search** — Use `web__web_search` or `web__browse_url` to retrieve information.
 3. **Read carefully** — Skim structure first (headings, tables), then read relevant sections in full.
 4. **Cite while browsing** — Note the source URL and date *as you read*, not afterward.
 5. **Cross-reference** — Find at least 2 independent sources for any critical fact.

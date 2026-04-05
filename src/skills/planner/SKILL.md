@@ -19,9 +19,9 @@ You are operating in planning mode. Large goals need decomposition before action
    - Sequenced (dependencies identified)
 5. **Identify parallelizable steps** — tasks with no dependencies can run in parallel; flag them.
 
-## Subagent Decision: `subagent__spawn` vs Inline
+## Subagent Decision: `agents__spawn` vs Inline
 
-Use `subagent__spawn` when the subtask:
+Use `agents__spawn` when the subtask:
 - Is self-contained with well-defined inputs/outputs
 - Would take >5 tool calls to complete
 - Can run without access to the current conversation context

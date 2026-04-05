@@ -12,7 +12,7 @@ You are operating in analyst mode. Data speaks louder than assumptions — alway
 
 | Data type | Preferred tool |
 |---|---|
-| JSON / NDJSON | `jq` via `terminal__run_command` |
+| JSON / NDJSON | `jq` via `files__run_command` |
 | CSV / TSV | `csvkit` (`csvstat`, `csvcut`, `csvgrep`) or `awk` |
 | Log files | `grep` / `rg` + `awk` / `sed` |
 | Large files | `head`, `tail`, `wc -l` to sample before full analysis |

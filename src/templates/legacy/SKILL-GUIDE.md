@@ -5,7 +5,7 @@ Skills live at `~/.tamias/skills/<folder-name>/SKILL.md`.
 ## Creating a Skill
 
 **Via tool (preferred in-session):**
-`tamias__save_skill` — pass name, description, content, and optionally tags, parent, model.
+`skills__save` — pass name, description, content, and optionally tags, parent, model.
 
 **Via CLI:**
 
@@ -67,7 +67,7 @@ What input does this skill expect? Format, examples, where it comes from.
 What should the final output look like? Format, file location, channel to post to.
 
 ## Tools Needed
-List which tool groups this skill relies on (e.g., workspace, browser, subagent).
+List which tool groups this skill relies on (e.g., files, web, agents).
 
 ## Notes
 Edge cases, gotchas, preferences the user has expressed about this skill.

@@ -2,26 +2,23 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { loadConfig, getInternalToolConfig, getFirecrawlConfig, type ToolFunctionConfig, type McpServerConfig } from './config.ts'
-import { terminalTools, TERMINAL_TOOL_NAME } from '../tools/terminal.ts'
-import { createTamiasTools, TAMIAS_TOOL_NAME } from '../tools/tamias.ts'
+
+// ── New namespace imports ────────────────────────────────────────────────────
+import { createConfigTools, CONFIG_TOOL_NAME } from '../tools/configTools.ts'
+import { createDaemonTools, DAEMON_TOOL_NAME } from '../tools/daemon.ts'
+import { createChannelsTools, CHANNELS_TOOL_NAME } from '../tools/channels.ts'
+import { createFilesTools, FILES_TOOL_NAME } from '../tools/files.ts'
+import { createAgentOpsTools, AGENTS_TOOL_NAME } from '../tools/agents.ts'
+import { skillsTools, SKILLS_TOOL_NAME } from '../tools/skills.ts'
+import { memoryTools, MEMORY_TOOL_NAME } from '../tools/memory.ts'
+import { createWebTools, WEB_TOOL_NAME } from '../tools/web.ts'
+import { createMediaTools, MEDIA_TOOL_NAME } from '../tools/media.ts'
+import { createProjectTools, PROJECTS_TOOL_NAME } from '../tools/projects.ts'
+import { githubTools, GITHUB_TOOL_NAME } from '../tools/github.ts'
 import { createCronTools, CRON_TOOL_NAME } from '../tools/cron.ts'
 import { emailTools, EMAIL_TOOL_NAME } from '../tools/email.ts'
-import { githubTools, GITHUB_TOOL_NAME } from '../tools/github.ts'
-import { createWorkspaceTools, WORKSPACE_TOOL_NAME } from '../tools/workspace.ts'
-import { geminiTools, GEMINI_TOOL_NAME } from '../tools/gemini.ts'
-import { createSubagentTools, SUBAGENT_TOOL_NAME } from '../tools/subagent.ts'
-import { createImageTools, IMAGE_TOOL_NAME } from '../tools/image.ts'
-import { createBrowserTools, BROWSER_TOOL_NAME } from '../tools/browser.ts'
-import { createPdfTools, PDF_TOOL_NAME } from '../tools/pdf.ts'
-import { memoryTools, MEMORY_TOOL_NAME } from '../tools/memory.ts'
-import { createSwarmTools, SWARM_TOOL_NAME } from '../tools/swarm.ts'
-import { createSessionTools, SESSION_TOOL_NAME } from '../tools/session.ts'
-import { skillsTools, SKILLS_TOOL_NAME } from '../tools/skills.ts'
-import { createWebsearchTools, WEBSEARCH_TOOL_NAME } from '../tools/websearch.ts'
-import { createFirecrawlTools, FIRECRAWL_TOOL_NAME } from '../tools/firecrawl.ts'
-import { createProjectTools, PROJECTS_TOOL_NAME } from '../tools/projects.ts'
-import { createCodingCliTools, CODING_CLI_TOOL_NAME } from '../tools/codingCli.ts'
-import { INTERNAL_TOOL_NAMES, getAllInternalToolNames } from '../tools/internalToolNames.ts'
+
+import { getAllInternalToolNames } from '../tools/internalToolNames.ts'
 import { buildToolsForDomain } from '../core/adapters/ai-tools.ts'
 import { getDomains } from '../core/registry.ts'
 import type { AIService } from '../services/aiService.ts'
@@ -88,36 +85,37 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 	const sessionWorkspacePath = session?.workspacePath
 
 	const internalCatalog: Record<string, ToolSet> = {
-		[TERMINAL_TOOL_NAME]: terminalTools as ToolSet,
-		[TAMIAS_TOOL_NAME]: createTamiasTools(aiService, sessionId) as ToolSet,
-		[CRON_TOOL_NAME]: createCronTools(aiService, sessionId) as ToolSet,
-		[EMAIL_TOOL_NAME]: emailTools as ToolSet,
-		[GITHUB_TOOL_NAME]: githubTools as ToolSet,
-		[WORKSPACE_TOOL_NAME]: createWorkspaceTools(sessionWorkspacePath) as ToolSet,
-		[GEMINI_TOOL_NAME]: geminiTools as ToolSet,
-		[SUBAGENT_TOOL_NAME]: createSubagentTools(aiService, sessionId) as ToolSet,
-		[IMAGE_TOOL_NAME]: createImageTools(aiService, sessionId, sessionWorkspacePath) as ToolSet,
-		[BROWSER_TOOL_NAME]: createBrowserTools(aiService, sessionId) as ToolSet,
-		[PDF_TOOL_NAME]: createPdfTools(aiService, sessionId) as ToolSet,
-		[MEMORY_TOOL_NAME]: memoryTools as ToolSet,
-		[SWARM_TOOL_NAME]: createSwarmTools(aiService, sessionId) as ToolSet,
-		[SESSION_TOOL_NAME]: createSessionTools(aiService, sessionId) as ToolSet,
+		[CONFIG_TOOL_NAME]: createConfigTools(aiService, sessionId) as ToolSet,
+		[DAEMON_TOOL_NAME]: createDaemonTools(aiService, sessionId) as ToolSet,
+		[CHANNELS_TOOL_NAME]: createChannelsTools(aiService, sessionId) as ToolSet,
+		[FILES_TOOL_NAME]: createFilesTools(aiService, sessionId, sessionWorkspacePath) as ToolSet,
 		[SKILLS_TOOL_NAME]: skillsTools as ToolSet,
-		[WEBSEARCH_TOOL_NAME]: createWebsearchTools(aiService, sessionId) as ToolSet,
-		[FIRECRAWL_TOOL_NAME]: createFirecrawlTools(aiService, sessionId) as ToolSet,
+		[MEMORY_TOOL_NAME]: memoryTools as ToolSet,
+		[WEB_TOOL_NAME]: createWebTools(aiService, sessionId) as ToolSet,
+		[MEDIA_TOOL_NAME]: createMediaTools(aiService, sessionId, sessionWorkspacePath) as ToolSet,
 		[PROJECTS_TOOL_NAME]: createProjectTools({
 			sessionProjectSlug: session?.projectSlug,
 			channelUserId: session?.channelUserId,
 		}) as ToolSet,
-		[CODING_CLI_TOOL_NAME]: createCodingCliTools(aiService, sessionId) as ToolSet,
+		[GITHUB_TOOL_NAME]: githubTools as ToolSet,
+		[CRON_TOOL_NAME]: createCronTools(aiService, sessionId) as ToolSet,
+		[EMAIL_TOOL_NAME]: emailTools as ToolSet,
 	}
 
 	// ── Auto-wire registry-backed domains ────────────────────────────────────
 	// Core domains registered in src/core/domains/ are auto-discovered here.
-	// No manual catalog entry needed — just create the domain file and export it.
+	// For 'agents': merge registry-backed CRUD with manual agent-ops tools.
 	for (const domain of getDomains()) {
-		if (!(domain in internalCatalog)) {
-			internalCatalog[domain] = buildToolsForDomain(domain) as ToolSet
+		const registryTools = buildToolsForDomain(domain) as ToolSet
+		if (domain === AGENTS_TOOL_NAME) {
+			// Merge registry CRUD (create, update, remove, list, show) with
+			// manual agent-ops (spawn, callback, progress, transfer, etc.)
+			internalCatalog[domain] = {
+				...registryTools,
+				...createAgentOpsTools(aiService, sessionId),
+			} as ToolSet
+		} else if (!(domain in internalCatalog)) {
+			internalCatalog[domain] = registryTools
 		}
 	}
 
@@ -130,12 +128,18 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 	}
 
 	for (const [toolName, allFunctions] of Object.entries(internalCatalog)) {
-		if (toolName === FIRECRAWL_TOOL_NAME && !getFirecrawlConfig().enabled) continue
+		// Firecrawl config gate: the 'scrape' tool lives in the 'web' namespace
+		// but is only included if firecrawl is explicitly enabled in config.
+		let toolFunctions = allFunctions
+		if (toolName === WEB_TOOL_NAME && !getFirecrawlConfig().enabled) {
+			const { scrape, ...rest } = allFunctions
+			toolFunctions = rest
+		}
 
 		const toolCfg = getInternalToolConfig(toolName)
 		if (!toolCfg.enabled) continue
 
-		const guarded = applyFunctionConfig(allFunctions, toolCfg.functions)
+		const guarded = applyFunctionConfig(toolFunctions, toolCfg.functions)
 		if (Object.keys(guarded).length > 0) {
 			for (const [fnName, fn] of Object.entries(guarded)) {
 				const fullName = `${toolName}__${fnName}`

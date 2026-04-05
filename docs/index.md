@@ -35,6 +35,16 @@ Manage recurring cron jobs and heartbeats
 | `tamias cron install` | Install the system crontab entry to run cron jobs every minute |
 | `tamias cron uninstall` | Remove the system crontab entry |
 
+### `tamias ollama`
+
+Manage local Ollama models
+
+| Command | Description |
+|---|---|
+| `tamias ollama` | Manage local Ollama models |
+| `tamias ollama list` | List locally available Ollama models (`-c, --connection <name>`) |
+| `tamias ollama pull <model>` | Pull (download) an Ollama model (`-c, --connection <name>`) |
+
 ### `tamias inspect`
 
 Generate a debug report of the current system prompt, tools, and config

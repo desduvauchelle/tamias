@@ -1,8 +1,8 @@
 import { homedir } from 'os'
-import { existsSync, readFileSync, writeFileSync, unlinkSync, renameSync, readdirSync, statSync, openSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, unlinkSync, openSync } from 'fs'
 import { createServer } from 'net'
 import { join } from 'path'
-import { getLogFilePath, getLogsDirPath } from './logPaths.ts'
+import { getLogFilePath, paginateLogByLines } from './logPaths.ts'
 
 const DAEMON_FILE = join(homedir(), '.tamias', 'daemon.json')
 
@@ -84,39 +84,12 @@ export async function autoStartDaemon(opts: { verbose?: boolean } = {}): Promise
 	const projectRoot = isCompiled ? process.cwd() : join(import.meta.dir, '../..')
 	const logPath = getLogFilePath('daemon.log')
 
-	// ── Log rotation ──────────────────────────────────────────────────────────
-	// If an existing daemon.log was last written on a previous calendar day,
-	// archive it as daemon-YYYY-MM-DD.log and start a fresh file.
-	// Rolling 2-day window: today's live daemon.log + yesterday's archive.
-	// Prune any archived logs older than 1 day.
+	// Keep daemon.log to a bounded line count and paginate older lines.
 	try {
-		if (existsSync(logPath)) {
-			const stat = statSync(logPath)
-			const fileDay = stat.mtime.toISOString().slice(0, 10)  // "YYYY-MM-DD"
-			const today = new Date().toISOString().slice(0, 10)
-			if (fileDay !== today) {
-				const archivePath = getLogFilePath(`daemon-${fileDay}.log`)
-				renameSync(logPath, archivePath)
-			}
-		}
-
-		// Prune archives older than 1 day (rolling 2-day window)
-		// Keep only the most recent archive file (yesterday's)
-		const archives = readdirSync(getLogsDirPath())
-			.filter(entry => /^daemon-\d{4}-\d{2}-\d{2}\.log$/.test(entry))
-			.sort() // chronological
-			.reverse() // newest first
-
-		// Prune all but the newest archive
-		for (let i = 1; i < archives.length; i++) {
-			try {
-				unlinkSync(getLogFilePath(archives[i]))
-			} catch { /* ignore */ }
-		}
+		paginateLogByLines('daemon.log', 200)
 	} catch (err) {
-		console.warn('[Daemon] Log rotation failed:', err)
+		console.warn('[Daemon] Log pagination failed:', err)
 	}
-	// ─────────────────────────────────────────────────────────────────────────
 
 	const logFd = openSync(logPath, 'a')
 	let spawnArgs: string[]

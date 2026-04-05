@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Tamias
 
-Tamias is an AI assistant daemon with a client-daemon architecture. It manages multiple concurrent chat sessions across bridges (Terminal, Discord, Telegram, WhatsApp), provides 19 AI tools, sub-agent spawning, skills, cron jobs, and a Next.js dashboard. Built with Bun and TypeScript, powered by the Vercel AI SDK (multi-provider: OpenAI, Anthropic, Google, OpenRouter).
+Tamias is an AI assistant daemon with a client-daemon architecture. It manages multiple concurrent chat sessions across bridges (Terminal, Discord, Telegram, WhatsApp), provides ~103 AI tools organized into 13 namespaces, sub-agent spawning, skills, cron jobs, and a Next.js dashboard. Built with Bun and TypeScript, powered by the Vercel AI SDK (multi-provider: OpenAI, Anthropic, Google, OpenRouter).
 
 ## Commands
 
@@ -38,7 +38,7 @@ bunx playwright test test/e2e/foo.spec.ts   # Single E2E test
 - `src/commands/start.ts` — Daemon startup, REST API routing
 - `src/services/aiService.ts` — Core AI orchestration (sessions, streaming, tool execution)
 - `src/bridge/` — Multi-channel coordinator + channel implementations (`channels/discord.ts`, `telegram.ts`, etc.)
-- `src/tools/` — 19 AI tool files, each exports a factory: `createXTools(aiService, sessionId)`
+- `src/tools/` — 13 AI tool namespaces (`files`, `config`, `daemon`, `channels`, `skills`, `memory`, `web`, `media`, `projects`, `github`, `cron`, `email`, `agents`), each exports a factory: `createXTools(aiService, sessionId)`
 - `src/core/` — Domain registry, adapters (ai-tools, dashboard, docs)
 - `src/utils/config.ts` — Zod config schemas and I/O
 - `src/utils/db.ts` — SQLite setup + migrations (WAL mode, PRAGMA user_version)
@@ -52,6 +52,8 @@ bunx playwright test test/e2e/foo.spec.ts   # Single E2E test
 **Auth**: Token-based. Random token generated at daemon startup, stored in `~/.tamias/daemon-info.json`, passed as query param or header. Localhost-only.
 
 **Config**: All user config lives in `~/.tamias/config.json` (Zod-validated). Agent personas are `.md` files in `~/.tamias/agents/`. Skills are `.md` files with YAML frontmatter.
+
+**Tool namespaces**: Tools are prefixed as `namespace__function` (e.g. `files__read_file`, `config__set_default_model`). The 13 namespaces are: `files` (terminal + workspace + coding CLI), `config` (Tamias settings), `daemon` (status/update/usage), `channels` (bridge management), `skills` (load/save/list/delete), `memory`, `web` (browser + search + firecrawl), `media` (image + PDF + send_file), `projects`, `github`, `cron`, `email`, `agents` (spawn + CRUD + sessions + swarm). Namespace migration from old names (e.g. `terminal`→`files`, `tamias`→`config`/`daemon`/`channels`) is handled automatically by `migrateToolNamespaces()` in `loadConfig()`.
 
 ## Coding Standards
 

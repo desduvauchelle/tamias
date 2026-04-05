@@ -213,9 +213,9 @@ describe('websearch tool', () => {
 		expect(WEBSEARCH_TOOL_NAME).toBe('websearch')
 	})
 
-	test('websearch is registered in INTERNAL_TOOL_NAMES', async () => {
+	test('web is registered in INTERNAL_TOOL_NAMES (websearch merged into web)', async () => {
 		const { INTERNAL_TOOL_NAMES } = await import('../tools/internalToolNames.ts')
-		expect(INTERNAL_TOOL_NAMES).toContain('websearch')
+		expect(INTERNAL_TOOL_NAMES).toContain('web')
 	})
 
 	test('websearch search returns error when no OpenRouter connection exists', async () => {

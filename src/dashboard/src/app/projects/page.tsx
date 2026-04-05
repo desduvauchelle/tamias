@@ -78,7 +78,6 @@ function ProjectsContent() {
 	const [formDesc, setFormDesc] = useState("")
 	const [formPath, setFormPath] = useState("")
 	const [formChannel, setFormChannel] = useState("")
-	const [formContext, setFormContext] = useState("readme.md")
 
 	// Context Markdown State
 	const [contextMarkdown, setContextMarkdown] = useState<string>("")
@@ -107,7 +106,6 @@ function ProjectsContent() {
 				setFormDesc(found.description || "")
 				setFormPath(found.path)
 				setFormChannel(found.discordChannelId || "")
-				setFormContext(found.contextFile || "readme.md")
 				setFormPreferredConnections(found.preferredConnections || [])
 				setFormPreferredModel(found.preferredModel || "")
 				setFormPreferredModelFallbacks(found.preferredModelFallbacks || [])
@@ -164,7 +162,7 @@ function ProjectsContent() {
 
 	// Load context markdown when switching to overview
 	useEffect(() => {
-		if (activeTab === 'overview' && activeProject && activeProject.contextFile) {
+		if (activeTab === 'overview' && activeProject) {
 			fetchContextMarkdown(activeProject)
 		}
 	}, [activeTab, activeProject])
@@ -183,16 +181,16 @@ function ProjectsContent() {
 	const fetchContextMarkdown = async (proj: Project) => {
 		try {
 			const projectApiPath = `workspace/${proj.id}`
-			const rawPath = proj.contextFile ? `${projectApiPath}/${proj.contextFile}` : ''
+			const rawPath = `${projectApiPath}/README.md`
 			const res = await fetch(`/api/files/content?path=${encodeURIComponent(rawPath)}`)
 			if (res.ok) {
 				const fileData = await res.json()
-				setContextMarkdown(fileData.content || `> ${proj.contextFile} is empty`)
+				setContextMarkdown(fileData.content || '> README.md is empty')
 			} else {
-				setContextMarkdown(`> Could not load ${proj.contextFile}`)
+				setContextMarkdown('> Could not load README.md')
 			}
 		} catch (e) {
-			setContextMarkdown(`> Error loading ${proj.contextFile}`)
+			setContextMarkdown('> Error loading README.md')
 		}
 	}
 
@@ -200,7 +198,7 @@ function ProjectsContent() {
 		if (!activeProject) return
 		try {
 			const projectApiPath = `workspace/${activeProject.id}`
-			const rawPath = activeProject.contextFile ? `${projectApiPath}/${activeProject.contextFile}` : ''
+			const rawPath = `${projectApiPath}/README.md`
 			const res = await fetch(`/api/files/content?path=${encodeURIComponent(rawPath)}`, {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
@@ -241,7 +239,6 @@ function ProjectsContent() {
 					path: normalizedPath,
 					discordChannelId: selectedChannel?.id || undefined,
 					discordServerId: selectedChannel?.guildId || undefined,
-					contextFile: formContext,
 					preferredConnections: formPreferredConnections.length > 0 ? formPreferredConnections : undefined,
 					preferredModel: formPreferredModel || undefined,
 					preferredModelFallbacks: formPreferredModelFallbacks.length > 0 ? formPreferredModelFallbacks : undefined,
@@ -378,7 +375,7 @@ function ProjectsContent() {
 						{activeTab === 'overview' && (
 							<div className="h-full w-full overflow-y-auto p-8 max-w-4xl mx-auto">
 								<div className="flex justify-between items-center mb-6 border-b border-base-300 pb-4">
-									<h3 className="font-bold font-mono text-base-content/60">{activeProject.contextFile || 'readme.md'}</h3>
+									<h3 className="font-bold font-mono text-base-content/60">README.md</h3>
 									{isEditingContext ? (
 										<div className="flex gap-2">
 											<button onClick={() => setIsEditingContext(false)} className="btn btn-ghost btn-xs">Cancel</button>
@@ -474,14 +471,6 @@ function ProjectsContent() {
 									</select>
 									<label className="label"><span className="label-text-alt text-base-content/50">Select a discord channel where Tamias should automatically use this project's context.</span></label>
 								</div>
-
-								{formChannel && (
-									<div className="form-control bg-base-200/50 p-4 rounded-xl border border-warning/30">
-										<label className="label pt-0 pb-1"><span className="label-text font-bold text-base text-warning">Context File Path (Relative)</span></label>
-										<input value={formContext} onChange={e => setFormContext(e.target.value)} type="text" className="input input-bordered w-full font-mono" placeholder="readme.md" />
-										<label className="label pb-0"><span className="label-text-alt text-base-content/60">File within the project folder that Tamias will read to get context when you chat in the linked Discord channel (e.g. <code className="bg-base-300 px-1 py-0.5 rounded">readme.md</code>).</span></label>
-									</div>
-								)}
 
 								<div className="divider opacity-50">AI Connection Preferences</div>
 

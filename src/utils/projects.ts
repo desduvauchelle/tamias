@@ -1,20 +1,24 @@
 /**
  * Project memory system for Tamias.
  *
- * Each project lives at ~/.tamias/projects/<slug>/ (or tenant equivalent)
- * with these files:
- *   - PROJECT.md  — description, goals, tech stack, status
- *   - ACTIVITY.md — rolling append log (most recent first)
- *   - WORKSPACE.md — linked workspace path(s)
- *   - NOTES.md — freeform notes
+ * Each project lives at ~/.tamias/workspace/<slug>/ with these files:
+ *   - README.md    — YAML frontmatter (metadata) + markdown body (context)
+ *   - ACTIVITY.md  — rolling append log (most recent first)
+ *   - NOTES.md     — freeform notes
+ *   - kanban.json   — structured task board
+ *   - agents.json   — project-scoped AI agents
+ *   - cron.json     — project-scoped cron jobs
+ *   - skills/       — project-scoped skills
  */
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'fs'
 import { TAMIAS_DIR } from './config.ts'
+import { readProjectReadme as readReadmeFrontmatter, writeProjectReadme as writeReadmeFrontmatter, generateReadmeBody } from './projectReadme.ts'
+import type { ProjectFrontmatter } from './projectReadme.ts'
 
 /** Max depth for file tree listing */
 const FILE_TREE_MAX_DEPTH = 3
-/** Max lines for injected README */
+/** Max lines for injected README body */
 const README_MAX_LINES = 200
 /** Max lines for injected instruction file */
 const INSTRUCTION_MAX_LINES = 300
@@ -72,7 +76,7 @@ export function getProjectDir(slug: string, tenantId?: string): string {
 	return join(getProjectsDir(tenantId), slug)
 }
 
-/** List all projects */
+/** List all projects — every directory in the workspace IS a project */
 export function listProjects(tenantId?: string): Project[] {
 	const dir = getProjectsDir(tenantId)
 	if (!existsSync(dir)) return []
@@ -82,6 +86,7 @@ export function listProjects(tenantId?: string): Project[] {
 
 	for (const entry of entries) {
 		if (!entry.isDirectory()) continue
+		if (entry.name.startsWith('.')) continue
 		const projectPath = join(dir, entry.name)
 		const project = parseProjectFromDir(entry.name, projectPath)
 		if (project) projects.push(project)
@@ -131,20 +136,17 @@ export function createProject(
 		updatedAt: now,
 	}
 
-	writeProjectFile(slug, project, opts?.tenantId)
-
-	// Also write config.json for core/projects.ts compatibility
-	const configData = {
-		id: slug,
+	// Write README.md with frontmatter
+	const frontmatter: ProjectFrontmatter = {
 		name,
 		description,
-		path: opts?.workspacePath || '',
 		status: 'active',
-		techStack: opts?.techStack,
+		...(opts?.techStack ? { techStack: opts.techStack } : {}),
 		createdAt: now,
 		updatedAt: now,
 	}
-	writeFileSync(join(projectDir, 'config.json'), JSON.stringify(configData, null, 2), 'utf-8')
+	const body = generateReadmeBody(name, description)
+	writeReadmeFrontmatter(projectDir, frontmatter, body)
 	writeFileSync(join(projectDir, 'kanban.json'), '[]', 'utf-8')
 
 	// Create ACTIVITY.md
@@ -183,9 +185,12 @@ export function updateProjectStatus(slug: string, status: Project['status'], ten
 
 	project.status = status
 	project.updatedAt = new Date().toISOString()
-	writeProjectFile(slug, project, tenantId)
 
-	// Log the status change
+	// Update frontmatter
+	const projectDir = getProjectDir(slug, tenantId)
+	const { updateProjectFrontmatter } = require('./projectReadme.ts')
+	updateProjectFrontmatter(projectDir, { status, updatedAt: project.updatedAt })
+
 	logProjectActivity(slug, `Status changed to ${status}`, tenantId)
 
 	return project
@@ -311,25 +316,18 @@ export function findProjectInstructionFile(dirPath: string): { path: string; fil
 }
 
 /**
- * Read the project README.md (if it exists at the workspace path),
- * truncated to README_MAX_LINES lines.
+ * Read the README.md body (markdown portion, not frontmatter) for injection into context.
+ * Truncated to README_MAX_LINES lines.
  */
-function readProjectReadme(workspacePath: string): string | null {
-	const readmeNames = ['README.md', 'readme.md', 'Readme.md', 'README.rst', 'README.txt']
-	for (const name of readmeNames) {
-		const readmePath = join(workspacePath, name)
-		if (existsSync(readmePath)) {
-			try {
-				const content = readFileSync(readmePath, 'utf-8')
-				const lines = content.split('\n')
-				if (lines.length > README_MAX_LINES) {
-					return lines.slice(0, README_MAX_LINES).join('\n') + `\n\n… (${lines.length - README_MAX_LINES} more lines truncated)`
-				}
-				return content
-			} catch { return null }
-		}
+function readReadmeBody(projectDir: string): string | null {
+	const readme = readReadmeFrontmatter(projectDir)
+	if (!readme || !readme.body.trim()) return null
+
+	const lines = readme.body.split('\n')
+	if (lines.length > README_MAX_LINES) {
+		return lines.slice(0, README_MAX_LINES).join('\n') + `\n\n… (${lines.length - README_MAX_LINES} more lines truncated)`
 	}
-	return null
+	return readme.body
 }
 
 /** Build detailed context for the currently active project session */
@@ -345,8 +343,6 @@ export function buildActiveProjectContext(slug: string, tenantId?: string): stri
 	if (project.workspacePath) sections.push(`**Workspace:** \`${project.workspacePath}\``)
 
 	// ── Priority 1: Project-specific AI instructions ──────────────────────────
-	// Look for a custom instructions file in the workspace root.
-	// This is the primary context baseline — like copilot-instructions.md.
 	if (project.workspacePath) {
 		const instructionFile = findProjectInstructionFile(project.workspacePath)
 		if (instructionFile) {
@@ -362,23 +358,22 @@ export function buildActiveProjectContext(slug: string, tenantId?: string): stri
 		}
 	}
 
-	// ── Priority 3: README ────────────────────────────────────────────────────
-	if (project.workspacePath) {
-		// Check for tamias-maintained project README first
-		const projectReadmePath = join(getProjectDir(slug, tenantId), 'PROJECT-README.md')
-		if (existsSync(projectReadmePath)) {
-			try {
-				const content = readFileSync(projectReadmePath, 'utf-8').trim()
-				if (content) {
-					sections.push(`\n### Project Summary (from compaction)\n\n${content}`)
-				}
-			} catch { /* ignore */ }
-		}
+	// ── Priority 3: README body ──────────────────────────────────────────────
+	const projectDir = getProjectDir(slug, tenantId)
+	const readmeBody = readReadmeBody(projectDir)
+	if (readmeBody) {
+		sections.push(`\n### Project README\n\n${readmeBody}`)
+	}
 
-		// Include the actual repo README
-		const readme = readProjectReadme(project.workspacePath)
-		if (readme) {
-			sections.push(`\n### Repository README\n\n${readme}`)
+	// Also include the repo README if workspacePath differs from projectDir
+	if (project.workspacePath && project.workspacePath !== projectDir) {
+		const repoReadme = readReadmeFrontmatter(project.workspacePath)
+		if (repoReadme?.body?.trim()) {
+			const bodyLines = repoReadme.body.split('\n')
+			const truncated = bodyLines.length > README_MAX_LINES
+				? bodyLines.slice(0, README_MAX_LINES).join('\n') + `\n\n… (${bodyLines.length - README_MAX_LINES} more lines truncated)`
+				: repoReadme.body
+			sections.push(`\n### Repository README\n\n${truncated}`)
 		}
 	}
 
@@ -389,7 +384,7 @@ export function buildActiveProjectContext(slug: string, tenantId?: string): stri
 	}
 
 	// ── Priority 5: Notes ─────────────────────────────────────────────────────
-	const notesPath = join(getProjectDir(slug, tenantId), 'NOTES.md')
+	const notesPath = join(projectDir, 'NOTES.md')
 	if (existsSync(notesPath)) {
 		const notes = readFileSync(notesPath, 'utf-8').trim()
 		if (notes && notes !== `# ${project.name} — Notes`) {
@@ -402,8 +397,25 @@ export function buildActiveProjectContext(slug: string, tenantId?: string): stri
 
 // ─── Internal Helpers ──────────────────────────────────────────────────────────
 
-/** Parse a project from its directory, preferring config.json over PROJECT.md */
-function parseProjectFromDir(slug: string, projectPath: string): Project | null {
+/** Parse a project from its directory. Reads README.md frontmatter, falls back to config.json, then dir name. */
+function parseProjectFromDir(slug: string, projectPath: string): Project {
+	// 1. Try README.md frontmatter
+	const readme = readReadmeFrontmatter(projectPath)
+	if (readme && readme.frontmatter.name) {
+		const fm = readme.frontmatter
+		return {
+			slug,
+			name: fm.name,
+			status: fm.status || 'active',
+			description: fm.description || '',
+			techStack: fm.techStack,
+			workspacePath: undefined,
+			createdAt: fm.createdAt || new Date().toISOString(),
+			updatedAt: fm.updatedAt || new Date().toISOString(),
+		}
+	}
+
+	// 2. Try config.json (legacy, pre-migration)
 	const configPath = join(projectPath, 'config.json')
 	if (existsSync(configPath)) {
 		try {
@@ -418,95 +430,21 @@ function parseProjectFromDir(slug: string, projectPath: string): Project | null 
 				createdAt: raw.createdAt || new Date().toISOString(),
 				updatedAt: raw.updatedAt || new Date().toISOString(),
 			}
-		} catch {
-			// Fall through to PROJECT.md
-		}
+		} catch { /* fall through */ }
 	}
 
-	const projectFile = join(projectPath, 'PROJECT.md')
-	if (existsSync(projectFile)) {
-		return parseProjectFile(slug, projectFile)
-	}
-
-	return null
-}
-
-function parseProjectFile(slug: string, filePath: string): Project | null {
+	// 3. Bare directory — project with dir name as name
+	let createdAt: string
 	try {
-		const content = readFileSync(filePath, 'utf-8')
+		createdAt = statSync(projectPath).birthtime.toISOString()
+	} catch { createdAt = new Date().toISOString() }
 
-		// Parse simple frontmatter-style fields from the markdown
-		let name = slug
-		let status: Project['status'] = 'active'
-		let description = ''
-		let techStack: string | undefined
-		let workspacePath: string | undefined
-		let createdAt = ''
-		let updatedAt = ''
-
-		const lines = content.split('\n')
-		for (const line of lines) {
-			const trimmed = line.trim()
-			if (trimmed.startsWith('# ')) {
-				name = trimmed.slice(2).trim()
-			}
-			if (trimmed.startsWith('**Status:**')) {
-				const val = trimmed.replace('**Status:**', '').trim().toLowerCase()
-				if (['active', 'paused', 'archived'].includes(val)) status = val as Project['status']
-			}
-			if (trimmed.startsWith('**Description:**')) {
-				description = trimmed.replace('**Description:**', '').trim()
-			}
-			if (trimmed.startsWith('**Tech Stack:**')) {
-				techStack = trimmed.replace('**Tech Stack:**', '').trim()
-			}
-			if (trimmed.startsWith('**Workspace:**')) {
-				workspacePath = trimmed.replace('**Workspace:**', '').trim().replace(/`/g, '')
-			}
-			if (trimmed.startsWith('**Created:**')) {
-				createdAt = trimmed.replace('**Created:**', '').trim()
-			}
-			if (trimmed.startsWith('**Updated:**')) {
-				updatedAt = trimmed.replace('**Updated:**', '').trim()
-			}
-		}
-
-		// If no description found in structured format, use the first non-header line
-		if (!description) {
-			const descLine = lines.find(l => l.trim() && !l.startsWith('#') && !l.startsWith('**'))
-			if (descLine) description = descLine.trim()
-		}
-
-		// Use file timestamps as fallback
-		if (!createdAt) {
-			try {
-				const stat = statSync(filePath)
-				createdAt = stat.birthtime.toISOString()
-			} catch { createdAt = new Date().toISOString() }
-		}
-		if (!updatedAt) {
-			try {
-				const stat = statSync(filePath)
-				updatedAt = stat.mtime.toISOString()
-			} catch { updatedAt = createdAt }
-		}
-
-		return { slug, name, status, description, techStack, workspacePath, createdAt, updatedAt }
-	} catch {
-		return null
+	return {
+		slug,
+		name: slug,
+		status: 'active',
+		description: '',
+		createdAt,
+		updatedAt: createdAt,
 	}
-}
-
-function writeProjectFile(slug: string, project: Project, tenantId?: string): void {
-	const dir = getProjectDir(slug, tenantId)
-	if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-
-	const content = `# ${project.name}
-
-**Status:** ${project.status}
-**Description:** ${project.description}
-${project.techStack ? `**Tech Stack:** ${project.techStack}\n` : ''}${project.workspacePath ? `**Workspace:** \`${project.workspacePath}\`\n` : ''}**Created:** ${project.createdAt}
-**Updated:** ${project.updatedAt}
-`
-	writeFileSync(join(dir, 'PROJECT.md'), content, 'utf-8')
 }
