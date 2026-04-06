@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Calendar, Flag } from "lucide-react"
+import { Calendar, Flag, Square } from "lucide-react"
 import type { KanbanTask, KanbanComment } from "./types"
 import { KANBAN_COLUMNS } from "./types"
 
@@ -15,6 +15,7 @@ interface TaskDetailModalProps {
 	onDelete: () => void
 	onAddComment: (text: string) => void
 	onDeleteComment: (commentId: string) => void
+	onStopAI?: () => void
 }
 
 export default function TaskDetailModal({
@@ -26,6 +27,7 @@ export default function TaskDetailModal({
 	onDelete,
 	onAddComment,
 	onDeleteComment,
+	onStopAI,
 }: TaskDetailModalProps) {
 	const [modalTitle, setModalTitle] = useState(task.title || "")
 	const [modalDetails, setModalDetails] = useState(task.details || "")
@@ -36,9 +38,10 @@ export default function TaskDetailModal({
 	const [modalLabels, setModalLabels] = useState<string>(task.labels?.join(', ') || "")
 	const [newComment, setNewComment] = useState("")
 
-	// Use live comments from cache for real-time updates, falling back to snapshot
+	// Use live data from cache for real-time updates, falling back to snapshot
 	const displayedComments = (liveTask?.comments ?? task.comments) || []
 	const displayedReaction = liveTask?.reaction ?? task.reaction
+	const displayedActivity = (liveTask?.activity ?? task.activity) || []
 
 	const handleSave = () => {
 		onSave({
@@ -75,6 +78,15 @@ export default function TaskDetailModal({
 									<span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
 								</span>
 								<span className="text-[9px] font-bold text-primary uppercase tracking-wider">AI working</span>
+								{onStopAI && (
+									<button
+										onClick={onStopAI}
+										className="ml-1 text-error hover:opacity-80"
+										title="Stop AI"
+									>
+										<Square className="w-3 h-3 fill-current" />
+									</button>
+								)}
 							</span>
 						)}
 					</h3>
@@ -89,7 +101,7 @@ export default function TaskDetailModal({
 
 				{/* Body */}
 				<div className="flex-1 overflow-y-auto p-6 flex flex-col md:flex-row gap-6">
-					{/* Left Col: Details & Comments */}
+					{/* Left Col: Details, Comments & AI Activity */}
 					<div className="flex-1 flex flex-col gap-6">
 						<div className="form-control">
 							<label className="label pt-0"><span className="label-text font-semibold">Title</span></label>
@@ -121,11 +133,15 @@ export default function TaskDetailModal({
 						<div className="divider my-0">Comments</div>
 
 						<div className="flex flex-col gap-3">
-							{displayedComments.map(c => (
-								<div key={c.id} className="group bg-base-200/50 p-3 rounded-xl border border-base-300">
+							{displayedComments.map((c: KanbanComment) => (
+								<div key={c.id} className={`group p-3 rounded-xl border ${
+									c.author === 'AI'
+										? 'bg-primary/5 border-primary/20'
+										: 'bg-base-200/50 border-base-300'
+								}`}>
 									<div className="flex items-center justify-between mb-1">
 										<span className="font-bold text-sm text-primary flex items-center gap-2">
-											{c.author}
+											{c.author === 'AI' ? '🤖 AI' : c.author}
 											{c.reaction && <span className="text-base font-normal">{c.reaction}</span>}
 										</span>
 										<div className="flex items-center gap-2">
@@ -155,6 +171,33 @@ export default function TaskDetailModal({
 								<button type="submit" className="btn btn-sm btn-primary">Send</button>
 							</form>
 						</div>
+
+						{/* AI Activity Log */}
+						{displayedActivity.length > 0 && (
+							<>
+								<div className="divider my-0">AI Activity</div>
+								<div className="flex flex-col gap-1.5">
+									{displayedActivity.map(entry => (
+										<div key={entry.id} className="flex items-start gap-2 text-xs font-mono bg-base-200/50 px-3 py-2 rounded-lg border border-base-300">
+											<span className="opacity-40 tabular-nums shrink-0">
+												{new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+											</span>
+											{entry.type === 'tool' && (
+												<span className="px-1.5 py-0.5 rounded bg-warning/20 text-warning font-bold text-[10px]">
+													🔧 {entry.text}
+												</span>
+											)}
+											{entry.type === 'text' && (
+												<span className="opacity-70 text-[10px] whitespace-pre-wrap">{entry.text}</span>
+											)}
+											{entry.type === 'status' && (
+												<span className="opacity-60 text-[10px]">{entry.text}</span>
+											)}
+										</div>
+									))}
+								</div>
+							</>
+						)}
 					</div>
 
 					{/* Right Col: Metadata */}

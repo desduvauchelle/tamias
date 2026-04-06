@@ -6,7 +6,7 @@ function makeJob(overrides: Partial<CronJob> = {}): CronJob {
 	return {
 		id: overrides.id ?? crypto.randomUUID(),
 		name: overrides.name ?? 'Test Cron',
-		schedule: overrides.schedule ?? '1h',
+		schedule: 'schedule' in overrides ? overrides.schedule : (overrides.runAt ? undefined : '1h'),
 		type: overrides.type ?? 'message',
 		prompt: overrides.prompt ?? 'hello',
 		target: overrides.target ?? 'last',
@@ -19,6 +19,7 @@ function makeJob(overrides: Partial<CronJob> = {}): CronJob {
 		lastRun: overrides.lastRun,
 		lastStatus: overrides.lastStatus,
 		lastError: overrides.lastError,
+		runAt: overrides.runAt,
 	}
 }
 
@@ -109,5 +110,66 @@ describe('runCronJobsOnce', () => {
 		expect(recorded[0].id).toBe('job-1')
 		expect(recorded[0].status).toBe('error')
 		expect(recorded[0].error).toBe('boom')
+	})
+})
+
+describe('runCronJobsOnce — one-shot auto-delete', () => {
+	test('one-shot job (runAt): removeJobFn called after successful execution', async () => {
+		const removed: string[] = []
+		const pastTime = new Date(Date.now() - 60_000).toISOString()
+		const job = makeJob({ id: 'shot-1', runAt: pastTime })
+
+		await runCronJobsOnce({
+			daemonUrl: 'http://127.0.0.1:9001',
+			daemonToken: 'token',
+			loadJobsFn: () => [job],
+			isJobDueFn: () => true,
+			executeJobFn: async () => {},
+			recordRunFn: () => undefined,
+			removeJobFn: (id) => { removed.push(id) },
+			logFn: () => {},
+			errorFn: () => {},
+		})
+
+		expect(removed).toEqual(['shot-1'])
+	})
+
+	test('one-shot job (runAt): removeJobFn called even when execution fails', async () => {
+		const removed: string[] = []
+		const pastTime = new Date(Date.now() - 60_000).toISOString()
+		const job = makeJob({ id: 'shot-2', runAt: pastTime })
+
+		await runCronJobsOnce({
+			daemonUrl: 'http://127.0.0.1:9001',
+			daemonToken: 'token',
+			loadJobsFn: () => [job],
+			isJobDueFn: () => true,
+			executeJobFn: async () => { throw new Error('fail') },
+			recordRunFn: () => undefined,
+			removeJobFn: (id) => { removed.push(id) },
+			logFn: () => {},
+			errorFn: () => {},
+		})
+
+		expect(removed).toEqual(['shot-2'])
+	})
+
+	test('recurring job (schedule only): removeJobFn NOT called', async () => {
+		const removed: string[] = []
+		const job = makeJob({ id: 'recurring-1' }) // schedule: '1h', no runAt
+
+		await runCronJobsOnce({
+			daemonUrl: 'http://127.0.0.1:9001',
+			daemonToken: 'token',
+			loadJobsFn: () => [job],
+			isJobDueFn: () => true,
+			executeJobFn: async () => {},
+			recordRunFn: () => undefined,
+			removeJobFn: (id) => { removed.push(id) },
+			logFn: () => {},
+			errorFn: () => {},
+		})
+
+		expect(removed).toEqual([])
 	})
 })

@@ -10,13 +10,6 @@ interface ToolDisplayPart {
 	state: string
 }
 
-interface ReceivedFile {
-	__tamias_file__: true
-	name: string
-	base64: string
-	mimeType?: string
-}
-
 interface UIMessageWithImages extends UIMessage {
 	_pendingImages?: string[]
 }
@@ -71,10 +64,6 @@ export default function ChatTerminal({ sessionId, initialHistory = [] }: { sessi
 		return () => { mounted = false }
 	}, [sessionId]) // removed initialHistory and setMessages as they cause infinite loops
 
-	// Files received from the AI (via 2: data parts in the stream)
-	const chatHookWithData = chatHook as typeof chatHook & { data?: ReceivedFile[] }
-	const receivedFiles = chatHookWithData.data?.filter(d => d.__tamias_file__ === true) ?? []
-
 	const isLoading = status === 'submitted' || status === 'streaming'
 
 	const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -113,7 +102,7 @@ export default function ChatTerminal({ sessionId, initialHistory = [] }: { sessi
 
 	useEffect(() => {
 		chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-	}, [messages, receivedFiles])
+	}, [messages])
 
 	return (
 		<div className="card h-full bg-base-100 flex flex-col min-h-0 overflow-hidden">
@@ -152,6 +141,24 @@ export default function ChatTerminal({ sessionId, initialHistory = [] }: { sessi
 									</div>
 								))}
 
+								{/* File parts in assistant messages (data-tamias-file) */}
+								{message.parts?.filter(p => p.type === 'data-tamias-file').map((part: any, idx) => {
+									const { name, mimeType, url } = (part.data ?? {})
+									return mimeType?.startsWith('image/') ? (
+										<img key={idx} src={url} alt={name} className="max-w-xs max-h-64 rounded-xl shadow mt-1" />
+									) : (
+										<a
+											key={idx}
+											href={url}
+											download={name}
+											className="chat-bubble chat-bubble-success font-mono text-xs flex items-center gap-2"
+										>
+											<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+											{name}
+										</a>
+									)
+								})}
+
 								{/* Image attachments on user messages */}
 								{message.role === 'user' && (message as UIMessageWithImages)._pendingImages?.map((src: string, idx: number) => (
 									<img key={idx} src={src} alt="attachment" className="max-w-xs max-h-48 rounded-xl mt-1 shadow" />
@@ -159,29 +166,6 @@ export default function ChatTerminal({ sessionId, initialHistory = [] }: { sessi
 							</div>
 						))
 					)}
-
-					{/* Files received from AI */}
-					{receivedFiles.map((f: ReceivedFile, idx: number) => (
-						<div key={idx} className="chat chat-start animate-in slide-in-from-bottom-2 duration-300">
-							<div className="chat-header text-[10px] text-base-content/50 mb-1 uppercase font-bold tracking-tighter">TAMIASOS — FILE</div>
-							{f.mimeType?.startsWith('image/') ? (
-								<img
-									src={`data:${f.mimeType};base64,${f.base64}`}
-									alt={f.name}
-									className="max-w-xs max-h-64 rounded-xl shadow"
-								/>
-							) : (
-								<a
-									href={`data:${f.mimeType ?? 'application/octet-stream'};base64,${f.base64}`}
-									download={f.name}
-									className="chat-bubble chat-bubble-success font-mono text-xs flex items-center gap-2"
-								>
-									<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-									{f.name}
-								</a>
-							)}
-						</div>
-					))}
 
 					{isLoading && (
 						<div className="chat chat-start">

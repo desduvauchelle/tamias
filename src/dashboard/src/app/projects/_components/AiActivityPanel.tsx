@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { ChevronDown, ChevronUp, Square } from "lucide-react"
 import type { AiLogEntry, AiStatus } from "./useKanbanAI"
 import type { KanbanTask } from "./types"
 
@@ -12,6 +12,7 @@ interface AiActivityPanelProps {
 	aiTaskFeed: Map<string, AiLogEntry[]>
 	tasks: KanbanTask[]
 	onDismiss: () => void
+	onStop: () => void
 }
 
 export default function AiActivityPanel({
@@ -21,6 +22,7 @@ export default function AiActivityPanel({
 	aiTaskFeed,
 	tasks,
 	onDismiss,
+	onStop,
 }: AiActivityPanelProps) {
 	const [isExpanded, setIsExpanded] = useState(false)
 	const feedEndRef = useRef<HTMLDivElement>(null)
@@ -72,6 +74,15 @@ export default function AiActivityPanel({
 				)}
 
 				<div className="ml-auto flex items-center gap-1">
+					{aiStatus === 'thinking' && (
+						<button
+							className="opacity-60 hover:opacity-100 p-0.5 text-error"
+							onClick={onStop}
+							title="Stop AI"
+						>
+							<Square className="w-3.5 h-3.5 fill-current" />
+						</button>
+					)}
 					<button
 						className="opacity-40 hover:opacity-80 p-0.5"
 						onClick={() => setIsExpanded(!isExpanded)}

@@ -6,6 +6,13 @@ export interface KanbanComment {
 	reaction?: string
 }
 
+export interface KanbanActivity {
+	id: string
+	type: 'tool' | 'text' | 'status'
+	text: string
+	createdAt: number
+}
+
 export interface KanbanTask {
 	id: string
 	title: string
@@ -20,6 +27,7 @@ export interface KanbanTask {
 	labels?: string[]
 	order?: number
 	comments?: KanbanComment[]
+	activity?: KanbanActivity[]
 }
 
 export interface Project {
@@ -37,4 +45,4 @@ export interface Project {
 	preferredModelFallbacks?: string[]
 }
 
-export const KANBAN_COLUMNS = ['todo', 'in-progress', 'awaiting-review', 'done'] as const
+export const KANBAN_COLUMNS = ['backlog', 'queue', 'in-progress', 'done', 'failed'] as const

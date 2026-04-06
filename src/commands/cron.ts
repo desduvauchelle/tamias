@@ -24,6 +24,7 @@ export interface RunCronJobsOnceOptions {
 	isJobDueFn?: (job: CronJob) => boolean
 	executeJobFn?: (job: CronJob, daemonUrl: string | null, token: string) => Promise<void>
 	recordRunFn?: (id: string, result: { status: 'success' | 'error'; error?: string }) => CronJob | undefined
+	removeJobFn?: (id: string) => void
 	logFn?: (...args: unknown[]) => void
 	errorFn?: (...args: unknown[]) => void
 	logPrefix?: string
@@ -37,6 +38,7 @@ export async function runCronJobsOnce(opts: RunCronJobsOnceOptions): Promise<{ d
 	const isJobDueFn = opts.isJobDueFn ?? isJobDue
 	const executeJobFn = opts.executeJobFn ?? executeCronJob
 	const recordRunFn = opts.recordRunFn ?? recordCronJobRun
+	const removeJobFn = opts.removeJobFn ?? removeCronJob
 
 	const allJobs = loadJobsFn()
 	const enabledJobs = allJobs.filter(j => j.enabled)
@@ -57,7 +59,8 @@ export async function runCronJobsOnce(opts: RunCronJobsOnceOptions): Promise<{ d
 	if (opts.dryRun) {
 		log(`${logPrefix} ${dueJobs.length} job(s) due:`)
 		for (const job of dueJobs) {
-			log(`  - ${job.name} (${job.id}) schedule=${job.schedule}`)
+			const schedStr = job.runAt ? `runAt=${job.runAt}` : `schedule=${job.schedule}`
+			log(`  - ${job.name} (${job.id}) ${schedStr}`)
 		}
 		return { dueCount: dueJobs.length, executedCount: 0, failedCount: 0 }
 	}
@@ -78,6 +81,10 @@ export async function runCronJobsOnce(opts: RunCronJobsOnceOptions): Promise<{ d
 			recordRunFn(job.id, { status: 'error', error: errorMsg })
 			failedCount += 1
 			error(`${logPrefix} ${now} ✗ Job "${job.name}" failed: ${errorMsg}`)
+		}
+		// One-shot jobs auto-delete after firing (success or failure)
+		if (job.runAt) {
+			try { removeJobFn(job.id) } catch { /* already removed */ }
 		}
 	}
 
@@ -100,7 +107,10 @@ cronCommand
 		jobs.forEach(job => {
 			const status = job.enabled ? pc.green('enabled') : pc.red('disabled')
 			console.log(`${pc.cyan(job.name)} [${pc.dim(job.id)}]`)
-			console.log(`  Schedule:    ${pc.yellow(job.schedule)}`)
+			const scheduleDisplay = job.runAt
+				? `One-time: ${pc.yellow(job.runAt)}`
+				: `Recurring: ${pc.yellow(job.schedule ?? '(none)')}`
+			console.log(`  Schedule:    ${scheduleDisplay}`)
 			console.log(`  Type:        ${pc.magenta(job.type || 'ai')}`)
 			console.log(`  Status:      ${status}`)
 			if (job.skills?.length) console.log(`  Skills:      ${pc.blue(job.skills.join(', '))}`)
@@ -129,7 +139,8 @@ cronCommand
 	.command('add')
 	.description('Add a new cron job')
 	.option('-n, --name <name>', 'Name of the job')
-	.option('-s, --schedule <schedule>', 'Schedule (cron expression or interval like "30m", "1h")')
+	.option('-s, --schedule <schedule>', 'Recurring schedule (cron expression or interval like "30m", "1h")')
+	.option('--run-at <datetime>', 'One-shot: ISO datetime or natural language like "tomorrow at 9am"')
 	.option('-p, --prompt <prompt>', 'Prompt for the agent (or message text)')
 	.option('-T, --type <type>', 'Job type: "ai" or "message"', 'ai')
 	.option('--skills <skills>', 'Comma-separated skill slugs (e.g. "researcher,writer")')
@@ -144,6 +155,7 @@ cronCommand
 		try {
 			let name = opts.name
 			let schedule = opts.schedule
+			let runAt: string | undefined = opts.runAt
 			let prompt = opts.prompt
 			let target = opts.target
 
@@ -163,13 +175,31 @@ cronCommand
 				if (p.isCancel(name)) return
 			}
 
-			if (!schedule) {
-				schedule = await p.text({
-					message: 'Enter the schedule (cron expression like "0 9 * * 1-5" or interval like "30m"):',
-					placeholder: '0 9 * * 1-5',
-					validate: (v) => !v ? 'Schedule is required' : undefined
+			if (!schedule && !runAt) {
+				const mode = await p.select({
+					message: 'Schedule type:',
+					options: [
+						{ value: 'recurring', label: 'Recurring (interval or cron expression)' },
+						{ value: 'once', label: 'One-time (run at a specific date/time)' },
+					],
 				}) as string
-				if (p.isCancel(schedule)) return
+				if (p.isCancel(mode)) return
+
+				if (mode === 'once') {
+					runAt = await p.text({
+						message: 'Enter date/time for the reminder (ISO datetime or "tomorrow at 9am"):',
+						placeholder: '2026-04-06T09:00:00.000Z',
+						validate: (v) => !v ? 'Date/time is required' : undefined
+					}) as string
+					if (p.isCancel(runAt)) return
+				} else {
+					schedule = await p.text({
+						message: 'Enter the schedule (cron expression like "0 9 * * 1-5" or interval like "30m"):',
+						placeholder: '0 9 * * 1-5',
+						validate: (v) => !v ? 'Schedule is required' : undefined
+					}) as string
+					if (p.isCancel(schedule)) return
+				}
 			}
 
 			if (!prompt) {
@@ -198,7 +228,7 @@ cronCommand
 
 			const job = addCronJob({
 				name,
-				schedule,
+				...(runAt ? { runAt } : { schedule }),
 				type: opts.type as 'ai' | 'message',
 				prompt,
 				skills,
@@ -207,7 +237,8 @@ cronCommand
 				delivery,
 				target: target || 'last',
 			})
-			p.outro(pc.green(`✅ Cron job added: ${job.name} (${job.id})`))
+			const schedDesc = job.runAt ? `one-time at ${job.runAt}` : `recurring ${job.schedule}`
+			p.outro(pc.green(`✅ Cron job added: ${job.name} (${job.id}) — ${schedDesc}`))
 			p.note('If the daemon is running, this cron will run automatically every minute. `tamias cron install` remains available as an external fallback.', 'Tip')
 		} catch (err) {
 			p.log.error(`Failed to add cron job: ${err}`)

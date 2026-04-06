@@ -306,8 +306,11 @@ Runtime logs are centralized under `~/.tamias/logs/` (for example `daemon.log`, 
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.05.4)
+### Latest Version (v26.04.05.9)
 
 ### Features
-- integrate Ollama model management; add endpoints for model listing and pulling, enhance fetch logic, and implement tests for Ollama integration
-- add model preferences reordering functionality and corresponding tests
+- refactor browser command implementation; enhance dependency injection and improve test structure
+- enhance update management; add SidebarUpdater component, remove UpdateBanner, and improve update API error handling
+- update changelog for unreleased features; add log pagination and README management entry feat: add coverage script to package.json fix: enable importing TypeScript extensions in e2e tsconfig
+- update changelog for version v26.04.05.4; integrate new features for Ollama model management and browser authentication
+- implement log pagination and README management

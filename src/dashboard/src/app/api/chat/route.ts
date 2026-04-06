@@ -22,21 +22,25 @@ export async function POST(req: Request) {
 		const body = await req.json()
 		console.log('Chat API Request Body:', JSON.stringify({ ...body, data: body.data ? '[present]' : undefined }, null, 2))
 
-
-		// Extract last message text — @ai-sdk/react sends messages as:
-		// { messages: [{ role: 'user', content: [{type:'text', text:'...'}, ...] }] }
-		// or older: { messages: [{ role: 'user', content: '...' }] }
-		// or plain: { text: '...' } / { content: '...' }
+		// Extract last message text.
+		// @ai-sdk/react v3 sends UIMessages with parts: [{type:'text', text:'...'}]
+		// Older formats used content (string or array) or text directly.
 		let lastMessage = ''
 		if (Array.isArray(body.messages) && body.messages.length > 0) {
 			const last = body.messages[body.messages.length - 1]
-			if (typeof last?.content === 'string') {
+			if (Array.isArray(last?.parts)) {
+				// New @ai-sdk/react v3 UIMessage format: { parts: [{type:'text', text:'...'}] }
+				lastMessage = last.parts
+					.filter((p: { type: string; text?: string }) => p.type === 'text' && p.text)
+					.map((p: { text: string }) => p.text)
+					.join('\n')
+			} else if (typeof last?.content === 'string') {
 				lastMessage = last.content
 			} else if (Array.isArray(last?.content)) {
-				// Nested parts: [{type:'text', text:'...'}, ...]
+				// Nested content parts: [{type:'text', text:'...'}, ...]
 				lastMessage = last.content
-					.filter((p: any) => p.type === 'text' && p.text)
-					.map((p: any) => p.text)
+					.filter((p: { type: string; text?: string }) => p.type === 'text' && p.text)
+					.map((p: { text: string }) => p.text)
 					.join('\n')
 			} else if (last?.text) {
 				lastMessage = last.text
@@ -84,16 +88,22 @@ export async function POST(req: Request) {
 		}
 
 		// 3. Send message (with optional attachments) asynchronously
-		const sendMessagePromise = fetch(`${daemonUrl}/message`, {
+		fetch(`${daemonUrl}/message`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ sessionId, content: lastMessage, attachments })
 		}).then(async r => {
 			if (!r.ok) console.error('Failed to send message:', await r.text())
-			return r
-		})
+		}).catch(err => console.error('Failed to send message:', err))
 
-		// 4. Transform SSE stream to AI SDK Data Stream format
+		// 4. Transform daemon SSE events → UIMessageChunk SSE events (for @ai-sdk/react v3 DefaultChatTransport)
+		//
+		// DefaultChatTransport.processResponseStream uses parseJsonEventStream (EventSourceParserStream):
+		//   - expects: text/event-stream with lines `data: {json}\n\n`
+		//   - each JSON must match uiMessageChunkSchema
+		//
+		// Daemon emits:  { type: 'chunk', text }  { type: 'tool_call', name, input }
+		//                { type: 'file', buffer, mimeType, name }  { type: 'done' }  { type: 'error', message }
 		const reader = streamRes.body.getReader()
 		const decoder = new TextDecoder()
 		const encoder = new TextEncoder()
@@ -101,10 +111,17 @@ export async function POST(req: Request) {
 		const stream = new ReadableStream({
 			async start(controller) {
 				let buffer = ''
+				let textPartStarted = false
+				const textPartId = 'text-1'
 				let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+				const enqueue = (event: object | string) => {
+					const data = typeof event === 'string' ? event : JSON.stringify(event)
+					controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+				}
+
 				const resetTimeout = () => {
 					if (timeoutId) clearTimeout(timeoutId)
-					// Automatically close if no chunk received for 60 seconds
 					timeoutId = setTimeout(() => {
 						console.error('SSE Proxy stream timed out after 60s idle')
 						controller.error(new Error('Stream timeout'))
@@ -113,6 +130,10 @@ export async function POST(req: Request) {
 				}
 
 				resetTimeout()
+
+				// Signal start of assistant response
+				enqueue({ type: 'start' })
+				enqueue({ type: 'start-step' })
 
 				try {
 					while (true) {
@@ -130,40 +151,44 @@ export async function POST(req: Request) {
 								let data: DaemonSSEEvent
 								try { data = JSON.parse(line.slice(6)) as DaemonSSEEvent } catch { continue }
 
-								if (data.type === 'chunk') {
-									// Text delta: 0:"text"\n
-									controller.enqueue(encoder.encode(`0:${JSON.stringify(data.text)}\n`))
-								} else if (data.type === 'tool_call') {
-									// Tool invocation part (b:)
-									const toolPart = {
-										type: 'tool-invocation',
-										toolCallId: `tc-${Date.now()}`,
-										toolName: data.name,
-										args: data.input,
-										state: 'call'
+								if (data.type === 'chunk' && data.text) {
+									if (!textPartStarted) {
+										enqueue({ type: 'text-start', id: textPartId })
+										textPartStarted = true
 									}
-									controller.enqueue(encoder.encode(`b:${JSON.stringify(toolPart)}\n`))
+									// Note: field is `delta` (not `textDelta`) in uiMessageChunkSchema
+									enqueue({ type: 'text-delta', id: textPartId, delta: data.text })
+								} else if (data.type === 'tool_call') {
+									const toolCallId = `tc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+									enqueue({ type: 'tool-input-start', toolCallId, toolName: data.name })
+									enqueue({ type: 'tool-input-available', toolCallId, toolName: data.name, input: data.input })
+									enqueue({ type: 'tool-output-available', toolCallId, output: null })
 								} else if (data.type === 'file') {
-									// File from AI — send as data part (2:) with __tamias_file__ marker.
 									const raw = data.buffer ?? {}
 									const byteArray: number[] =
 										Array.isArray(raw) ? raw :
-											Array.isArray(raw.data) ? raw.data :
-												Object.values(raw)
+											Array.isArray((raw as { data?: number[] }).data) ? (raw as { data: number[] }).data :
+												Object.values(raw as Record<string, number>)
 									const base64 = Buffer.from(byteArray).toString('base64')
-									const filePart = {
-										__tamias_file__: true,
-										name: data.name,
-										mimeType: data.mimeType ?? 'application/octet-stream',
-										base64,
-									}
-									controller.enqueue(encoder.encode(`2:${JSON.stringify([filePart])}\n`))
+									const mimeType = data.mimeType ?? 'application/octet-stream'
+									const url = `data:${mimeType};base64,${base64}`
+									// Use data-* type to carry file name alongside the URL
+									enqueue({ type: 'data-tamias-file', data: { name: data.name, mimeType, url } })
 								} else if (data.type === 'done') {
 									clearTimeout(timeoutId)
+									if (textPartStarted) {
+										enqueue({ type: 'text-end', id: textPartId })
+									}
+									enqueue({ type: 'finish-step' })
+									enqueue({ type: 'finish', finishReason: 'stop' })
+									enqueue('[DONE]')
 									controller.close()
 									return
 								} else if (data.type === 'error') {
-									controller.enqueue(encoder.encode(`3:${JSON.stringify(data.message)}\n`))
+									enqueue({ type: 'error', errorText: data.message ?? 'Unknown error' })
+									enqueue('[DONE]')
+									controller.close()
+									return
 								}
 							}
 						}
@@ -180,7 +205,7 @@ export async function POST(req: Request) {
 
 		return new Response(stream, {
 			headers: {
-				'Content-Type': 'text/plain; charset=utf-8',
+				'Content-Type': 'text/event-stream',
 				'Cache-Control': 'no-cache',
 				'Connection': 'keep-alive',
 			}

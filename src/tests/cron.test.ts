@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach } from 'bun:test'
 import { CronJobSchema, type CronJob, migrateLegacyTarget, migrateRawCronEntry, isJobDue, parseInterval, isInterval, normalizeSchedule } from '../utils/cronStore'
+import { parseRunAtInput } from '../tools/cron.ts'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -871,5 +872,122 @@ describe('onCronTrigger delivery routing — fixed dispatch', () => {
 
 		expect(directEmits.some(e => e.type === 'chunk' && e.text === 'Hello from cron!')).toBe(true)
 		expect(directEmits.some(e => e.type === 'done')).toBe(true)
+	})
+})
+
+// ─── CronJobSchema — runAt one-shot support ────────────────────────────────────
+
+describe('CronJobSchema — runAt one-shot', () => {
+	const baseFields = {
+		id: '1',
+		name: 'test',
+		prompt: 'do stuff',
+		enabled: true,
+		createdAt: new Date().toISOString(),
+	}
+
+	test('accepts runAt without schedule — valid one-shot job', () => {
+		const runAt = new Date(Date.now() + 3_600_000).toISOString()
+		const job = CronJobSchema.parse({ ...baseFields, runAt })
+		expect(job.runAt).toBe(runAt)
+		expect(job.schedule).toBeUndefined()
+	})
+
+	test('rejects when neither schedule nor runAt are provided', () => {
+		expect(() => CronJobSchema.parse({ ...baseFields })).toThrow()
+	})
+
+	test('rejects when both schedule and runAt are provided', () => {
+		const runAt = new Date(Date.now() + 3_600_000).toISOString()
+		expect(() => CronJobSchema.parse({ ...baseFields, schedule: '30m', runAt })).toThrow()
+	})
+
+	test('accepts schedule without runAt — existing recurring behavior preserved', () => {
+		const job = CronJobSchema.parse({ ...baseFields, schedule: '30m' })
+		expect(job.schedule).toBe('30m')
+		expect(job.runAt).toBeUndefined()
+	})
+})
+
+// ─── isJobDue — runAt one-shot ──────────────────────────────────────────────────
+
+describe('isJobDue — runAt one-shot', () => {
+	function makeOneShotJob(runAt: string, lastRun?: string): CronJob {
+		return CronJobSchema.parse({
+			id: crypto.randomUUID(),
+			name: 'One-shot',
+			runAt,
+			prompt: 'ping',
+			enabled: true,
+			createdAt: new Date().toISOString(),
+			...(lastRun ? { lastRun } : {}),
+		})
+	}
+
+	test('due when runAt is in the past and job has never run', () => {
+		const pastTime = new Date(Date.now() - 60_000).toISOString()
+		expect(isJobDue(makeOneShotJob(pastTime))).toBe(true)
+	})
+
+	test('not due when runAt is in the future', () => {
+		const futureTime = new Date(Date.now() + 3_600_000).toISOString()
+		expect(isJobDue(makeOneShotJob(futureTime))).toBe(false)
+	})
+
+	test('not due when runAt is in the past but job already ran (lastRun set)', () => {
+		const pastTime = new Date(Date.now() - 60_000).toISOString()
+		const lastRun = new Date(Date.now() - 30_000).toISOString()
+		expect(isJobDue(makeOneShotJob(pastTime, lastRun))).toBe(false)
+	})
+})
+
+// ─── parseRunAtInput ───────────────────────────────────────────────────────────
+
+describe('parseRunAtInput', () => {
+	test('passes through a valid ISO datetime unchanged', () => {
+		const iso = '2026-04-06T09:00:00.000Z'
+		expect(parseRunAtInput(iso)).toBe(iso)
+	})
+
+	test('"in 2 hours" → a datetime ~2 hours from now', () => {
+		const before = Date.now()
+		const result = parseRunAtInput('in 2 hours')
+		const after = Date.now()
+		const ms = new Date(result).getTime()
+		expect(ms).toBeGreaterThanOrEqual(before + 2 * 3_600_000 - 1000)
+		expect(ms).toBeLessThanOrEqual(after + 2 * 3_600_000 + 1000)
+	})
+
+	test('"in 30 minutes" → a datetime ~30 minutes from now', () => {
+		const before = Date.now()
+		const result = parseRunAtInput('in 30 minutes')
+		const ms = new Date(result).getTime()
+		expect(ms).toBeGreaterThanOrEqual(before + 30 * 60_000 - 500)
+		expect(ms).toBeLessThanOrEqual(before + 30 * 60_000 + 2000)
+	})
+
+	test('"tomorrow at 9:00" → next day at 09:00 local', () => {
+		const result = parseRunAtInput('tomorrow at 9:00')
+		const d = new Date(result)
+		expect(d.getHours()).toBe(9)
+		expect(d.getMinutes()).toBe(0)
+		const tomorrow = new Date()
+		tomorrow.setDate(tomorrow.getDate() + 1)
+		expect(d.getDate()).toBe(tomorrow.getDate())
+	})
+
+	test('"YYYY-MM-DD HH:MM" → that date/time', () => {
+		const result = parseRunAtInput('2026-12-25 14:30')
+		const d = new Date(result)
+		expect(d.getFullYear()).toBe(2026)
+		expect(d.getMonth()).toBe(11) // December
+		expect(d.getDate()).toBe(25)
+		expect(d.getHours()).toBe(14)
+		expect(d.getMinutes()).toBe(30)
+	})
+
+	test('throws on unparseable input', () => {
+		expect(() => parseRunAtInput('next Thursday')).toThrow()
+		expect(() => parseRunAtInput('sometime soon')).toThrow()
 	})
 })

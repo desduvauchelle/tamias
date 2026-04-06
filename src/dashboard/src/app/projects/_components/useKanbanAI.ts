@@ -2,13 +2,14 @@
 
 import { useState, useCallback, useRef, useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import type { KanbanActivity } from "./types"
 
 export type AiLogEntry = { type: 'tool' | 'text' | 'status'; text: string; ts: number; taskId?: string }
 export type AiStatus = 'idle' | 'thinking' | 'done' | 'error'
 
 const PROJECT_TOOLS = ['project_update_task', 'project_add_comment', 'project_update_comment']
 
-export function useKanbanAI() {
+export function useKanbanAI(onActivityComplete?: (feed: Map<string, AiLogEntry[]>, textOutput: string) => void) {
 	const queryClient = useQueryClient()
 
 	const [aiStatus, setAiStatus] = useState<AiStatus>('idle')
@@ -20,6 +21,10 @@ export function useKanbanAI() {
 	const aiEventSourceRef = useRef<EventSource | null>(null)
 	const aiDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const textBufferRef = useRef('')
+	// Use a ref so the 'done' handler always has the latest task feed
+	const aiTaskFeedRef = useRef<Map<string, AiLogEntry[]>>(new Map())
+	const onActivityCompleteRef = useRef(onActivityComplete)
+	onActivityCompleteRef.current = onActivityComplete
 
 	// Cleanup on unmount
 	useEffect(() => {
@@ -35,7 +40,23 @@ export function useKanbanAI() {
 		setAiTextPreview('')
 		setAiActiveTaskIds(new Set())
 		setAiTaskFeed(new Map())
+		aiTaskFeedRef.current = new Map()
 		if (aiDismissTimerRef.current) clearTimeout(aiDismissTimerRef.current)
+	}, [])
+
+	const stopAI = useCallback(() => {
+		if (aiEventSourceRef.current) {
+			aiEventSourceRef.current.close()
+			aiEventSourceRef.current = null
+		}
+		if (aiDismissTimerRef.current) clearTimeout(aiDismissTimerRef.current)
+		setAiStatus('idle')
+		setAiLog([])
+		setAiTextPreview('')
+		setAiActiveTaskIds(new Set())
+		setAiTaskFeed(new Map())
+		aiTaskFeedRef.current = new Map()
+		textBufferRef.current = ''
 	}, [])
 
 	const startWatchingAI = useCallback((projectId: string) => {
@@ -54,6 +75,7 @@ export function useKanbanAI() {
 		setAiTextPreview('')
 		setAiActiveTaskIds(new Set())
 		setAiTaskFeed(new Map())
+		aiTaskFeedRef.current = new Map()
 		textBufferRef.current = ''
 
 		const es = new EventSource(`/api/sessions/project-${projectId}/activity`)
@@ -73,12 +95,11 @@ export function useKanbanAI() {
 					// Track active task IDs from project tool calls
 					if (taskId && PROJECT_TOOLS.includes(toolName)) {
 						setAiActiveTaskIds(prev => new Set(prev).add(taskId))
-						setAiTaskFeed(prev => {
-							const next = new Map(prev)
-							const existing = next.get(taskId) || []
-							next.set(taskId, [...existing, entry])
-							return next
-						})
+						const updatedFeed = new Map(aiTaskFeedRef.current)
+						const existing = updatedFeed.get(taskId) || []
+						updatedFeed.set(taskId, [...existing, entry])
+						aiTaskFeedRef.current = updatedFeed
+						setAiTaskFeed(updatedFeed)
 					}
 				} else if (data.type === 'tool_result') {
 					// Immediately invalidate projects cache for near-instant UI updates
@@ -96,10 +117,15 @@ export function useKanbanAI() {
 					}
 					es.close()
 					aiEventSourceRef.current = null
+
+					// Fire activity-complete callback so callers can persist AI activity to cards
+					onActivityCompleteRef.current?.(new Map(aiTaskFeedRef.current), textBufferRef.current)
+
 					// Delay clearing active task indicators so user sees the final state
 					aiDismissTimerRef.current = setTimeout(() => {
 						setAiActiveTaskIds(new Set())
 						setAiTaskFeed(new Map())
+						aiTaskFeedRef.current = new Map()
 					}, 3000)
 					// Auto-dismiss panel after 8 seconds
 					setTimeout(() => {
@@ -118,6 +144,7 @@ export function useKanbanAI() {
 						setAiTextPreview('')
 						setAiActiveTaskIds(new Set())
 						setAiTaskFeed(new Map())
+						aiTaskFeedRef.current = new Map()
 					}, 8000)
 				}
 			} catch { /* ignore malformed */ }
@@ -136,6 +163,17 @@ export function useKanbanAI() {
 		aiActiveTaskIds,
 		aiTaskFeed,
 		startWatchingAI,
+		stopAI,
 		dismiss,
 	}
+}
+
+/** Convert AiLogEntry list to KanbanActivity entries for persistence */
+export function logEntriesToActivity(entries: AiLogEntry[]): KanbanActivity[] {
+	return entries.map(e => ({
+		id: Math.random().toString(36).substring(2, 9),
+		type: e.type,
+		text: e.text,
+		createdAt: e.ts,
+	}))
 }

@@ -4,16 +4,25 @@ import { useState, useCallback } from "react"
 import { Plus } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useToast } from "../../_components/ToastProvider"
-import type { KanbanTask, KanbanComment, Project } from "./types"
+import type { KanbanTask, KanbanComment, KanbanActivity, Project } from "./types"
 import { KANBAN_COLUMNS } from "./types"
 import KanbanCard from "./KanbanCard"
 import AiActivityPanel from "./AiActivityPanel"
 import TaskDetailModal from "./TaskDetailModal"
-import { useKanbanAI } from "./useKanbanAI"
+import { useKanbanAI, logEntriesToActivity } from "./useKanbanAI"
+import type { AiLogEntry } from "./useKanbanAI"
 
 interface KanbanBoardProps {
 	project: Project
 	onProjectUpdate: (project: Project) => void
+}
+
+const COLUMN_LABELS: Record<string, string> = {
+	backlog: 'Backlog',
+	queue: 'Queue',
+	'in-progress': 'In Progress',
+	done: 'Done',
+	failed: 'Failed',
 }
 
 export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardProps) {
@@ -21,19 +30,10 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 	const { success, error } = useToast()
 
 	const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null)
+	const [dragOverCol, setDragOverCol] = useState<string | null>(null)
 	const [newTaskTitle, setNewTaskTitle] = useState("")
 	const [newTaskCol, setNewTaskCol] = useState("")
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
-
-	const {
-		aiStatus,
-		aiLog,
-		aiTextPreview,
-		aiActiveTaskIds,
-		aiTaskFeed,
-		startWatchingAI,
-		dismiss: dismissAI,
-	} = useKanbanAI()
 
 	const updateKanban = useCallback(async (newKanban: KanbanTask[]) => {
 		try {
@@ -57,7 +57,39 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 		}
 	}, [project.id, onProjectUpdate, queryClient, error])
 
-	const notifyAIKanbanEvent = useCallback(async (oldKanban: KanbanTask[], newKanban: KanbanTask[]) => {
+	// Called when AI finishes — saves tool-call entries as activity on affected cards
+	const handleActivityComplete = useCallback(async (feed: Map<string, AiLogEntry[]>, _textOutput: string) => {
+		const kanban = project.kanban || []
+		if (feed.size === 0) return
+
+		const updatedKanban = kanban.map(task => {
+			const entries = feed.get(task.id)
+			if (!entries || entries.length === 0) return task
+			const newActivity: KanbanActivity[] = logEntriesToActivity(entries)
+			return {
+				...task,
+				activity: [...(task.activity || []), ...newActivity],
+			}
+		})
+
+		const changed = updatedKanban.some((t, i) => t.activity !== kanban[i]?.activity)
+		if (changed) {
+			await updateKanban(updatedKanban)
+		}
+	}, [project.kanban, updateKanban])
+
+	const {
+		aiStatus,
+		aiLog,
+		aiTextPreview,
+		aiActiveTaskIds,
+		aiTaskFeed,
+		startWatchingAI,
+		stopAI,
+		dismiss: dismissAI,
+	} = useKanbanAI(handleActivityComplete)
+
+	const notifyAI = useCallback(async (oldKanban: KanbanTask[], newKanban: KanbanTask[]) => {
 		try {
 			startWatchingAI(project.id)
 			await fetch('/api/project-event', {
@@ -92,7 +124,7 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 		if (ok) {
 			setNewTaskTitle('')
 			setNewTaskCol('')
-			await notifyAIKanbanEvent(oldKanban, updatedKanban)
+			await notifyAI(oldKanban, updatedKanban)
 		}
 	}
 
@@ -110,7 +142,6 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 		await updateKanban(updatedKanban)
 	}
 
-	// Task modal handlers
 	const selectedTask = selectedTaskId
 		? (project.kanban || []).find(t => t.id === selectedTaskId) || null
 		: null
@@ -123,7 +154,7 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 		const ok = await updateKanban(updatedKanban)
 		if (ok) {
 			success('Task updated')
-			await notifyAIKanbanEvent(oldKanban, updatedKanban)
+			await notifyAI(oldKanban, updatedKanban)
 		}
 	}
 
@@ -134,7 +165,7 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 		const ok = await updateKanban(updatedKanban)
 		if (ok) {
 			setSelectedTaskId(null)
-			await notifyAIKanbanEvent(oldKanban, updatedKanban)
+			await notifyAI(oldKanban, updatedKanban)
 		}
 	}
 
@@ -156,7 +187,7 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 		)
 		const ok = await updateKanban(updatedKanban)
 		if (ok) {
-			await notifyAIKanbanEvent(oldKanban, updatedKanban)
+			await notifyAI(oldKanban, updatedKanban)
 		}
 	}
 
@@ -182,36 +213,53 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 				aiTaskFeed={aiTaskFeed}
 				tasks={project.kanban || []}
 				onDismiss={dismissAI}
+				onStop={stopAI}
 			/>
 
 			{/* Kanban columns */}
 			<div className="flex-1 flex gap-4 p-6 pt-3 overflow-x-auto items-start min-h-0">
 				{KANBAN_COLUMNS.map(col => {
-					let colTasks = (project.kanban || []).filter(t => t.status === col)
+					const isBacklog = col === 'backlog'
+					let colTasks = (project.kanban || []).filter(t => {
+						if (isBacklog) {
+							return t.status === 'backlog' || !KANBAN_COLUMNS.includes(t.status as typeof KANBAN_COLUMNS[number])
+						}
+						return t.status === col
+					})
 					const totalInCol = colTasks.length
 
-					if (col === 'done') {
+					if (col === 'done' || col === 'failed') {
 						colTasks = [...colTasks].sort((a, b) => b.createdAt - a.createdAt).slice(0, 10)
 					}
+
+					const isDragOver = dragOverCol === col
 
 					return (
 						<div
 							key={col}
-							onDragOver={(e) => e.preventDefault()}
+							onDragOver={(e) => { e.preventDefault(); setDragOverCol(col) }}
+							onDragLeave={() => setDragOverCol(null)}
 							onDrop={(e) => {
 								e.preventDefault()
 								if (draggedTaskId) {
 									moveTask(draggedTaskId, col)
 									setDraggedTaskId(null)
 								}
+								setDragOverCol(null)
 							}}
-							className="w-72 shrink-0 flex flex-col max-h-full bg-base-200/50 rounded-xl border border-base-300"
+							className={`w-72 shrink-0 flex flex-col max-h-full rounded-xl border transition-colors ${
+								isDragOver
+									? 'bg-primary/10 border-primary/50'
+									: 'bg-base-200/50 border-base-300'
+							}`}
 						>
 							<div className="p-3 border-b border-base-300/50 flex justify-between items-center bg-base-300/30 rounded-t-xl">
 								<div className="flex flex-col">
-									<h3 className="font-bold text-sm uppercase tracking-wider text-base-content/70">{col.replace('-', ' ')}</h3>
-									{col === 'done' && totalInCol > 10 && (
-										<span className="text-[10px] opacity-50 font-medium">Showing last 10 tasks</span>
+									<h3 className="font-bold text-sm uppercase tracking-wider text-base-content/70">
+										{COLUMN_LABELS[col] ?? col}
+									</h3>
+									{(col === 'done' || col === 'failed') && totalInCol > 10 && (
+										<span className="text-[10px] opacity-50 font-medium">Showing last 10</span>
 									)}
 								</div>
 								<span className="text-xs font-mono bg-base-300 px-2 py-0.5 rounded-full">{totalInCol}</span>
@@ -221,13 +269,12 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 									<KanbanCard
 										key={task.id}
 										task={task}
-										column={col}
 										isAiActive={aiActiveTaskIds.has(task.id)}
 										isDragging={draggedTaskId === task.id}
 										onDragStart={() => setDraggedTaskId(task.id)}
 										onDragEnd={() => setDraggedTaskId(null)}
 										onClick={() => setSelectedTaskId(task.id)}
-										onMoveTask={moveTask}
+										onStopAI={stopAI}
 										onRemoveTask={removeTask}
 									/>
 								))}
@@ -271,6 +318,7 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 					onDelete={deleteTaskFromModal}
 					onAddComment={addComment}
 					onDeleteComment={deleteComment}
+					onStopAI={stopAI}
 				/>
 			)}
 		</div>

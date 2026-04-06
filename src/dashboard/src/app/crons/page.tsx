@@ -17,7 +17,8 @@ export type CronDelivery = {
 export type CronJob = {
 	id: string
 	name: string
-	schedule: string
+	schedule?: string
+	runAt?: string
 	type: 'ai' | 'message'
 	prompt: string
 	skills?: string[]
@@ -237,6 +238,12 @@ function CronEditModal({
 					<button
 						onClick={() => {
 							const payload = { ...draft, target: effectiveTarget }
+							// Ensure only one of schedule/runAt is present
+							if (payload.runAt) {
+								delete payload.schedule
+							} else {
+								delete payload.runAt
+							}
 							if (effectiveTarget === 'last') {
 								delete payload.delivery
 							} else if (effectiveTarget.includes(':')) {
@@ -273,13 +280,44 @@ function CronEditModal({
 					</div>
 					<div className="space-y-1">
 						<label className="text-xs font-bold uppercase tracking-wider text-base-content/60">Schedule</label>
-						<input
-							type="text"
-							className="input input-sm input-bordered w-full"
-							placeholder="e.g. 1h or 0 9 * * 1-5"
-							value={draft.schedule}
-							onChange={e => setDraft({ ...draft, schedule: e.target.value })}
-						/>
+						<div className="flex gap-2 mb-2">
+							<button
+								type="button"
+								className={`btn btn-xs ${!draft.runAt ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+								onClick={() => setDraft({ ...draft, schedule: draft.schedule || '1h', runAt: undefined })}
+							>
+								🔄 Recurring
+							</button>
+							<button
+								type="button"
+								className={`btn btn-xs ${draft.runAt ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+								onClick={() => {
+									const d = new Date(Date.now() + 3_600_000)
+									setDraft({ ...draft, runAt: d.toISOString(), schedule: undefined })
+								}}
+							>
+								📅 One-time
+							</button>
+						</div>
+						{!draft.runAt ? (
+							<input
+								type="text"
+								className="input input-sm input-bordered w-full"
+								placeholder="e.g. 1h or 0 9 * * 1-5"
+								value={draft.schedule || ''}
+								onChange={e => setDraft({ ...draft, schedule: e.target.value })}
+							/>
+						) : (
+							<input
+								type="datetime-local"
+								className="input input-sm input-bordered w-full"
+								value={(() => {
+									const d = new Date(draft.runAt)
+									return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+								})()}
+								onChange={e => setDraft({ ...draft, runAt: e.target.value ? new Date(e.target.value).toISOString() : undefined })}
+							/>
+						)}
 					</div>
 				</div>
 
@@ -437,8 +475,17 @@ function CronCard({
 				<div className="space-y-2 text-xs">
 					<div className="flex items-center gap-2 text-base-content/70">
 						<Clock size={12} />
-						<span className="font-bold uppercase tracking-wide">Schedule</span>
-						<span className="font-mono">{job.schedule}</span>
+						{job.runAt ? (
+							<>
+								<span className="font-bold uppercase tracking-wide text-warning">Run once</span>
+								<span className="font-mono">{new Date(job.runAt).toLocaleString()}</span>
+							</>
+						) : (
+							<>
+								<span className="font-bold uppercase tracking-wide">Schedule</span>
+								<span className="font-mono">{job.schedule}</span>
+							</>
+						)}
 					</div>
 					<div className="flex items-center gap-2 text-base-content/70">
 						<Target size={12} />

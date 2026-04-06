@@ -92,7 +92,15 @@ export const CronJobSchema = z.object({
 	name: z.string(),
 	schedule: z.string()
 		.transform((v) => normalizeSchedule(v))
-		.refine((v) => isValidSchedule(v), 'Schedule must be a valid interval (e.g. "30m") or cron expression'),
+		.refine((v) => isValidSchedule(v), 'Schedule must be a valid interval (e.g. "30m") or cron expression')
+		.optional(),
+	/**
+	 * ISO 8601 datetime for a one-shot reminder.
+	 * Set this instead of `schedule` to run the job exactly once at the given time.
+	 * After firing, the job is automatically deleted.
+	 * Cannot be combined with `schedule`.
+	 */
+	runAt: z.string().datetime().optional(),
 	/**
 	 * 'ai'      – send prompt to AI, deliver generated response to target channel
 	 * 'message' – send the prompt text directly to the target channel, no AI involved
@@ -131,6 +139,13 @@ export const CronJobSchema = z.object({
 	lastStatus: z.enum(['success', 'error']).optional(),
 	lastError: z.string().optional(),
 	createdAt: z.string().datetime(),
+}).superRefine((data, ctx) => {
+	if (!data.schedule && !data.runAt) {
+		ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Either schedule or runAt is required', path: ['schedule'] })
+	}
+	if (data.schedule && data.runAt) {
+		ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Cannot set both schedule and runAt', path: ['runAt'] })
+	}
 })
 
 export type CronJob = z.infer<typeof CronJobSchema>
@@ -376,6 +391,14 @@ export function parseInterval(schedule: string): number {
  */
 export function isJobDue(job: CronJob): boolean {
 	const now = Date.now()
+
+	// One-shot: due if the scheduled time has passed and it hasn't fired yet
+	if (job.runAt) {
+		if (job.lastRun) return false
+		return now >= new Date(job.runAt).getTime()
+	}
+
+	if (!job.schedule) return false
 
 	if (isInterval(job.schedule)) {
 		const ms = parseInterval(job.schedule)
