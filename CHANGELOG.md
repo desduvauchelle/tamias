@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Features
+- Enhance Kanban board with AI activity tracking and one-shot job scheduling
+
 ## [v26.04.05.10] - 2026-04-05
 
 ### Features

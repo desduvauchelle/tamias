@@ -69,14 +69,31 @@ describe("Chat Proxy API", () => {
 
 		const res = await POST(req)
 		expect(res.status).toBe(200)
+		expect(res.headers.get("Content-Type")).toContain("text/event-stream")
 
 		const body = await res.text()
-		// Check for AI SDK protocol markers
-		// 0: text part
-		// b: tool invocation part
-		expect(body).toContain('0:"Hello"')
-		expect(body).toContain('b:{"type":"tool-invocation"')
-		expect(body).toContain('"toolName":"ls"')
+		const events = body
+			.split("\n\n")
+			.map(chunk => chunk.trim())
+			.filter(Boolean)
+			.map(chunk => chunk.startsWith("data: ") ? chunk.slice(6) : chunk)
+
+		expect(events[0]).toBe('{"type":"start"}')
+		expect(events[1]).toBe('{"type":"start-step"}')
+		expect(events).toContain('{"type":"text-start","id":"text-1"}')
+		expect(events).toContain('{"type":"text-delta","id":"text-1","delta":"Hello"}')
+
+		const toolInputStart = events
+			.map(event => event === "[DONE]" ? null : JSON.parse(event))
+			.find(event => event?.type === "tool-input-start")
+		expect(toolInputStart).toMatchObject({ type: "tool-input-start", toolName: "ls" })
+
+		expect(events).toContain('{"type":"tool-input-available","toolCallId":"' + toolInputStart.toolCallId + '","toolName":"ls","input":{}}')
+		expect(events).toContain('{"type":"tool-output-available","toolCallId":"' + toolInputStart.toolCallId + '","output":null}')
+		expect(events).toContain('{"type":"text-end","id":"text-1"}')
+		expect(events).toContain('{"type":"finish-step"}')
+		expect(events).toContain('{"type":"finish","finishReason":"stop"}')
+		expect(events[events.length - 1]).toBe("[DONE]")
 
 		global.fetch = originalFetch
 	})

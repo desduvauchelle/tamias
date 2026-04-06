@@ -114,6 +114,7 @@ export async function POST(req: Request) {
 				let textPartStarted = false
 				const textPartId = 'text-1'
 				let timeoutId: ReturnType<typeof setTimeout> | undefined
+				let streamClosed = false
 
 				const enqueue = (event: object | string) => {
 					const data = typeof event === 'string' ? event : JSON.stringify(event)
@@ -124,6 +125,7 @@ export async function POST(req: Request) {
 					if (timeoutId) clearTimeout(timeoutId)
 					timeoutId = setTimeout(() => {
 						console.error('SSE Proxy stream timed out after 60s idle')
+						streamClosed = true
 						controller.error(new Error('Stream timeout'))
 						streamRes.body?.cancel()
 					}, 60000)
@@ -182,11 +184,13 @@ export async function POST(req: Request) {
 									enqueue({ type: 'finish-step' })
 									enqueue({ type: 'finish', finishReason: 'stop' })
 									enqueue('[DONE]')
+									streamClosed = true
 									controller.close()
 									return
 								} else if (data.type === 'error') {
 									enqueue({ type: 'error', errorText: data.message ?? 'Unknown error' })
 									enqueue('[DONE]')
+									streamClosed = true
 									controller.close()
 									return
 								}
@@ -195,10 +199,16 @@ export async function POST(req: Request) {
 					}
 				} catch (err) {
 					console.error('Proxy stream error:', err)
-					controller.error(err)
+					if (!streamClosed) {
+						streamClosed = true
+						controller.error(err)
+					}
 				} finally {
 					clearTimeout(timeoutId)
-					controller.close()
+					if (!streamClosed) {
+						streamClosed = true
+						controller.close()
+					}
 				}
 			}
 		})
