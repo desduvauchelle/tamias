@@ -26,6 +26,7 @@
 	},
 	"exclude": [
 		"openclaw-main",
+		"glue-paste-dev",
 		"node_modules",
 		"src/dashboard",
 		"test/e2e",

@@ -174,12 +174,17 @@ export const project_add_task = {
 		title: z.string(),
 		details: z.string().optional().describe('Detailed description or acceptance criteria in Markdown.'),
 		assignee: z.string().optional().describe('Who is assigned to this task (e.g. AI, User, specific name).'),
-		status: z.enum(['todo', 'in-progress', 'done']).default('todo'),
+		status: z.enum(['todo', 'in-progress', 'done', 'queue', 'backlog', 'failed']).default('todo'),
 		priority: z.enum(['low', 'medium', 'high', 'urgent']).optional().describe('Task priority level.'),
 		dueDate: z.string().optional().describe('Due date in ISO format (e.g. "2025-01-15").'),
 		labels: z.array(z.string()).optional().describe('Labels/tags for the task (e.g. ["bug", "frontend"]).'),
+		cli_provider: z.enum(['claude', 'gemini', 'codex', 'aider', 'copilot', 'custom']).optional().describe('CLI provider for this task'),
+		plan_thinking: z.enum(['smart', 'basic', 'none']).optional().describe('Thinking level for plan phase'),
+		execute_thinking: z.enum(['smart', 'basic']).optional().describe('Thinking level for execute phase'),
+		auto_commit: z.boolean().optional().describe('Auto-commit changes on success'),
+		blocking: z.boolean().optional().describe('Stop queue on failure'),
 	}),
-	execute: async (args: { projectSlug?: string; title: string; details?: string; assignee?: string; status?: string; priority?: string; dueDate?: string; labels?: string[] }, ctx: ProjectSessionCtx) => {
+	execute: async (args: { projectSlug?: string; title: string; details?: string; assignee?: string; status?: string; priority?: string; dueDate?: string; labels?: string[]; cli_provider?: KanbanTask['cli_provider']; plan_thinking?: KanbanTask['plan_thinking']; execute_thinking?: KanbanTask['execute_thinking']; auto_commit?: boolean; blocking?: boolean }, ctx: ProjectSessionCtx) => {
 		const result = resolveProject(ctx, args.projectSlug)
 		if ('error' in result) return { error: result.error }
 		const project = result.project
@@ -194,11 +199,23 @@ export const project_add_task = {
 			priority: args.priority as KanbanTask['priority'],
 			dueDate: args.dueDate ? new Date(args.dueDate).getTime() : undefined,
 			labels: args.labels,
+			cli_provider: args.cli_provider,
+			plan_thinking: args.plan_thinking ?? null,
+			execute_thinking: args.execute_thinking ?? null,
+			auto_commit: args.auto_commit ?? null,
+			blocking: args.blocking,
 		}
 
 		const updatedKanban = [...(project.kanban || []), newTask]
 		updateProject(project.id, { kanban: updatedKanban }, { source: 'ai' })
 		logProjectActivity(project.id, `Task added: "${args.title}"`)
+
+		if (args.assignee === 'ai' && args.status === 'queue' && project.directory) {
+			const { notifyProjectNewTask } = await import('../core/kanban/queue-manager.ts')
+			try {
+				notifyProjectNewTask(project.id)
+			} catch { /* non-fatal */ }
+		}
 
 		return { success: true, task: newTask }
 	}
@@ -211,15 +228,20 @@ export const project_update_task = {
 	parameters: z.object({
 		projectSlug: z.string().optional().describe('The project slug. If omitted, inferred from Discord channel or session context.'),
 		taskId: z.string().describe('The ID of the task to update.'),
-		status: z.enum(['todo', 'in-progress', 'awaiting-review', 'done']).optional(),
+		status: z.enum(['todo', 'in-progress', 'awaiting-review', 'done', 'queue', 'backlog', 'failed']).optional(),
 		assignee: z.string().optional(),
 		details: z.string().optional(),
 		reaction: z.string().optional().describe('An emoji reaction to set for the task.'),
 		priority: z.enum(['low', 'medium', 'high', 'urgent']).optional().describe('Task priority level.'),
 		dueDate: z.string().optional().describe('Due date in ISO format (e.g. "2025-01-15").'),
 		labels: z.array(z.string()).optional().describe('Labels/tags for the task.'),
+		cli_provider: z.enum(['claude', 'gemini', 'codex', 'aider', 'copilot', 'custom']).optional().describe('CLI provider for this task'),
+		plan_thinking: z.enum(['smart', 'basic', 'none']).optional().describe('Thinking level for plan phase'),
+		execute_thinking: z.enum(['smart', 'basic']).optional().describe('Thinking level for execute phase'),
+		auto_commit: z.boolean().optional().describe('Auto-commit changes on success'),
+		blocking: z.boolean().optional().describe('Stop queue on failure'),
 	}),
-	execute: async (args: { projectSlug?: string; taskId: string; status?: string; assignee?: string; details?: string; reaction?: string; priority?: string; dueDate?: string; labels?: string[] }, ctx: ProjectSessionCtx) => {
+	execute: async (args: { projectSlug?: string; taskId: string; status?: string; assignee?: string; details?: string; reaction?: string; priority?: string; dueDate?: string; labels?: string[]; cli_provider?: KanbanTask['cli_provider']; plan_thinking?: KanbanTask['plan_thinking']; execute_thinking?: KanbanTask['execute_thinking']; auto_commit?: boolean; blocking?: boolean }, ctx: ProjectSessionCtx) => {
 		const result = resolveProject(ctx, args.projectSlug)
 		if ('error' in result) return { error: result.error }
 		const project = result.project
@@ -237,6 +259,11 @@ export const project_update_task = {
 					...(args.priority !== undefined && { priority: args.priority as KanbanTask['priority'] }),
 					...(args.dueDate !== undefined && { dueDate: new Date(args.dueDate).getTime() }),
 					...(args.labels !== undefined && { labels: args.labels }),
+					...(args.cli_provider !== undefined && { cli_provider: args.cli_provider }),
+					...(args.plan_thinking !== undefined && { plan_thinking: args.plan_thinking }),
+					...(args.execute_thinking !== undefined && { execute_thinking: args.execute_thinking }),
+					...(args.auto_commit !== undefined && { auto_commit: args.auto_commit }),
+					...(args.blocking !== undefined && { blocking: args.blocking }),
 				}
 			}
 			return t

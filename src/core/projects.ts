@@ -33,6 +33,16 @@ export interface KanbanTask {
 	labels?: string[]
 	order?: number
 	comments?: KanbanComment[]
+	// Execution engine fields
+	cli_provider?: 'claude' | 'gemini' | 'codex' | 'aider' | 'copilot' | 'custom'
+	cli_custom_command?: string
+	plan_thinking?: 'smart' | 'basic' | 'none' | null
+	execute_thinking?: 'smart' | 'basic' | null
+	auto_commit?: boolean | null
+	auto_push?: boolean | null
+	branch_mode?: 'current' | 'new' | 'specific'
+	branch_name?: string
+	blocking?: boolean
 }
 
 export interface ProjectConfig {
@@ -48,6 +58,13 @@ export interface ProjectConfig {
 	objectives?: string[]
 	createdAt?: string
 	updatedAt?: string
+	directory?: string
+	kanbanCliProvider?: string
+	kanbanPlanThinking?: string
+	kanbanExecuteThinking?: string
+	kanbanAutoCommit?: boolean
+	kanbanAutoPush?: boolean
+	kanbanCustomInstructions?: string
 	kanban: KanbanTask[]
 	/** Global connection nicknames this project is allowed to use */
 	preferredConnections?: string[]
@@ -197,6 +214,13 @@ function readProjectConfigFromDir(projectDir: string, dirName: string): Omit<Pro
 			preferredConnections: readme.frontmatter.preferredConnections,
 			preferredModel: readme.frontmatter.preferredModel,
 			preferredModelFallbacks: readme.frontmatter.preferredModelFallbacks,
+			directory: readme.frontmatter.directory,
+			kanbanCliProvider: readme.frontmatter.kanbanCliProvider,
+			kanbanPlanThinking: readme.frontmatter.kanbanPlanThinking,
+			kanbanExecuteThinking: readme.frontmatter.kanbanExecuteThinking,
+			kanbanAutoCommit: readme.frontmatter.kanbanAutoCommit,
+			kanbanAutoPush: readme.frontmatter.kanbanAutoPush,
+			kanbanCustomInstructions: readme.frontmatter.kanbanCustomInstructions,
 		}
 	}
 
@@ -223,6 +247,13 @@ function readProjectConfigFromDir(projectDir: string, dirName: string): Omit<Pro
 				preferredConnections: migrated.frontmatter.preferredConnections,
 				preferredModel: migrated.frontmatter.preferredModel,
 				preferredModelFallbacks: migrated.frontmatter.preferredModelFallbacks,
+				directory: migrated.frontmatter.directory,
+				kanbanCliProvider: migrated.frontmatter.kanbanCliProvider,
+				kanbanPlanThinking: migrated.frontmatter.kanbanPlanThinking,
+				kanbanExecuteThinking: migrated.frontmatter.kanbanExecuteThinking,
+				kanbanAutoCommit: migrated.frontmatter.kanbanAutoCommit,
+				kanbanAutoPush: migrated.frontmatter.kanbanAutoPush,
+				kanbanCustomInstructions: migrated.frontmatter.kanbanCustomInstructions,
 			}
 		}
 	}
@@ -317,6 +348,13 @@ export function addProject(project: Omit<ProjectConfig, 'id' | 'kanban'>): Proje
 		...(project.objectives?.length ? { objectives: project.objectives } : {}),
 		createdAt: now,
 		updatedAt: now,
+		...(project.directory ? { directory: project.directory } : {}),
+		...(project.kanbanCliProvider ? { kanbanCliProvider: project.kanbanCliProvider } : {}),
+		...(project.kanbanPlanThinking ? { kanbanPlanThinking: project.kanbanPlanThinking } : {}),
+		...(project.kanbanExecuteThinking ? { kanbanExecuteThinking: project.kanbanExecuteThinking } : {}),
+		...(project.kanbanAutoCommit != null ? { kanbanAutoCommit: project.kanbanAutoCommit } : {}),
+		...(project.kanbanAutoPush != null ? { kanbanAutoPush: project.kanbanAutoPush } : {}),
+		...(project.kanbanCustomInstructions ? { kanbanCustomInstructions: project.kanbanCustomInstructions } : {}),
 	}
 
 	const body = generateReadmeBody(project.name, project.description)
@@ -351,6 +389,7 @@ export function addProject(project: Omit<ProjectConfig, 'id' | 'kanban'>): Proje
 		preferredConnections: project.preferredConnections,
 		preferredModel: project.preferredModel,
 		preferredModelFallbacks: project.preferredModelFallbacks,
+		...(project.directory ? { directory: project.directory } : {}),
 		kanban: [],
 	}
 	return newProject
@@ -381,6 +420,13 @@ export function updateProject(id: string, updates: Partial<Omit<ProjectConfig, '
 			...(configUpdates.preferredConnections !== undefined ? { preferredConnections: configUpdates.preferredConnections } : {}),
 			...(configUpdates.preferredModel !== undefined ? { preferredModel: configUpdates.preferredModel } : {}),
 			...(configUpdates.preferredModelFallbacks !== undefined ? { preferredModelFallbacks: configUpdates.preferredModelFallbacks } : {}),
+			...(configUpdates.directory !== undefined ? { directory: configUpdates.directory } : {}),
+			...(configUpdates.kanbanCliProvider !== undefined ? { kanbanCliProvider: configUpdates.kanbanCliProvider } : {}),
+			...(configUpdates.kanbanPlanThinking !== undefined ? { kanbanPlanThinking: configUpdates.kanbanPlanThinking } : {}),
+			...(configUpdates.kanbanExecuteThinking !== undefined ? { kanbanExecuteThinking: configUpdates.kanbanExecuteThinking } : {}),
+			...(configUpdates.kanbanAutoCommit !== undefined ? { kanbanAutoCommit: configUpdates.kanbanAutoCommit } : {}),
+			...(configUpdates.kanbanAutoPush !== undefined ? { kanbanAutoPush: configUpdates.kanbanAutoPush } : {}),
+			...(configUpdates.kanbanCustomInstructions !== undefined ? { kanbanCustomInstructions: configUpdates.kanbanCustomInstructions } : {}),
 			updatedAt: new Date().toISOString(),
 		}
 		updateProjectFrontmatter(projectDir, fmUpdates)

@@ -100,6 +100,16 @@ export default function KanbanCard({
 						🤖 {task.activity.length}
 					</span>
 				)}
+				{task.blocking && (
+					<span className="text-[10px] px-2 py-0.5 bg-error/10 text-error rounded-full font-bold">
+						🔒 blocking
+					</span>
+				)}
+				{task.cli_provider && (
+					<span className="text-[10px] px-1.5 py-0.5 bg-base-300 text-base-content/50 rounded">
+						{task.cli_provider}
+					</span>
+				)}
 			</div>
 
 			<div className="flex justify-end items-end mt-3 relative z-10">

@@ -38,6 +38,13 @@ export default function TaskDetailModal({
 	const [modalLabels, setModalLabels] = useState<string>(task.labels?.join(', ') || "")
 	const [newComment, setNewComment] = useState("")
 
+	const [showExecution, setShowExecution] = useState(false)
+	const [execPlanThinking, setExecPlanThinking] = useState<string>(task.plan_thinking ?? '')
+	const [execExecuteThinking, setExecExecuteThinking] = useState<string>(task.execute_thinking ?? '')
+	const [execCliProvider, setExecCliProvider] = useState<string>(task.cli_provider ?? '')
+	const [execAutoCommit, setExecAutoCommit] = useState<boolean | null>(task.auto_commit ?? null)
+	const [execBlocking, setExecBlocking] = useState<boolean>(task.blocking ?? false)
+
 	// Use live data from cache for real-time updates, falling back to snapshot
 	const displayedComments = (liveTask?.comments ?? task.comments) || []
 	const displayedReaction = liveTask?.reaction ?? task.reaction
@@ -53,6 +60,11 @@ export default function TaskDetailModal({
 			priority: modalPriority ? modalPriority as KanbanTask['priority'] : undefined,
 			dueDate: modalDueDate ? new Date(modalDueDate).getTime() : undefined,
 			labels: modalLabels ? modalLabels.split(',').map(l => l.trim()).filter(Boolean) : undefined,
+			plan_thinking: execPlanThinking ? execPlanThinking as KanbanTask['plan_thinking'] : undefined,
+			execute_thinking: execExecuteThinking ? execExecuteThinking as KanbanTask['execute_thinking'] : undefined,
+			cli_provider: execCliProvider ? execCliProvider as KanbanTask['cli_provider'] : undefined,
+			auto_commit: execAutoCommit,
+			blocking: execBlocking,
 		})
 	}
 
@@ -130,21 +142,94 @@ export default function TaskDetailModal({
 							</button>
 						</div>
 
+						{/* Execution Config (collapsible) */}
+						<div className="border border-base-300 rounded-lg overflow-hidden">
+							<button
+								type="button"
+								onClick={() => setShowExecution(!showExecution)}
+								className="w-full px-4 py-2 text-left text-sm font-medium flex justify-between items-center bg-base-200 hover:bg-base-300 transition-colors"
+							>
+								<span>⚙️ Execution Config</span>
+								<span className="text-base-content/50">{showExecution ? '▲' : '▼'}</span>
+							</button>
+							{showExecution && (
+								<div className="p-4 space-y-3">
+									<div>
+										<label className="text-xs font-medium text-base-content/70">Plan Thinking</label>
+										<select
+											value={execPlanThinking}
+											onChange={e => setExecPlanThinking(e.target.value)}
+											className="select select-xs select-bordered w-full mt-1"
+										>
+											<option value="">Default (Smart)</option>
+											<option value="smart">Smart</option>
+											<option value="basic">Basic</option>
+											<option value="none">None (skip planning)</option>
+										</select>
+									</div>
+									<div>
+										<label className="text-xs font-medium text-base-content/70">Execute Thinking</label>
+										<select
+											value={execExecuteThinking}
+											onChange={e => setExecExecuteThinking(e.target.value)}
+											className="select select-xs select-bordered w-full mt-1"
+										>
+											<option value="">Default (Smart)</option>
+											<option value="smart">Smart</option>
+											<option value="basic">Basic</option>
+										</select>
+									</div>
+									<div>
+										<label className="text-xs font-medium text-base-content/70">CLI Provider Override</label>
+										<select
+											value={execCliProvider}
+											onChange={e => setExecCliProvider(e.target.value)}
+											className="select select-xs select-bordered w-full mt-1"
+										>
+											<option value="">Default (Claude)</option>
+											<option value="claude">Claude</option>
+											<option value="gemini">Gemini</option>
+											<option value="codex">Codex</option>
+											<option value="aider">Aider</option>
+											<option value="custom">Custom</option>
+										</select>
+									</div>
+									<label className="flex items-center gap-2 cursor-pointer">
+										<input
+											type="checkbox"
+											checked={execBlocking}
+											onChange={e => setExecBlocking(e.target.checked)}
+											className="checkbox checkbox-xs"
+										/>
+										<span className="text-xs">Blocking &mdash; stop queue on failure</span>
+									</label>
+									<label className="flex items-center gap-2 cursor-pointer">
+										<input
+											type="checkbox"
+											checked={execAutoCommit === true}
+											onChange={e => setExecAutoCommit(e.target.checked ? true : null)}
+											className="checkbox checkbox-xs"
+										/>
+										<span className="text-xs">Auto-commit on success</span>
+									</label>
+								</div>
+							)}
+						</div>
+
 						<div className="divider my-0">Comments</div>
 
 						<div className="flex flex-col gap-3">
 							{displayedComments.map((c: KanbanComment) => (
-								<div key={c.id} className={`group p-3 rounded-xl border ${c.author === 'AI'
+								<div key={c.id} className={`group p-3 rounded-xl border ${c.author === 'ai'
 										? 'bg-primary/5 border-primary/20'
 										: 'bg-base-200/50 border-base-300'
 									}`}>
 									<div className="flex items-center justify-between mb-1">
 										<span className="font-bold text-sm text-primary flex items-center gap-2">
-											{c.author === 'AI' ? '🤖 AI' : c.author}
-											{c.reaction && <span className="text-base font-normal">{c.reaction}</span>}
+											{c.author === 'ai' ? '🤖 AI' : c.author}
 										</span>
 										<div className="flex items-center gap-2">
-											<span className="text-xs opacity-50">{new Date(c.createdAt).toLocaleString()}</span>
+											<span className="text-xs opacity-50">{new Date(c.created_at).toLocaleString()}</span>
 											<button
 												onClick={() => onDeleteComment(c.id)}
 												className="opacity-0 group-hover:opacity-100 transition-opacity text-error hover:text-error text-xs btn btn-xs btn-ghost btn-circle"
@@ -152,7 +237,7 @@ export default function TaskDetailModal({
 											>✕</button>
 										</div>
 									</div>
-									<div className="text-sm whitespace-pre-wrap">{c.text}</div>
+									<div className="text-sm whitespace-pre-wrap">{c.content}</div>
 								</div>
 							))}
 							{displayedComments.length === 0 && (

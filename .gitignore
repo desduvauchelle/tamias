@@ -1,5 +1,5 @@
 # Based on https://raw.githubusercontent.com/github/gitignore/main/Node.gitignore
-
+glue-paste-dev/**
 # Logs
 
 logs
@@ -180,3 +180,4 @@ tamias
 tamias-darwin-arm64
 src/dashboard/next-env.d.ts
 test-results/
+glue-paste-dev

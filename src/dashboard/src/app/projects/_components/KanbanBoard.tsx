@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useCallback } from "react"
-import { Plus } from "lucide-react"
+import { useState, useCallback, useEffect, useRef } from "react"
+import { Plus, Play, Square } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useToast } from "../../_components/ToastProvider"
 import type { KanbanTask, KanbanComment, KanbanActivity, Project } from "./types"
@@ -34,6 +34,30 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 	const [newTaskTitle, setNewTaskTitle] = useState("")
 	const [newTaskCol, setNewTaskCol] = useState("")
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+
+	const [queueStatus, setQueueStatus] = useState<{ isRunning: boolean; isPaused: boolean; active: string[]; queue: string[] } | null>(null)
+	const queuePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+	useEffect(() => {
+		const poll = async () => {
+			try {
+				const res = await fetch(`/api/projects/${project.id}/kanban/queue`)
+				if (res.ok) setQueueStatus(await res.json())
+			} catch { }
+		}
+		poll()
+		queuePollRef.current = setInterval(poll, 3000)
+		return () => { if (queuePollRef.current) clearInterval(queuePollRef.current) }
+	}, [project.id])
+
+	const handleStartQueue = async () => {
+		await fetch(`/api/projects/${project.id}/kanban/queue?action=start`, { method: 'POST' })
+		setTimeout(() => fetch(`/api/projects/${project.id}/kanban/queue`).then(r => r.json()).then(setQueueStatus).catch(() => {}), 500)
+	}
+	const handleStopQueue = async () => {
+		await fetch(`/api/projects/${project.id}/kanban/queue?action=stop`, { method: 'POST' })
+		setTimeout(() => fetch(`/api/projects/${project.id}/kanban/queue`).then(r => r.json()).then(setQueueStatus).catch(() => {}), 500)
+	}
 
 	const updateKanban = useCallback(async (newKanban: KanbanTask[]) => {
 		try {
@@ -173,9 +197,11 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 		if (!selectedTask) return
 		const comment: KanbanComment = {
 			id: Math.random().toString(36).substring(2, 9),
-			author: 'User',
-			text,
-			createdAt: Date.now()
+			task_id: selectedTask.id,
+			author: 'user',
+			content: text,
+			execution_id: null,
+			created_at: new Date().toISOString()
 		}
 		const updatedTask = {
 			...selectedTask,
@@ -215,6 +241,41 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 				onDismiss={dismissAI}
 				onStop={stopAI}
 			/>
+
+			{/* Execution Queue Controls */}
+			{project.directory && (
+				<div className="flex items-center gap-3 px-7 pt-3 pb-0">
+					<div className="flex items-center gap-3 p-2 bg-base-200 rounded-lg w-full">
+						<span className="text-xs font-medium text-base-content/60">Execution Queue</span>
+						{queueStatus?.isRunning ? (
+							<>
+								<span className="flex items-center gap-1.5 text-xs text-success">
+									<span className="relative flex h-2 w-2">
+										<span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+										<span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span>
+									</span>
+									Running &bull; {queueStatus.active.length} active &bull; {queueStatus.queue.length} queued
+								</span>
+								<button onClick={handleStopQueue} className="btn btn-xs btn-error gap-1">
+									<Square className="w-3 h-3 fill-current" /> Stop
+								</button>
+							</>
+						) : (
+							<>
+								<span className="text-xs text-base-content/40">Idle</span>
+								<button onClick={handleStartQueue} className="btn btn-xs btn-success gap-1">
+									<Play className="w-3 h-3 fill-current" /> Start Queue
+								</button>
+							</>
+						)}
+					</div>
+				</div>
+			)}
+			{!project.directory && (
+				<div className="text-xs text-warning/70 px-7 pt-3">
+					No working directory configured &mdash; set it in project settings to enable task execution
+				</div>
+			)}
 
 			{/* Kanban columns */}
 			<div className="flex-1 flex gap-4 p-6 pt-3 overflow-x-auto items-start min-h-0">

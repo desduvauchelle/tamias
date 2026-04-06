@@ -78,6 +78,7 @@ function ProjectsContent() {
 	const [formDesc, setFormDesc] = useState("")
 	const [formPath, setFormPath] = useState("")
 	const [formChannel, setFormChannel] = useState("")
+	const [formDirectory, setFormDirectory] = useState("")
 
 	// Context Markdown State
 	const [contextMarkdown, setContextMarkdown] = useState<string>("")
@@ -106,6 +107,7 @@ function ProjectsContent() {
 				setFormDesc(found.description || "")
 				setFormPath(found.path)
 				setFormChannel(found.discordChannelId || "")
+				setFormDirectory(found.directory || "")
 				setFormPreferredConnections(found.preferredConnections || [])
 				setFormPreferredModel(found.preferredModel || "")
 				setFormPreferredModelFallbacks(found.preferredModelFallbacks || [])
@@ -242,6 +244,7 @@ function ProjectsContent() {
 					preferredConnections: formPreferredConnections.length > 0 ? formPreferredConnections : undefined,
 					preferredModel: formPreferredModel || undefined,
 					preferredModelFallbacks: formPreferredModelFallbacks.length > 0 ? formPreferredModelFallbacks : undefined,
+					directory: formDirectory.trim() || undefined,
 				})
 			})
 
@@ -455,6 +458,18 @@ function ProjectsContent() {
 								<div className="form-control">
 									<label className="label pb-1"><span className="label-text font-bold text-base">Description</span></label>
 									<textarea value={formDesc} onChange={e => setFormDesc(e.target.value)} className="textarea textarea-bordered h-24" placeholder="Brief context about this project" />
+								</div>
+
+								<div className="form-control">
+									<label className="label pb-1"><span className="label-text font-bold text-base flex items-center gap-2"><FolderOpen className="w-4 h-4 text-success" /> Working Directory</span></label>
+									<input
+										value={formDirectory}
+										onChange={e => setFormDirectory(e.target.value)}
+										type="text"
+										className="input input-bordered w-full font-mono text-sm"
+										placeholder="/absolute/path/to/git/repo"
+									/>
+									<label className="label"><span className="label-text-alt text-base-content/50">Absolute path to the git repo Claude will work in. Required for task execution queue.</span></label>
 								</div>
 
 								<div className="divider opacity-50">Integrations</div>

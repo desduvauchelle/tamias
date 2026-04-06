@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Features
+- update changelog for version v26.04.05.10; enhance model management and update README with new cron job parameters
 - Enhance Kanban board with AI activity tracking and one-shot job scheduling
 
 ## [v26.04.05.10] - 2026-04-05

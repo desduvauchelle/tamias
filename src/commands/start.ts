@@ -708,6 +708,14 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	runDatabaseMaintenance().catch(console.error)
 	setInterval(() => runDatabaseMaintenance().catch(console.error), 24 * 60 * 60 * 1000)
 
+	// Kanban Execution Queue Manager — recover interrupted tasks
+	const { initKanbanQueueManager, shutdownKanbanQueueManager } = await import('../core/kanban/queue-manager.ts')
+	try {
+		initKanbanQueueManager()
+	} catch (err) {
+		console.warn('[Daemon] Kanban queue manager init failed (non-fatal):', err)
+	}
+
 	let updateInProgress = false
 
 	Bun.serve({
@@ -1176,10 +1184,10 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 			}
 
 			if (method === 'POST' && url.pathname === '/project-event') {
-				const body = await req.json() as any
+				const body = await req.json() as Record<string, unknown>
 				if (body.type === 'kanban_changed') {
 					const { getProject, projectEvents } = await import('../core/projects.js')
-					const project = getProject(body.projectId)
+					const project = getProject(body.projectId as string)
 					if (project) {
 						projectEvents.emit('kanban_changed', {
 							project,
@@ -1191,8 +1199,178 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 				return json({ ok: true })
 			}
 
+			// ── Kanban Execution Engine Routes ──────────────────────────────────────
+			// POST /kanban/:projectId/queue/start  → start the execution queue
+			// POST /kanban/:projectId/queue/stop   → stop the execution queue
+			// GET  /kanban/:projectId/queue/status → get current queue state
+			// GET  /kanban/:projectId/executions/:execId/stream → SSE live output
+			// GET  /kanban/:projectId/tasks → list tasks from SQLite
+			// POST /kanban/:projectId/tasks → create a task in SQLite
+			// PATCH /kanban/:projectId/tasks/:taskId → update a task in SQLite
+			// GET  /kanban/:projectId/tasks/:taskId/executions → list executions for a task
+			if (url.pathname.startsWith('/kanban/')) {
+				const { startProjectQueue, stopProjectQueue, getProjectQueueStatus, getExecutionOutputBuffer, addOutputListener, removeOutputListener, notifyProjectNewTask } = await import('../core/kanban/queue-manager.ts')
+				const { openKanbanDb } = await import('../core/kanban/db.ts')
+				const kanbanMatch = url.pathname.match(/^\/kanban\/([^/]+)(.*)$/)
+				if (!kanbanMatch) return json({ error: 'Invalid kanban route' }, 400)
+				const kProjectId = kanbanMatch[1]!
+				const kSubpath = kanbanMatch[2] ?? ''
+
+				if (method === 'POST' && kSubpath === '/queue/start') {
+					startProjectQueue(kProjectId)
+					return json({ ok: true })
+				}
+
+				if (method === 'POST' && kSubpath === '/queue/stop') {
+					stopProjectQueue(kProjectId)
+					return json({ ok: true })
+				}
+
+				if (method === 'GET' && kSubpath === '/queue/status') {
+					return json(getProjectQueueStatus(kProjectId))
+				}
+
+				const execStreamMatch = kSubpath.match(/^\/executions\/([^/]+)\/stream$/)
+				if (method === 'GET' && execStreamMatch) {
+					const execId = execStreamMatch[1]!
+					const { getExecution } = await import('../core/kanban/executions-db.ts')
+					const db = openKanbanDb(kProjectId)
+					const execution = getExecution(db, execId)
+
+					return new Response(new ReadableStream({
+						start(controller) {
+							// Send buffered output first
+							const buffered = getExecutionOutputBuffer(execId)
+							for (const chunk of buffered) {
+								controller.enqueue(encoder.encode(`event: output\ndata: ${JSON.stringify({ chunk })}\n\n`))
+							}
+
+							if (execution && (execution.status === 'success' || execution.status === 'failed' || execution.status === 'cancelled')) {
+								controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ status: execution.status })}\n\n`))
+								controller.close()
+								return
+							}
+
+							const listener = {
+								executionId: execId,
+								send(chunk: string) {
+									try { controller.enqueue(encoder.encode(`event: output\ndata: ${JSON.stringify({ chunk })}\n\n`)) } catch { }
+								},
+								close() {
+									try { controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ status: 'completed' })}\n\n`)) } catch { }
+									try { controller.close() } catch { }
+									removeOutputListener(listener)
+								},
+							}
+							addOutputListener(listener)
+						},
+					}), {
+						headers: cors({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' }),
+					})
+				}
+
+				// Task CRUD
+				if (method === 'GET' && kSubpath === '/tasks') {
+					const { listTasks } = await import('../core/kanban/tasks-db.ts')
+					const db = openKanbanDb(kProjectId)
+					const statusFilter = url.searchParams.get('status') ?? undefined
+					return json(listTasks(db, statusFilter))
+				}
+
+				if (method === 'POST' && kSubpath === '/tasks') {
+					const { insertTask } = await import('../core/kanban/tasks-db.ts')
+					const body2 = await req.json() as Record<string, unknown>
+					const db = openKanbanDb(kProjectId)
+					const { getProjects } = await import('../core/projects.js')
+					const projects = getProjects()
+					const project = projects[kProjectId]
+					const task = insertTask(db, {
+						id: body2.id as string ?? crypto.randomUUID(),
+						title: body2.title as string,
+						description: body2.description as string | undefined,
+						details: body2.details as string | undefined,
+						status: body2.status as string | undefined,
+						assignee: body2.assignee as string | undefined,
+						priority: body2.priority as string | undefined,
+						labels: body2.labels as string[] | undefined,
+						cli_provider: body2.cli_provider as string | undefined,
+						plan_thinking: body2.plan_thinking as string | undefined,
+						execute_thinking: body2.execute_thinking as string | undefined,
+						blocking: body2.blocking as boolean | undefined,
+					})
+					// Auto-start queue if task is queued and assigned to AI
+					if (task.status === 'queue' && task.assignee === 'ai' && project?.directory) {
+						notifyProjectNewTask(kProjectId)
+					}
+					return json(task)
+				}
+
+				const taskUpdateMatch = kSubpath.match(/^\/tasks\/([^/]+)$/)
+				if (method === 'PATCH' && taskUpdateMatch) {
+					const { updateTask } = await import('../core/kanban/tasks-db.ts')
+					const kTaskId = taskUpdateMatch[1]!
+					const db = openKanbanDb(kProjectId)
+					const body2 = await req.json() as Record<string, unknown>
+					const { getProjects } = await import('../core/projects.js')
+					const projects = getProjects()
+					const project = projects[kProjectId]
+					const task = updateTask(db, kTaskId, {
+						title: body2.title as string | undefined,
+						description: body2.description as string | undefined,
+						details: body2.details as string | undefined,
+						status: body2.status as string | undefined,
+						assignee: body2.assignee as string | undefined,
+						priority: body2.priority as string | undefined,
+						labels: body2.labels as string[] | undefined,
+						reaction: body2.reaction as string | undefined,
+						blocking: body2.blocking as boolean | undefined,
+						plan_thinking: body2.plan_thinking as string | undefined,
+						execute_thinking: body2.execute_thinking as string | undefined,
+						auto_commit: body2.auto_commit as boolean | null | undefined,
+						auto_push: body2.auto_push as boolean | null | undefined,
+						cli_provider: body2.cli_provider as string | null | undefined,
+						cli_custom_command: body2.cli_custom_command as string | null | undefined,
+						branch_mode: body2.branch_mode as string | undefined,
+						branch_name: body2.branch_name as string | null | undefined,
+					})
+					if (!task) return json({ error: 'Task not found' }, 404)
+					// Auto-start queue if moved to queue and assigned to AI
+					if (task.status === 'queue' && task.assignee === 'ai' && project?.directory) {
+						notifyProjectNewTask(kProjectId)
+					}
+					return json(task)
+				}
+
+				const taskExecMatch = kSubpath.match(/^\/tasks\/([^/]+)\/executions$/)
+				if (method === 'GET' && taskExecMatch) {
+					const { listExecutions } = await import('../core/kanban/executions-db.ts')
+					const kTaskId = taskExecMatch[1]!
+					const db = openKanbanDb(kProjectId)
+					return json(listExecutions(db, kTaskId))
+				}
+
+				const taskCommentsMatch = kSubpath.match(/^\/tasks\/([^/]+)\/comments$/)
+				if (method === 'GET' && taskCommentsMatch) {
+					const { listComments } = await import('../core/kanban/comments-db.ts')
+					const kTaskId = taskCommentsMatch[1]!
+					const db = openKanbanDb(kProjectId)
+					return json(listComments(db, kTaskId))
+				}
+
+				if (method === 'POST' && taskCommentsMatch) {
+					const { createComment } = await import('../core/kanban/comments-db.ts')
+					const kTaskId = taskCommentsMatch[1]!
+					const db = openKanbanDb(kProjectId)
+					const body2 = await req.json() as { author: 'user' | 'system' | 'ai'; content: string }
+					return json(createComment(db, kTaskId, body2))
+				}
+
+				return json({ error: 'Unknown kanban route' }, 404)
+			}
+
 			if (method === 'DELETE' && url.pathname === '/daemon') {
 				clearInterval(cronSchedulerTimer)
+				try { shutdownKanbanQueueManager() } catch { /* non-fatal */ }
 				await bridgeManager.destroyAll()
 				await aiService.shutdown()
 				if (dashboardProc) {
@@ -1647,6 +1825,7 @@ export const runStartCommand = async (opts: { daemon?: boolean; verbose?: boolea
 	const gracefulShutdown = async (signal: string) => {
 		console.log(`[Daemon] Received ${signal}, shutting down...`)
 		clearInterval(cronSchedulerTimer)
+		try { shutdownKanbanQueueManager() } catch { /* non-fatal */ }
 		await bridgeManager.destroyAll().catch((err) => console.error('[Daemon] Error during bridge teardown:', err))
 		if (dashboardProc) { try { dashboardProc.kill() } catch { /* ignore */ } }
 		if (ngrokProc) { try { ngrokProc.kill() } catch { /* ignore */ } }

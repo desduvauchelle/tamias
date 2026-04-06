@@ -17,6 +17,20 @@ export interface ProjectFrontmatter {
 	objectives?: string[]
 	createdAt?: string
 	updatedAt?: string
+	/** Path to the project's git working directory (used by kanban execution engine) */
+	directory?: string
+	/** Default CLI provider for kanban task execution */
+	kanbanCliProvider?: string
+	/** Default plan thinking level for kanban execution */
+	kanbanPlanThinking?: string
+	/** Default execute thinking level for kanban execution */
+	kanbanExecuteThinking?: string
+	/** Whether to auto-commit after successful execution */
+	kanbanAutoCommit?: boolean
+	/** Whether to auto-push after successful execution */
+	kanbanAutoPush?: boolean
+	/** Custom instructions injected into every task prompt */
+	kanbanCustomInstructions?: string
 }
 
 export interface ProjectReadmeData {
@@ -49,6 +63,13 @@ export function readProjectReadme(projectDir: string): ProjectReadmeData | null 
 			...(Array.isArray(data.objectives) ? { objectives: data.objectives.map(String) } : {}),
 			...(data.createdAt != null ? { createdAt: String(data.createdAt) } : {}),
 			...(data.updatedAt != null ? { updatedAt: String(data.updatedAt) } : {}),
+			...(data.directory != null ? { directory: String(data.directory) } : {}),
+			...(data.kanbanCliProvider != null ? { kanbanCliProvider: String(data.kanbanCliProvider) } : {}),
+			...(data.kanbanPlanThinking != null ? { kanbanPlanThinking: String(data.kanbanPlanThinking) } : {}),
+			...(data.kanbanExecuteThinking != null ? { kanbanExecuteThinking: String(data.kanbanExecuteThinking) } : {}),
+			...(data.kanbanAutoCommit != null ? { kanbanAutoCommit: Boolean(data.kanbanAutoCommit) } : {}),
+			...(data.kanbanAutoPush != null ? { kanbanAutoPush: Boolean(data.kanbanAutoPush) } : {}),
+			...(data.kanbanCustomInstructions != null ? { kanbanCustomInstructions: String(data.kanbanCustomInstructions) } : {}),
 		}
 		return { frontmatter, body: content }
 	} catch {
