@@ -17,6 +17,7 @@ import { createProjectTools, PROJECTS_TOOL_NAME } from '../tools/projects.ts'
 import { githubTools, GITHUB_TOOL_NAME } from '../tools/github.ts'
 import { createCronTools, CRON_TOOL_NAME } from '../tools/cron.ts'
 import { emailTools, EMAIL_TOOL_NAME } from '../tools/email.ts'
+import { createComfyUITools, COMFYUI_TOOL_NAME } from '../tools/comfyui.ts'
 
 import { getAllInternalToolNames } from '../tools/internalToolNames.ts'
 import { buildToolsForDomain } from '../core/adapters/ai-tools.ts'
@@ -100,6 +101,7 @@ export async function buildActiveTools(aiService: AIService, sessionId: string):
 		[GITHUB_TOOL_NAME]: githubTools as ToolSet,
 		[CRON_TOOL_NAME]: createCronTools(aiService, sessionId) as ToolSet,
 		[EMAIL_TOOL_NAME]: emailTools as ToolSet,
+		[COMFYUI_TOOL_NAME]: createComfyUITools(aiService, sessionId) as ToolSet,
 	}
 
 	// ── Auto-wire registry-backed domains ────────────────────────────────────

@@ -27,6 +27,7 @@ export const INTERNAL_TOOL_NAMES = [
 	'github',     // git operations
 	'cron',       // scheduled jobs
 	'email',      // email list/read/send
+	'comfyui',    // local image generation via ComfyUI
 ] as const
 
 export type InternalToolName = (typeof INTERNAL_TOOL_NAMES)[number]

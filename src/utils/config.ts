@@ -153,6 +153,24 @@ export const FirecrawlConfigSchema = z.object({
 
 export type FirecrawlConfig = z.infer<typeof FirecrawlConfigSchema>
 
+export const ComfyUIConfigSchema = z.object({
+	enabled: z.boolean().default(false),
+	/** Base URL for the ComfyUI API (e.g. http://localhost:8188) */
+	baseUrl: z.string().url().default('http://localhost:8188'),
+	/** Optional auth token for secured ComfyUI instances */
+	authToken: z.string().optional(),
+	/** Request timeout in milliseconds (image gen can be slow) */
+	timeoutMs: z.number().int().positive().default(300_000),
+	/** Default checkpoint model name (e.g. "dreamshaper_8.safetensors") */
+	defaultCheckpoint: z.string().optional(),
+	/** Default number of sampling steps */
+	defaultSteps: z.number().int().positive().default(20),
+	/** Default CFG scale */
+	defaultCfg: z.number().positive().default(7.0),
+})
+
+export type ComfyUIConfig = z.infer<typeof ComfyUIConfigSchema>
+
 export const NgrokConfigSchema = z.object({
 	enabled: z.boolean().default(false),
 })
@@ -262,6 +280,7 @@ export const TamiasConfigSchema = z.object({
 		embeddingModel: 'Xenova/all-MiniLM-L6-v2',
 	}).optional(),
 	firecrawl: FirecrawlConfigSchema.optional(),
+	comfyui: ComfyUIConfigSchema.optional(),
 	ngrok: NgrokConfigSchema.default({ enabled: false }),
 	/** Ordered list of external coding CLIs for task delegation (Claude Code, Copilot, Aider, etc.) */
 	codingProviders: z.array(CodingProviderSchema).optional(),
@@ -603,6 +622,18 @@ export const getFirecrawlConfig = (): FirecrawlConfig => {
 		enabled: false,
 		baseUrl: 'http://localhost:3002',
 		timeoutMs: 30000,
+	}
+}
+
+/** Return ComfyUI configuration with defaults */
+export const getComfyUIConfig = (): ComfyUIConfig => {
+	const config = loadConfig()
+	return config.comfyui ?? {
+		enabled: false,
+		baseUrl: 'http://localhost:8188',
+		timeoutMs: 300_000,
+		defaultSteps: 20,
+		defaultCfg: 7.0,
 	}
 }
 
