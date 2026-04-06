@@ -1,5 +1,10 @@
 # Changelog
 
+## [v26.04.05.10] - 2026-04-05
+
+### Features
+- enhance model management; add support for embedding and default image models, implement draggable model list for better organization
+
 ## [v26.04.05.9] - 2026-04-05
 
 ### Features

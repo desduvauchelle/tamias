@@ -134,11 +134,10 @@ export default function TaskDetailModal({
 
 						<div className="flex flex-col gap-3">
 							{displayedComments.map((c: KanbanComment) => (
-								<div key={c.id} className={`group p-3 rounded-xl border ${
-									c.author === 'AI'
+								<div key={c.id} className={`group p-3 rounded-xl border ${c.author === 'AI'
 										? 'bg-primary/5 border-primary/20'
 										: 'bg-base-200/50 border-base-300'
-								}`}>
+									}`}>
 									<div className="flex items-center justify-between mb-1">
 										<span className="font-bold text-sm text-primary flex items-center gap-2">
 											{c.author === 'AI' ? '🤖 AI' : c.author}

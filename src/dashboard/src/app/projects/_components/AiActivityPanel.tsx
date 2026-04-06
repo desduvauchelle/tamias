@@ -39,7 +39,7 @@ export default function AiActivityPanel({
 	const statusColor = aiStatus === 'thinking' ? 'primary' : aiStatus === 'done' ? 'success' : 'error'
 	const statusBg = aiStatus === 'thinking' ? 'bg-primary/10 border-primary/30 text-primary' :
 		aiStatus === 'done' ? 'bg-success/10 border-success/30 text-success' :
-		'bg-error/10 border-error/30 text-error'
+			'bg-error/10 border-error/30 text-error'
 
 	const taskTitle = (taskId: string) => {
 		const t = tasks.find(tk => tk.id === taskId)

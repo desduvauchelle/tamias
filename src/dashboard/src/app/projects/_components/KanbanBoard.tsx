@@ -247,11 +247,10 @@ export default function KanbanBoard({ project, onProjectUpdate }: KanbanBoardPro
 								}
 								setDragOverCol(null)
 							}}
-							className={`w-72 shrink-0 flex flex-col max-h-full rounded-xl border transition-colors ${
-								isDragOver
+							className={`w-72 shrink-0 flex flex-col max-h-full rounded-xl border transition-colors ${isDragOver
 									? 'bg-primary/10 border-primary/50'
 									: 'bg-base-200/50 border-base-300'
-							}`}
+								}`}
 						>
 							<div className="p-3 border-b border-base-300/50 flex justify-between items-center bg-base-300/30 rounded-t-xl">
 								<div className="flex flex-col">

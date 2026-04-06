@@ -84,7 +84,7 @@ Manage recurring cron jobs and heartbeats
 |---|---|
 | `tamias cron` | Manage recurring cron jobs and heartbeats |
 | `tamias cron list` | List all configured cron jobs |
-| `tamias cron add` | Add a new cron job (`-n, --name <name>`, `-s, --schedule <schedule>`, `-p, --prompt <prompt>`, `-T, --type <type>`, `--skills <skills>`, `--session-key <key>`, `--context <context>`, `--target-channel <target>`, `--target-email <email>`, `--target-file <path>`, `-t, --target <target>`, `--heartbeat`) |
+| `tamias cron add` | Add a new cron job (`-n, --name <name>`, `-s, --schedule <schedule>`, `--run-at <datetime>`, `-p, --prompt <prompt>`, `-T, --type <type>`, `--skills <skills>`, `--session-key <key>`, `--context <context>`, `--target-channel <target>`, `--target-email <email>`, `--target-file <path>`, `-t, --target <target>`, `--heartbeat`) |
 | `tamias cron rm <id>` | Remove a cron job by ID |
 | `tamias cron edit <id>` | Edit an existing cron job (`-n, --name <name>`, `-s, --schedule <schedule>`, `-p, --prompt <prompt>`, `-T, --type <type>`, `--skills <skills>`, `--session-key <key>`, `--context <context>`, `-t, --target <target>`, `--disable`, `--enable`) |
 | `tamias cron run` | Run all due cron jobs once (manual or external scheduler) (`--job <id>`, `--dry-run`) |
@@ -306,11 +306,7 @@ Runtime logs are centralized under `~/.tamias/logs/` (for example `daemon.log`, 
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.05.9)
+### Latest Version (v26.04.05.10)
 
 ### Features
-- refactor browser command implementation; enhance dependency injection and improve test structure
-- enhance update management; add SidebarUpdater component, remove UpdateBanner, and improve update API error handling
-- update changelog for unreleased features; add log pagination and README management entry feat: add coverage script to package.json fix: enable importing TypeScript extensions in e2e tsconfig
-- update changelog for version v26.04.05.4; integrate new features for Ollama model management and browser authentication
-- implement log pagination and README management
+- enhance model management; add support for embedding and default image models, implement draggable model list for better organization

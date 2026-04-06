@@ -39,8 +39,8 @@ describe('runCronJobsOnce', () => {
 				recorded.push({ id, status: r.status })
 				return undefined
 			},
-			logFn: () => {},
-			errorFn: () => {},
+			logFn: () => { },
+			errorFn: () => { },
 		})
 
 		expect(result.dueCount).toBe(1)
@@ -62,8 +62,8 @@ describe('runCronJobsOnce', () => {
 			isJobDueFn: () => true,
 			executeJobFn: async () => { executed = true },
 			recordRunFn: () => undefined,
-			logFn: () => {},
-			errorFn: () => {},
+			logFn: () => { },
+			errorFn: () => { },
 		})
 
 		expect(result.dueCount).toBe(1)
@@ -79,10 +79,10 @@ describe('runCronJobsOnce', () => {
 			daemonToken: 'token',
 			loadJobsFn: () => [makeJob({ id: 'job-1' })],
 			isJobDueFn: () => true,
-			executeJobFn: async () => {},
+			executeJobFn: async () => { },
 			recordRunFn: () => undefined,
-			logFn: () => {},
-			errorFn: () => {},
+			logFn: () => { },
+			errorFn: () => { },
 		})).rejects.toThrow("Job 'missing' not found")
 	})
 
@@ -100,8 +100,8 @@ describe('runCronJobsOnce', () => {
 				recorded.push({ id, status: r.status, error: r.error })
 				return undefined
 			},
-			logFn: () => {},
-			errorFn: () => {},
+			logFn: () => { },
+			errorFn: () => { },
 		})
 
 		expect(result.dueCount).toBe(1)
@@ -124,11 +124,11 @@ describe('runCronJobsOnce — one-shot auto-delete', () => {
 			daemonToken: 'token',
 			loadJobsFn: () => [job],
 			isJobDueFn: () => true,
-			executeJobFn: async () => {},
+			executeJobFn: async () => { },
 			recordRunFn: () => undefined,
 			removeJobFn: (id) => { removed.push(id) },
-			logFn: () => {},
-			errorFn: () => {},
+			logFn: () => { },
+			errorFn: () => { },
 		})
 
 		expect(removed).toEqual(['shot-1'])
@@ -147,8 +147,8 @@ describe('runCronJobsOnce — one-shot auto-delete', () => {
 			executeJobFn: async () => { throw new Error('fail') },
 			recordRunFn: () => undefined,
 			removeJobFn: (id) => { removed.push(id) },
-			logFn: () => {},
-			errorFn: () => {},
+			logFn: () => { },
+			errorFn: () => { },
 		})
 
 		expect(removed).toEqual(['shot-2'])
@@ -163,11 +163,11 @@ describe('runCronJobsOnce — one-shot auto-delete', () => {
 			daemonToken: 'token',
 			loadJobsFn: () => [job],
 			isJobDueFn: () => true,
-			executeJobFn: async () => {},
+			executeJobFn: async () => { },
 			recordRunFn: () => undefined,
 			removeJobFn: (id) => { removed.push(id) },
-			logFn: () => {},
-			errorFn: () => {},
+			logFn: () => { },
+			errorFn: () => { },
 		})
 
 		expect(removed).toEqual([])

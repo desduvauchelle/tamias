@@ -30,13 +30,11 @@ export default function KanbanCard({
 			onDragStart={onDragStart}
 			onDragEnd={onDragEnd}
 			onClick={onClick}
-			className={`bg-base-100 p-3 rounded-lg border shadow-sm group cursor-pointer transition-all relative ${
-				isDragging ? 'opacity-50' : ''
-			} ${
-				isAiActive
+			className={`bg-base-100 p-3 rounded-lg border shadow-sm group cursor-pointer transition-all relative ${isDragging ? 'opacity-50' : ''
+				} ${isAiActive
 					? 'border-primary ring-2 ring-primary/40 animate-[kanban-pulse_2s_ease-in-out_infinite]'
 					: 'border-base-300 hover:border-primary/50'
-			}`}
+				}`}
 		>
 			{/* AI working indicator + stop button */}
 			{isAiActive && (
@@ -63,18 +61,16 @@ export default function KanbanCard({
 			{/* Badges */}
 			<div className="flex flex-wrap gap-2 mt-2">
 				{task.priority && task.priority !== 'medium' && (
-					<span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-						task.priority === 'urgent' ? 'bg-error/20 text-error' :
-						task.priority === 'high' ? 'bg-warning/20 text-warning' :
-						'bg-base-300 text-base-content/50'
-					}`}>
+					<span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${task.priority === 'urgent' ? 'bg-error/20 text-error' :
+							task.priority === 'high' ? 'bg-warning/20 text-warning' :
+								'bg-base-300 text-base-content/50'
+						}`}>
 						{task.priority}
 					</span>
 				)}
 				{task.dueDate && (
-					<span className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 ${
-						task.dueDate < Date.now() ? 'bg-error/20 text-error' : 'bg-info/10 text-info'
-					}`}>
+					<span className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 ${task.dueDate < Date.now() ? 'bg-error/20 text-error' : 'bg-info/10 text-info'
+						}`}>
 						<Calendar className="w-3 h-3" />
 						{new Date(task.dueDate).toLocaleDateString()}
 					</span>
