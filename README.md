@@ -306,7 +306,9 @@ Runtime logs are centralized under `~/.tamias/logs/` (for example `daemon.log`, 
 
 See the full [CHANGELOG.md](./CHANGELOG.md) for more details.
 
-### Latest Version (v26.04.05.10)
+### Latest Version (v26.04.05.13)
 
 ### Features
-- enhance model management; add support for embedding and default image models, implement draggable model list for better organization
+- update changelog for unreleased features; add AI activity tracking and one-shot job scheduling
+- update changelog for version v26.04.05.10; enhance model management and update README with new cron job parameters
+- Enhance Kanban board with AI activity tracking and one-shot job scheduling

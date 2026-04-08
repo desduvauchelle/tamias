@@ -168,12 +168,17 @@ export const project_get_tasks = {
 // ─── project_add_task ─────────────────────────────────────────────────────────
 
 export const project_add_task = {
-	description: 'Add a new task to a project Kanban board.',
+	description: `Add a new task to a project Kanban board.
+
+ASSIGNEE GUIDE — always set this:
+- "human": the user needs to do something manually (e.g. buy hardware, fill a form, make a decision, review a document). No AI or code execution. Use this for reminders, manual checklists, or anything requiring a real person.
+- "ai": the AI assistant will handle this in the current chat session (e.g. write a file, draft content, answer a question, analyse data, call an API). Does NOT require a code repo attached.
+- "code": a CLI coding agent (claude/codex/gemini/aider…) will implement this autonomously. ONLY use "code" when the project has a workspace/repo path configured. Use for coding tasks: write/refactor code, run migrations, add tests. Set cli_provider and status="queue" to auto-execute.`,
 	parameters: z.object({
 		projectSlug: z.string().optional().describe('The project slug. If omitted, inferred from Discord channel or session context.'),
 		title: z.string(),
 		details: z.string().optional().describe('Detailed description or acceptance criteria in Markdown.'),
-		assignee: z.string().optional().describe('Who is assigned to this task (e.g. AI, User, specific name).'),
+		assignee: z.enum(['human', 'ai', 'code']).optional().describe('"human" = person does it manually (reminder/checklist); "ai" = AI assistant handles it in this chat; "code" = CLI coding agent runs it (project must have a repo/workspacePath attached).'),
 		status: z.enum(['todo', 'in-progress', 'done', 'queue', 'backlog', 'failed']).default('todo'),
 		priority: z.enum(['low', 'medium', 'high', 'urgent']).optional().describe('Task priority level.'),
 		dueDate: z.string().optional().describe('Due date in ISO format (e.g. "2025-01-15").'),
@@ -210,14 +215,24 @@ export const project_add_task = {
 		updateProject(project.id, { kanban: updatedKanban }, { source: 'ai' })
 		logProjectActivity(project.id, `Task added: "${args.title}"`)
 
-		if (args.assignee === 'ai' && args.status === 'queue' && project.directory) {
+		if (args.assignee === 'code' && args.status === 'queue' && project.directory) {
 			const { notifyProjectNewTask } = await import('../core/kanban/queue-manager.ts')
 			try {
 				notifyProjectNewTask(project.id)
 			} catch { /* non-fatal */ }
 		}
 
-		return { success: true, task: newTask }
+		const guidance = args.assignee === 'human'
+			? 'Task assigned to a human. This is a manual reminder — the user will do it themselves. No AI or automated execution will occur.'
+			: args.assignee === 'ai'
+				? 'Task assigned to the AI assistant. The AI will handle this in the current chat session (e.g. write files, draft content, call APIs). Ask the AI to start working on it.'
+				: args.assignee === 'code'
+					? project.directory
+						? `Task assigned to a CLI coding agent (${newTask.cli_provider ?? 'set cli_provider'}). Set status to "queue" for automatic execution against the repo at ${project.directory}.`
+						: 'Warning: assignee is "code" but this project has no workspace/repo path configured. Attach a code repo to the project first, or change assignee to "ai" or "human".'
+					: 'Tip: set assignee to "human" (manual reminder), "ai" (AI handles in chat), or "code" (CLI coding agent for repo tasks).'
+
+		return { success: true, task: newTask, guidance }
 	}
 }
 
@@ -229,7 +244,7 @@ export const project_update_task = {
 		projectSlug: z.string().optional().describe('The project slug. If omitted, inferred from Discord channel or session context.'),
 		taskId: z.string().describe('The ID of the task to update.'),
 		status: z.enum(['todo', 'in-progress', 'awaiting-review', 'done', 'queue', 'backlog', 'failed']).optional(),
-		assignee: z.string().optional(),
+		assignee: z.enum(['human', 'ai', 'code']).optional().describe('"human" = person does it manually; "ai" = AI assistant in chat; "code" = CLI coding agent (project must have a repo attached).'),
 		details: z.string().optional(),
 		reaction: z.string().optional().describe('An emoji reaction to set for the task.'),
 		priority: z.enum(['low', 'medium', 'high', 'urgent']).optional().describe('Task priority level.'),

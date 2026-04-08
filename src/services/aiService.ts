@@ -880,6 +880,7 @@ Important: Post at least one progress comment before your final result so the us
 							if (project) {
 								let projText = `## Active Project Context: ${project.name}\n`
 								if (project.description) projText += `**Description**: ${project.description}\n`
+								projText += `\n**Task Management:** This project uses a Kanban board. To add tasks use \`project_add_task\`, to list tasks use \`project_get_tasks\`. Do NOT add tasks by editing the README or other project files.\n`
 
 								// Inject project-specific AI instructions (e.g. .tamias-instructions.md)
 								if (project.path) {
@@ -893,7 +894,11 @@ Important: Post at least one progress comment before your final result so the us
 									const activeTasks = project.kanban.filter(t => t.status !== 'done')
 									if (activeTasks.length > 0) {
 										projText += `\n### Active Kanban Tasks:\n${activeTasks.map(t => `- [${t.status}] ${t.title} | Assignee: ${t.assignee || 'None'} | ID: ${t.id}`).join('\n')}\n`
+									} else {
+										projText += `\n### Kanban Board: all tasks done (board is clear)\n`
 									}
+								} else {
+									projText += `\n### Kanban Board: empty — no tasks yet\n`
 								}
 
 								// Inject README.md body as project context
@@ -937,6 +942,7 @@ Important: Post at least one progress comment before your final result so the us
 						if (linkedProject && linkedProject.id !== session.projectSlug) {
 							let projText = `## Linked Project Context (${linkedProject.name})\n`
 							if (linkedProject.description) projText += `**Description**: ${linkedProject.description}\n`
+							projText += `\n**Task Management:** This project uses a Kanban board. To add tasks use \`project_add_task\`, to list tasks use \`project_get_tasks\`. Do NOT add tasks by editing the README or other project files.\n`
 
 							// Inject project-specific AI instructions (e.g. .tamias-instructions.md)
 							if (linkedProject.path) {
@@ -950,7 +956,11 @@ Important: Post at least one progress comment before your final result so the us
 								const activeTasks = linkedProject.kanban.filter(t => t.status !== 'done')
 								if (activeTasks.length > 0) {
 									projText += `\n### Active Kanban Tasks:\n${activeTasks.map(t => `- [${t.status}] ${t.title} | Assignee: ${t.assignee || 'None'} | ID: ${t.id}`).join('\n')}\n`
+								} else {
+									projText += `\n### Kanban Board: all tasks done (board is clear)\n`
 								}
+							} else {
+								projText += `\n### Kanban Board: empty — no tasks yet\n`
 							}
 
 							// Inject README.md body as linked project context

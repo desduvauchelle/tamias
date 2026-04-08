@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Features
+- add ComfyUI tool for local image generation
+
+## [v26.04.05.13] - 2026-04-05
+
+### Features
+- update changelog for unreleased features; add AI activity tracking and one-shot job scheduling
 - update changelog for version v26.04.05.10; enhance model management and update README with new cron job parameters
 - Enhance Kanban board with AI activity tracking and one-shot job scheduling
 

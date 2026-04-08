@@ -655,7 +655,7 @@ export default function FileNavigator({ basePath = '', hideHeader = false, viewM
 			{/* File modal */}
 			{modal && (
 				<FileModal
-					path={basePath ? `${basePath}/${modal.path}` : modal.path}
+					path={modal.path}
 					name={modal.name}
 					onClose={() => setModal(null)}
 				/>

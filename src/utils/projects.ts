@@ -341,6 +341,7 @@ export function buildActiveProjectContext(slug: string, tenantId?: string): stri
 	sections.push(`**Description:** ${project.description}`)
 	if (project.techStack) sections.push(`**Tech Stack:** ${project.techStack}`)
 	if (project.workspacePath) sections.push(`**Workspace:** \`${project.workspacePath}\``)
+	sections.push(`\n**Task Management:** This project uses a Kanban board. To add tasks use \`project_add_task\`, to list tasks use \`project_get_tasks\`. Do NOT add tasks by editing the README or other project files.`)
 
 	// ── Priority 1: Project-specific AI instructions ──────────────────────────
 	if (project.workspacePath) {
@@ -377,13 +378,25 @@ export function buildActiveProjectContext(slug: string, tenantId?: string): stri
 		}
 	}
 
-	// ── Priority 4: Recent activity ───────────────────────────────────────────
+	// ── Priority 4: Kanban board summary ─────────────────────────────────────
+	const kanbanPath = join(projectDir, 'kanban.json')
+	const kanbanTasks: Array<{ status: string; title: string; assignee?: string; id: string }> = existsSync(kanbanPath)
+		? (() => { try { return JSON.parse(readFileSync(kanbanPath, 'utf-8')) } catch { return [] } })()
+		: []
+	const activeTasks = kanbanTasks.filter((t) => t.status !== 'done')
+	if (activeTasks.length > 0) {
+		sections.push(`\n### Kanban Board (active tasks)\n${activeTasks.map((t) => `- [${t.status}] ${t.title} | Assignee: ${t.assignee || 'None'} | ID: ${t.id}`).join('\n')}`)
+	} else {
+		sections.push(`\n### Kanban Board: empty — no active tasks yet`)
+	}
+
+	// ── Priority 5: Recent activity ───────────────────────────────────────────
 	const activity = getProjectActivity(slug, 50, tenantId)
 	if (activity) {
 		sections.push(`\n### Recent Activity\n\n${activity}`)
 	}
 
-	// ── Priority 5: Notes ─────────────────────────────────────────────────────
+	// ── Priority 6: Notes ─────────────────────────────────────────────────────
 	const notesPath = join(projectDir, 'NOTES.md')
 	if (existsSync(notesPath)) {
 		const notes = readFileSync(notesPath, 'utf-8').trim()
